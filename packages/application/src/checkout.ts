@@ -17,6 +17,7 @@ import {
   type StockBalance,
   type InventoryIssue,
 } from "@smartretail/domain";
+import { CustomerUnavailableError } from "./customers";
 import { StockBalanceNotFoundError } from "./inventory";
 import { SuspensionConflictError } from "./suspended-sales";
 import { ProductNotFoundError } from "./products";
@@ -31,6 +32,7 @@ export type SaleCheckoutInput = Readonly<{
 }>;
 export type StoredSale = Readonly<{
   shiftId: string | null;
+  customerName?: string;
   sale: CompletedSale;
   payments: readonly SalePayment[];
   locationId: string;
@@ -51,6 +53,7 @@ export interface SaleTransaction {
     Readonly<{ payload: string; recorded: StoredSale }> | undefined
   >;
   lockSuspendedSale?(id: string, locationId: string): Promise<void>;
+  validateCustomer?(id: string): Promise<void>;
   lockOpenShift(locationId: string, shiftId: string | undefined): Promise<void>;
   readProduct(id: string): Promise<Product | undefined>;
   readLocation(id: string): Promise<InventoryLocation | undefined>;
@@ -130,6 +133,7 @@ export function saleCommand(input: SaleCheckoutInput) {
       ? {}
       : { suspendedSaleId: snapshot.suspendedSaleId }),
     id: draft.id,
+    ...(draft.customerId === undefined ? {} : { customerId: draft.customerId }),
     locationId,
     lines: canonicalLines,
     total: draft.total.minorUnits.toString(),
@@ -155,6 +159,10 @@ export async function completeSaleTransaction(
       if (prior.payload !== payload) throw new SaleIdempotencyConflictError();
       return Object.freeze({ recorded: prior.recorded, replayed: true });
     }
+    if (snapshot.draft.customerId !== undefined) {
+      if (!tx.validateCustomer) throw new CustomerUnavailableError();
+      await tx.validateCustomer(snapshot.draft.customerId);
+    }
     const location = await tx.readLocation(snapshot.locationId);
     if (!location || location.status !== "active")
       throw new StockBalanceNotFoundError();
@@ -163,7 +171,7 @@ export async function completeSaleTransaction(
       await tx.lockSuspendedSale(snapshot.suspendedSaleId, snapshot.locationId);
     }
     await tx.lockOpenShift(snapshot.locationId, snapshot.shiftId);
-    let trusted = createSaleDraft(snapshot.draft.id);
+    let trusted = createSaleDraft(snapshot.draft.id, snapshot.draft.customerId);
     const lines = [...snapshot.draft.lines].sort((a, b) =>
       a.productId.localeCompare(b.productId),
     );

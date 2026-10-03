@@ -25,6 +25,7 @@ export const CheckoutSchema = z.strictObject({
 });
 export const StoredSaleSchema = z.strictObject({
   shiftId: UuidSchema.nullable(),
+  customerName: z.string().min(1).max(200).exactOptional(),
   sale: CompletedSaleSchema,
   payments: PaymentsSchema,
   locationId: UuidSchema,

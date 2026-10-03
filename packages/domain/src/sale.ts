@@ -9,6 +9,7 @@ import {
   type ProductName,
   type Sku,
 } from "./product-fields";
+import { customerId } from "./customer";
 import { assertUnitCode, type UnitCode } from "./unit";
 
 declare const saleIdBrand: unique symbol;
@@ -30,6 +31,7 @@ export type SaleLine = Readonly<{
 }>;
 type SaleValues = Readonly<{
   id: SaleId;
+  customerId?: string;
   lines: readonly SaleLine[];
   total: Money;
 }>;
@@ -89,21 +91,25 @@ function buildSale(
   id: SaleId,
   lines: readonly SaleLine[],
   status: "draft",
+  customer?: string,
 ): SaleDraft;
 function buildSale(
   id: SaleId,
   lines: readonly SaleLine[],
   status: "completed",
+  customer?: string,
 ): CompletedSale;
 function buildSale(
   id: SaleId,
   lines: readonly SaleLine[],
   status: Sale["status"],
+  customer?: string,
 ): Sale;
 function buildSale(
   id: SaleId,
   lines: readonly SaleLine[],
   status: Sale["status"],
+  customer?: string,
 ): Sale {
   const copies: SaleLine[] = [];
   const ids = new Set<string>();
@@ -119,6 +125,7 @@ function buildSale(
     throw new TypeError("Cannot complete an empty sale");
   return Object.freeze({
     id: saleId(id),
+    ...(customer === undefined ? {} : { customerId: customerId(customer) }),
     lines: Object.freeze(copies),
     total,
     status,
@@ -134,7 +141,7 @@ function mutableDraft(value: Sale): SaleDraft {
     (value.status !== "draft" && value.status !== "completed")
   )
     throw new TypeError("Expected sale");
-  const copy = buildSale(value.id, value.lines, value.status);
+  const copy = buildSale(value.id, value.lines, value.status, value.customerId);
   if (compareMoney(copy.total, value.total) !== 0)
     throw new TypeError("Inconsistent sale total");
   if (copy.status !== "draft")
@@ -142,8 +149,8 @@ function mutableDraft(value: Sale): SaleDraft {
   return copy;
 }
 
-export function createSaleDraft(id: string): SaleDraft {
-  return buildSale(saleId(id), [], "draft");
+export function createSaleDraft(id: string, customer?: string): SaleDraft {
+  return buildSale(saleId(id), [], "draft", customer);
 }
 
 export function addSaleProduct(
@@ -187,7 +194,7 @@ export function addSaleProduct(
       },
     ];
   }
-  return buildSale(draft.id, lines, "draft");
+  return buildSale(draft.id, lines, "draft", draft.customerId);
 }
 
 export function changeSaleQuantity(
@@ -214,6 +221,7 @@ export function changeSaleQuantity(
         : line,
     ),
     "draft",
+    draft.customerId,
   );
 }
 
@@ -226,10 +234,16 @@ export function removeSaleLine(sale: Sale, id: string): SaleDraft {
     draft.id,
     draft.lines.filter((line) => line.productId !== target),
     "draft",
+    draft.customerId,
   );
 }
 
 export function completeSale(sale: Sale): CompletedSale {
   const draft = mutableDraft(sale);
-  return buildSale(draft.id, draft.lines, "completed");
+  return buildSale(draft.id, draft.lines, "completed", draft.customerId);
+}
+
+export function assignSaleCustomer(sale: Sale, customer?: string): SaleDraft {
+  const draft = mutableDraft(sale);
+  return buildSale(draft.id, draft.lines, "draft", customer);
 }

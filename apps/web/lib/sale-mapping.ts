@@ -12,6 +12,9 @@ import type { SaleCheckoutInput, StoredSale } from "@smartretail/application";
 export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
   const draft: SaleDraft = {
     id: saleId(dto.draft.id),
+    ...(dto.draft.customerId === undefined
+      ? {}
+      : { customerId: dto.draft.customerId }),
     status: "draft",
     total: money(BigInt(dto.draft.total.minorUnits)),
     lines: dto.draft.lines.map((l) => ({

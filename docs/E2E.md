@@ -38,3 +38,8 @@ e2e/purchasing.spec.ts revisa suppliers list, purchases list, detalle y formular
 La ejecución privada autorizada usa OTP real sin contraseña, no persiste sesiones y comprueba ocho vistas con axe, creación UI y recepción parcial/total, respuesta perdida/recarga/replay y controles negativos. Evidencia fuera de Git; no equivale a probar password login.
 
 Cierre TASK-020: browser OTP real8 vistas locales +8 productivas PASS, axe0/overflow0/render0; cuatro PNG locales revisadas por QA Nash. Script password focal8SKIP explícitos. Smoke productivo creó fixtures SMOKE y dos recepciones, conservados con ledger; replay tras respuesta perdida validado contra servidor. Deployment dpl_HMLQsoZEveK1Sc7AYAa9U7wiD7NP READY; ejecuciones cloud realizadas por DEVELOPER.
+
+## TASK-021 — clientes
+
+e2e/customers.spec.ts añade tres checks read-only (directorio, historial, cliente opcional POS) en desktop/mobile-small. Email/password ausentes:6SKIP explícitos; detalle necesita E2E_CUSTOMER_ID/E2E_TENANT_ID. No se persisten credenciales, traces ni vídeo.
+Smoke privado autorizado OTP real local:8 vistas clientes/POS/historial/ticket, axe0/overflow0/render0; venta asociada con respuesta perdida/reload/replay, cliente inactivo e historial intacto, Público general. Quick-create y cambio de empresa360px adicionales PASS; QA revisó cuatro PNG locales. Ejecuciones realizadas por DEVELOPER; no equivalen a password login.

@@ -49,7 +49,12 @@ const LinesSchema = z
     message: "Technical transport limit: 1000 lines",
   })
   .pipe(z.array(SaleLineSchema));
-const shape = { id: SaleIdSchema, lines: LinesSchema, total: PriceSchema };
+const shape = {
+  id: SaleIdSchema,
+  customerId: UuidSchema.exactOptional(),
+  lines: LinesSchema,
+  total: PriceSchema,
+};
 const envelope = z.discriminatedUnion("status", [
   z.strictObject({ ...shape, status: z.literal("draft") }),
   z.strictObject({ ...shape, status: z.literal("completed") }),

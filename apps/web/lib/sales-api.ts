@@ -14,6 +14,7 @@ import {
   SaleQuoteChangedError,
   SaleIdempotencyConflictError,
   SaleNotFoundError,
+  CustomerUnavailableError,
   CashStateConflictError,
   SuspensionConflictError,
 } from "@smartretail/application";
@@ -97,6 +98,14 @@ export async function handleSales(
       return reply(
         { error: "Venta, producto o ubicación no encontrados." },
         404,
+      );
+    if (error instanceof CustomerUnavailableError)
+      return reply(
+        {
+          error:
+            "El cliente no existe, está inactivo o no pertenece a esta empresa. Quita la selección o elige otro cliente.",
+        },
+        409,
       );
     if (error instanceof SuspensionConflictError)
       return reply(

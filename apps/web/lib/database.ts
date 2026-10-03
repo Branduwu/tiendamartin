@@ -4,6 +4,7 @@ import {
   PostgresInventory,
   PostgresPurchasing,
   PostgresSales,
+  PostgresCustomers,
   PostgresCash,
   PostgresSaleReturns,
   PostgresSuspendedSales,
@@ -49,3 +50,9 @@ export const purchasingForUser = (
   correlationId?: string,
 ) =>
   new PostgresPurchasing(databasePool(), { userId, tenantId }, correlationId);
+
+export const customersForUser = (
+  userId: string,
+  tenantId: string,
+  correlationId?: string,
+) => new PostgresCustomers(databasePool(), { userId, tenantId }, correlationId);

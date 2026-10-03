@@ -89,6 +89,7 @@ export {
 export {
   saleId,
   createSaleDraft,
+  assignSaleCustomer,
   addSaleProduct,
   changeSaleQuantity,
   removeSaleLine,
@@ -107,3 +108,4 @@ export * from "./cash";
 export * from "./sale-return";
 
 export * from "./purchasing";
+export * from "./customer";

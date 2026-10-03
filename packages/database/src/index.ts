@@ -14,3 +14,4 @@ export { PostgresSuspendedSales } from "./suspended-sales";
 export { PostgresSaleReturns } from "./sale-returns";
 
 export { PostgresPurchasing } from "./purchasing";
+export * from "./customers";

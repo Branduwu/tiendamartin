@@ -13,6 +13,7 @@ import {
   type UnitCode,
 } from "@smartretail/domain";
 import {
+  CustomerUnavailableError,
   SaleIdempotencyConflictError,
   SaleNotFoundError,
   CashStateConflictError,
@@ -37,6 +38,8 @@ import {
 
 interface SaleRow {
   shift_id: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
   id: string;
   tenant_id: string;
   location_id: string;
@@ -88,12 +91,16 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
     );
     const sale = completeSale({
       id: saleId(row.id),
+      ...(row.customer_id === null ? {} : { customerId: row.customer_id }),
       status: "draft",
       lines: snapshots,
       total: money(integer(row.total_minor_units)),
     });
     const recorded: StoredSale = Object.freeze({
       shiftId: row.shift_id,
+      ...(row.customer_name === null
+        ? {}
+        : { customerName: row.customer_name }),
       sale,
       payments: salePayments(
         payments.rows.map((p) => ({
@@ -174,6 +181,16 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
             } catch (e) {
               if (e instanceof Error && "code" in e && e.code === "P0001")
                 throw new SuspensionConflictError();
+              throw e;
+            }
+          },
+          validateCustomer: async (id) => {
+            assertActive();
+            try {
+              await client.query("SELECT retail.lock_sale_customer($1)", [id]);
+            } catch (e) {
+              if (e instanceof Error && "code" in e && e.code === "P0001")
+                throw new CustomerUnavailableError();
               throw e;
             }
           },
@@ -265,8 +282,8 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           persistSale: async (sale, input, payload) => {
             assertActive();
             await client.query(
-              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id)
-              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8)`,
+              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id,customer_id)
+              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8,$9)`,
               [
                 validId,
                 this.tenant,
@@ -276,6 +293,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                 payload,
                 input.shiftId,
                 input.suspendedSaleId ?? null,
+                sale.customerId ?? null,
               ],
             );
             for (const [ordinal, line] of sale.lines.entries()) {

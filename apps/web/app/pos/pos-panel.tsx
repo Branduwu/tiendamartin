@@ -1,10 +1,12 @@
 "use client";
+import PosCustomerSelector from "../components/pos-customer-selector";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   createSaleDraft,
+  assignSaleCustomer,
   addSaleProduct,
   changeSaleQuantity,
   removeSaleLine,
@@ -77,7 +79,9 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [notice, setNotice] = useState("");
   const scannerRef = useRef<HTMLInputElement>(null);
   const scanQuantityRef = useRef<HTMLInputElement>(null);
-  const [tenants, setTenants] = useState<{ tenantId: string }[]>([]),
+  const [tenants, setTenants] = useState<
+      { tenantId: string; permissions: string[] }[]
+    >([]),
     [tenant, setTenant] = useState("");
   const [products, setProducts] = useState<ProductDto[]>([]),
     [locations, setLocations] = useState<InventoryLocationDto[]>([]),
@@ -409,7 +413,7 @@ export default function PosPanel({ userId }: { userId: string }) {
       setScanProduct(null);
       setCash("0.00");
       setNotice(
-        "Venta suspendida. No se reserv\u00f3 ni descont\u00f3 inventario.",
+        "Venta suspendida. No se reserv\u00f3 ni descont\u00f3 inventario. Al recuperar, vuelve a seleccionar el cliente.",
       );
       await listSuspended();
     } catch (e) {
@@ -672,6 +676,7 @@ export default function PosPanel({ userId }: { userId: string }) {
           <section className="pos-confirmation" role="status">
             <h2>Venta confirmada</h2>
             <p>{mxn(confirmed.sale.total.minorUnits)}</p>
+            <p>Cliente: {confirmed.customerName ?? "Público general"}</p>
             <p>
               ID de venta:{" "}
               <strong className="sale-id">{confirmed.sale.id}</strong>
@@ -701,6 +706,31 @@ export default function PosPanel({ userId }: { userId: string }) {
           <p>No tienes una empresa activa.</p>
         ) : (
           <>
+            <PosCustomerSelector
+              key={tenant}
+              tenantId={tenant}
+              value={draft?.customerId}
+              locked={locked}
+              canRead={
+                tenants
+                  .find((t) => t.tenantId === tenant)
+                  ?.permissions.includes("customers.read") ?? false
+              }
+              canWrite={
+                tenants
+                  .find((t) => t.tenantId === tenant)
+                  ?.permissions.includes("customers.write") ?? false
+              }
+              onSelect={(id) => {
+                setDraft((current) =>
+                  assignSaleCustomer(
+                    current ?? createSaleDraft(crypto.randomUUID()),
+                    id,
+                  ),
+                );
+                setConfirmed(null);
+              }}
+            />
             <a className="mobile-cart-jump" href="#cart-title">
               Ver venta actual <strong>{mxn(total.toString())}</strong>
             </a>
@@ -712,6 +742,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                   disabled={locked || !!draft?.lines.length}
                   onChange={(e) => {
                     if (e.target.value === tenant) return;
+                    setDraft(null);
                     setTenant(e.target.value);
                     setLocation("");
                     setShift(null);

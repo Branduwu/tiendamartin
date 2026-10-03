@@ -42,6 +42,8 @@ import {
   type SaleCheckoutInput,
   type SaleReturnInput,
   ProductNotFoundError,
+  CustomerNotFoundError,
+  CustomerUnavailableError,
   CashStateConflictError,
   openCashRegisterShift,
   recordCashMovement,
@@ -52,6 +54,7 @@ import {
 import {
   PostgresInventory,
   PostgresPurchasing,
+  PostgresCustomers,
   PostgresSales,
   PostgresSuspendedSales,
   PostgresCash,
@@ -326,6 +329,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.customers') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/013_customers.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -362,7 +378,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2267,7 +2283,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(26);
+    expect(tables.rows).toHaveLength(28);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -3504,6 +3520,335 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       expect(
         tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
       ).toBe(true);
+    });
+  });
+  describe("customers and sale association", () => {
+    const repo = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresCustomers(pool, { userId, tenantId });
+    const sales = () =>
+      new PostgresSales(pool, { userId: ownerUser, tenantId: tenantA });
+    const fields = {
+      name: "SMOKE Customer",
+      status: "active" as const,
+      phone: "123456",
+      email: "smoke@example.invalid",
+      notes: "Private note",
+    };
+    const create = () => repo().createCustomer(randomUUID(), fields);
+    const checkout = (cid?: string): SaleCheckoutInput => ({
+      shiftId,
+      locationId: source,
+      draft: addSaleProduct(
+        createSaleDraft(randomUUID(), cid),
+        fixtureProduct(),
+        quantity("piece", 1000n),
+      ),
+      payments: [{ method: "cash", amount: money(2000n) }],
+      movements: [{ productId: product, movementId: randomUUID() }],
+    });
+    it("creates reads updates and clears optional fields", async () => {
+      const c = await create();
+      expect((await repo().listCustomers())[0]?.id).toBe(c.id);
+      const patched = await repo().updateCustomer(c.id, {
+        name: "Updated",
+        phone: null,
+        email: null,
+        notes: null,
+      });
+      expect(patched.name).toBe("Updated");
+      expect(patched.phone).toBeUndefined();
+      expect(patched.email).toBeUndefined();
+      expect(patched.notes).toBeUndefined();
+      expect(patched.createdAt).toBe(c.createdAt);
+    });
+    it("searches name phone email literally with case insensitive bounded input", async () => {
+      await create();
+      for (const q of ["smoke customer", "1234", "EXAMPLE.INVALID"])
+        expect(await repo().listCustomers(q)).toHaveLength(1);
+      expect(await repo().listCustomers("' OR 1=1 --")).toHaveLength(0);
+      expect(await repo().listCustomers("%")).toHaveLength(0);
+      await expect(repo().listCustomers("x".repeat(201))).rejects.toThrow(
+        TypeError,
+      );
+    });
+    it("admin has customer read/write without changing roles", async () => {
+      const c = await repo(adminUser).createCustomer(randomUUID(), fields);
+      expect((await repo(adminUser).readCustomer(c.id)).customer.id).toBe(c.id);
+      await expect(
+        repo(adminUser).updateCustomer(c.id, { status: "inactive" }),
+      ).resolves.toMatchObject({ status: "inactive" });
+    });
+    it("inventory clerk cannot list create read or update customers", async () => {
+      const c = await create();
+      const clerk = repo(clerkUser);
+      for (const work of [
+        () => clerk.listCustomers(),
+        () => clerk.createCustomer(randomUUID(), fields),
+        () => clerk.readCustomer(c.id),
+        () => clerk.updateCustomer(c.id, { status: "inactive" }),
+      ])
+        await expect(work()).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("outsider and revoked membership cannot access directory", async () => {
+      await create();
+      await expect(repo(outsiderUser).listCustomers()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, ownerUser],
+      );
+      await expect(repo().listCustomers()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("customer/audit tables FORCE RLS and direct other tenant access is denied", async () => {
+      const c = await create();
+      const rows = await admin.query(
+        "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND relname=ANY($1)",
+        [["customers", "customer_audit"]],
+      );
+      expect(rows.rows).toHaveLength(2);
+      expect(
+        rows.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
+      ).toBe(true);
+      await sql(tenantB, async (c) =>
+        expect(
+          (await c.query("SELECT * FROM retail.customers")).rows,
+        ).toHaveLength(0),
+      );
+      await expect(
+        repo(ownerUser, tenantB).readCustomer(c.id),
+      ).rejects.toBeInstanceOf(CustomerNotFoundError);
+      await expect(
+        sql(tenantB, (c) =>
+          c.query(
+            "INSERT INTO retail.customers(id,tenant_id,name,status) VALUES($1,$2,'Hidden','active')",
+            [randomUUID(), tenantA],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("sale without customer retains normal totals cash and stock", async () => {
+      const result = await completeSaleTransaction(
+        new PostgresSales(apiPool, { userId: ownerUser, tenantId: tenantA }),
+        checkout(),
+      );
+      expect(result.recorded.sale.customerId).toBeUndefined();
+      expect(result.recorded.customerName).toBeUndefined();
+      expect(result.recorded.sale.total.minorUnits).toBe(2000n);
+      expect(await stock()).toBe(9000n);
+    });
+    it("same tenant active customer is associated and history contains exact totals payments", async () => {
+      const c = await create(),
+        command = checkout(c.id);
+      const result = await completeSaleTransaction(
+        new PostgresSales(apiPool, { userId: ownerUser, tenantId: tenantA }),
+        command,
+      );
+      expect(result.recorded.sale.customerId).toBe(c.id);
+      expect(result.recorded.customerName).toBe(fields.name);
+      const detail = await repo().readCustomer(c.id);
+      expect(detail.sales).toHaveLength(1);
+      expect(detail.sales[0]).toMatchObject({
+        id: command.draft.id,
+        total: money(2000n),
+        paymentMethods: ["cash"],
+        returnedTotal: money(0n),
+      });
+      expect((await repo().listCustomers())[0]?.lastPurchaseAt).toBe(
+        result.recorded.createdAt,
+      );
+    });
+    it("foreign and missing customers reject atomically without stock changes", async () => {
+      const foreign = await repo(ownerUser, tenantB).createCustomer(
+        randomUUID(),
+        fields,
+      );
+      for (const cid of [foreign.id, randomUUID()])
+        await expect(
+          completeSaleTransaction(sales(), checkout(cid)),
+        ).rejects.toBeInstanceOf(CustomerUnavailableError);
+      expect(await stock()).toBe(10000n);
+      expect(
+        (await admin.query("SELECT count(*) FROM retail.sales")).rows[0]?.count,
+      ).toBe("0");
+    });
+    it("inactive customer cannot be used for new sale", async () => {
+      const c = await create();
+      await repo().updateCustomer(c.id, { status: "inactive" });
+      await expect(
+        completeSaleTransaction(sales(), checkout(c.id)),
+      ).rejects.toBeInstanceOf(CustomerUnavailableError);
+      expect(await stock()).toBe(10000n);
+    });
+    it("deactivation and rename preserve historical reference and ticket snapshot", async () => {
+      const c = await create(),
+        result = await completeSaleTransaction(sales(), checkout(c.id));
+      await repo().updateCustomer(c.id, {
+        status: "inactive",
+        name: "Renamed",
+      });
+      const record = await sales().readSale(result.recorded.sale.id);
+      expect(record.sale.customerId).toBe(c.id);
+      expect(record.customerName).toBe(fields.name);
+      expect((await repo().readCustomer(c.id)).sales).toHaveLength(1);
+    });
+    it("same SaleId replays original customer even after deactivation", async () => {
+      const c = await create(),
+        command = checkout(c.id);
+      await completeSaleTransaction(sales(), command);
+      await repo().updateCustomer(c.id, { status: "inactive" });
+      const replay = await completeSaleTransaction(sales(), command);
+      expect(replay.replayed).toBe(true);
+      expect(replay.recorded.sale.customerId).toBe(c.id);
+      expect(await stock()).toBe(9000n);
+    });
+    it("different or removed customer on identical SaleId conflicts", async () => {
+      const a = await create(),
+        b = await create(),
+        command = checkout(a.id);
+      await completeSaleTransaction(sales(), command);
+      for (const customerId of [b.id, undefined]) {
+        const draft = { ...command.draft };
+        if (customerId === undefined) delete draft.customerId;
+        else draft.customerId = customerId;
+        await expect(
+          completeSaleTransaction(sales(), { ...command, draft }),
+        ).rejects.toBeInstanceOf(SaleIdempotencyConflictError);
+      }
+      expect(await stock()).toBe(9000n);
+    });
+    it("concurrent identical commands commit exactly one sale", async () => {
+      const c = await create(),
+        command = checkout(c.id);
+      const results = await Promise.all([
+        completeSaleTransaction(sales(), command),
+        completeSaleTransaction(sales(), command),
+      ]);
+      expect(results.filter((r) => r.replayed)).toHaveLength(1);
+      expect(await stock()).toBe(9000n);
+      expect((await repo().readCustomer(c.id)).sales).toHaveLength(1);
+    });
+    it("customer SHARE lock serializes concurrent deactivation", async () => {
+      const c = await create();
+      let release!: () => void, entered!: () => void;
+      const gate = new Promise<void>((r) => (release = r)),
+        locked = new Promise<void>((r) => (entered = r)),
+        base = sales();
+      const work = completeSaleTransaction(
+        {
+          readSale: (id) => base.readSale(id),
+          runSale: (id, fn) =>
+            base.runSale(id, (tx) =>
+              fn({
+                ...tx,
+                validateCustomer: async (cid) => {
+                  await tx.validateCustomer?.(cid);
+                  entered();
+                  await gate;
+                },
+              }),
+            ),
+        },
+        checkout(c.id),
+      );
+      await locked;
+      try {
+        await expect(
+          sql(tenantA, async (client) => {
+            await client.query("SET LOCAL lock_timeout='100ms'");
+            await client.query(
+              "SELECT set_config('app.correlation_id',$1,true)",
+              [randomUUID()],
+            );
+            await client.query(
+              "UPDATE retail.customers SET status='inactive' WHERE id=$1",
+              [c.id],
+            );
+          }),
+        ).rejects.toMatchObject({ code: "55P03" });
+      } finally {
+        release();
+      }
+      await work;
+      await repo().updateCustomer(c.id, { status: "inactive" });
+      expect((await repo().readCustomer(c.id)).sales).toHaveLength(1);
+    });
+    it("SQL trigger rejects foreign customer regardless of browser context", async () => {
+      const c = await repo(ownerUser, tenantB).createCustomer(
+        randomUUID(),
+        fields,
+      );
+      await expect(
+        sql(tenantA, (client) =>
+          client.query(
+            "INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,customer_id) VALUES($1,$2,$3,'completed','MXN',2000,$4,'{}',$5,$6)",
+            [randomUUID(), tenantA, source, ownerUser, shiftId, c.id],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "P0001" });
+      expect(await stock()).toBe(10000n);
+    });
+    it("history reports returns without changing sale or customer", async () => {
+      const c = await create(),
+        sold = await completeSaleTransaction(sales(), checkout(c.id));
+      await new PostgresSaleReturns(pool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).returnSale(sold.recorded.sale.id, {
+        id: randomUUID(),
+        lines: [
+          {
+            productId: product,
+            saleLineId: product,
+            movementId: randomUUID(),
+            quantity: quantity("piece", 1000n),
+          },
+        ],
+        refunds: [{ method: "cash", amount: money(2000n) }],
+        shiftId,
+        cashMovementId: randomUUID(),
+      });
+      const detail = await repo().readCustomer(c.id);
+      expect(detail.sales[0]?.returnedTotal.minorUnits).toBe(2000n);
+      expect(detail.sales[0]?.total.minorUnits).toBe(2000n);
+      expect(detail.customer.id).toBe(c.id);
+    });
+    it("runtime customer audit records identifiers only and denies delete/audit writes", async () => {
+      const runtime = new PostgresCustomers(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const c = await runtime.createCustomer(randomUUID(), fields);
+      await completeSaleTransaction(sales(), checkout(c.id));
+      await runtime.updateCustomer(c.id, { status: "inactive" });
+      const rows = await admin.query(
+        "SELECT * FROM retail.customer_audit WHERE customer_id=$1 ORDER BY created_at",
+        [c.id],
+      );
+      expect(rows.rows).toHaveLength(2);
+      expect(
+        rows.rows.every(
+          (r) =>
+            r.actor_user_id === ownerUser &&
+            r.correlation_id &&
+            r.tenant_id === tenantA,
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(rows.rows)).not.toContain(fields.email);
+      expect(JSON.stringify(rows.rows)).not.toContain(fields.phone);
+      await expect(
+        sql(tenantA, (c) => c.query("DELETE FROM retail.customers")),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "INSERT INTO retail.customer_audit(tenant_id,actor_user_id,action,customer_id,correlation_id) VALUES($1,$2,'customers.update',$3,$4)",
+            [tenantA, ownerUser, randomUUID(), randomUUID()],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
     });
   });
 });

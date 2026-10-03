@@ -88,6 +88,7 @@ export default async function TicketPage({
       <h1>SmartRetail</h1>
       <h2>Ticket de venta</h2>
       <p className="badge active">Venta original</p>
+      <p>Cliente: {recorded.customerName ?? "Público general"}</p>
       <p className="sale-id">Venta: {recorded.sale.id}</p>
       <p>
         <time dateTime={recorded.createdAt}>

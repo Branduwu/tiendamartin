@@ -7,6 +7,7 @@ const pages = [
   ["/sales", "Ventas"],
   ["/suppliers", "Proveedores"],
   ["/purchases", "Compras"],
+  ["/customers", "Clientes"],
 ] as const;
 export default function AppNavigation({
   current,
@@ -25,6 +26,7 @@ export default function AppNavigation({
           "/pos",
           "/suppliers",
           "/purchases",
+          "/customers",
         ].includes(href) ? (
           <span
             key={href}

@@ -6,6 +6,8 @@ export type AuthenticatedContext = Readonly<{
   tenantId: string;
 }>;
 export type Permission =
+  | "customers.read"
+  | "customers.write"
   | "suppliers.read"
   | "suppliers.write"
   | "purchases.read"
