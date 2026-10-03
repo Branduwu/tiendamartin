@@ -30,9 +30,13 @@ export default function LoginForm({ configured }: { configured: boolean }) {
     }
   }
   return (
-    <form onSubmit={submit} className="stack">
+    <form
+      onSubmit={submit}
+      className="stack"
+      aria-describedby={error ? "login-error" : undefined}
+    >
       {!configured && (
-        <p role="status" className="notice">
+        <p role="status" className="warning">
           El inicio de sesión aún no está disponible. Contacta al administrador.
         </p>
       )}
@@ -57,7 +61,7 @@ export default function LoginForm({ configured }: { configured: boolean }) {
         />
       </label>
       {error && (
-        <p role="alert" className="error">
+        <p id="login-error" role="alert" className="error">
           {error}
         </p>
       )}

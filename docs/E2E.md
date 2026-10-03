@@ -23,3 +23,9 @@ Los flujos autenticados requieren variables locales `E2E_EMAIL` y `E2E_PASSWORD`
 Los snapshots de referencia se actualizan sólo con `e2e:update-snapshots` tras revisar visualmente el diff. Las pruebas funcionales comprueban navegación y controles; las visuales comprueban layout, overflow, nombres accesibles y regresiones de pantalla.
 
 El smoke anterior es público; `e2e:visual` requiere credenciales y puede omitir todas sus pruebas sin ellas. Traces y vídeo desactivados para evitar conservar credenciales o sesiones; no publicar screenshots autenticados sin revisarlos.
+
+## TASK-UX02 — baselines y evidencia
+
+Login usa `login.png` sin Auth configurado y `login-configured.png` con Auth disponible, en los cuatro viewports. La captura excluye únicamente `nextjs-portal`, UI externa del servidor de desarrollo, mediante `stylePath` y `e2e/screenshot.css`; axe analiza la página sin exclusiones nuevas. `caret: initial` evita que el screenshot altere inputs antes de hidratación. Las actualizaciones de los ocho PNG se revisaron como cambios intencionales de diseño.
+
+Suite final configurada: 12 PASS y 24 SKIP explícitos sin credenciales email/password; el modo sin Auth se valida aparte con los 12 tests de login. Smoke privado independiente y read-only con OTP real autorizado: 28 pantallas finales y 32 checks de estados, cero POST comerciales, axe sin violaciones. Error de login probado con respuesta ficticia interceptada; no es evidencia de password login real. Las sesiones se revocan y las capturas privadas no se versionan.

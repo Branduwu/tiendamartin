@@ -1,0 +1,4 @@
+/* External Next development tools are not part of the application baseline. */
+nextjs-portal {
+  display: none !important;
+}

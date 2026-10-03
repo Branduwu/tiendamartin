@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../components/presentation";
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { SaleIdSchema, UuidSchema } from "@smartretail/contracts";
@@ -86,9 +87,12 @@ export default async function TicketPage({
       </nav>
       <h1>SmartRetail</h1>
       <h2>Ticket de venta</h2>
+      <p className="badge active">Venta original</p>
       <p className="sale-id">Venta: {recorded.sale.id}</p>
       <p>
-        <time dateTime={recorded.createdAt}>{recorded.createdAt}</time>
+        <time dateTime={recorded.createdAt}>
+          {formatDateTime(recorded.createdAt)}
+        </time>
       </p>
       <p>
         Ubicación:{" "}
@@ -111,7 +115,9 @@ export default async function TicketPage({
           </section>
         ))}
       </div>
-      <h2>Total: {mxn(recorded.sale.total.minorUnits)}</h2>
+      <h2 className="ticket-total">
+        Total: {mxn(recorded.sale.total.minorUnits)}
+      </h2>
       <h3>Pagos</h3>
       {recorded.payments.map((p) => (
         <p key={p.method}>

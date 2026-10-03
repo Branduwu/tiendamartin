@@ -1,4 +1,5 @@
 "use client";
+import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -646,15 +647,7 @@ export default function PosPanel({ userId }: { userId: string }) {
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
-        <nav className="actions" aria-label="Principal">
-          <Link href="/cash">Caja</Link>
-          <Link href="/sales">Ventas</Link>
-          <Link href="/products">Productos</Link>
-          <Link href="/inventory">Inventario</Link>
-          <Link href="/pos" aria-current="page">
-            Punto de venta
-          </Link>
-        </nav>
+        <AppNavigation current="/pos" />
       </header>
       <main className="workspace">
         <div className="heading">
@@ -665,7 +658,11 @@ export default function PosPanel({ userId }: { userId: string }) {
             </p>
           </div>
         </div>
-        {notice ? <p role="status">{notice}</p> : null}
+        {notice ? (
+          <p role="status" className="notice">
+            {notice}
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="error">
             {error}
@@ -686,20 +683,27 @@ export default function PosPanel({ userId }: { userId: string }) {
           </section>
         ) : null}
         {!pending && shift?.status !== "open" && (
-          <p role="status">
+          <p role="status" className="notice">
             No hay un turno abierto. <Link href="/cash">Abre caja</Link> antes
             de completar la venta.
           </p>
         )}
         {shift?.status === "open" && (
-          <p className="muted sale-id">Turno abierto: {shift.id}</p>
+          <p className="company-context">
+            Caja abierta en la ubicación seleccionada.
+          </p>
         )}
         {loading ? (
-          <p role="status">Cargando punto de venta…</p>
+          <p role="status" className="notice">
+            Cargando punto de venta…
+          </p>
         ) : !tenants.length ? (
           <p>No tienes una empresa activa.</p>
         ) : (
           <>
+            <a className="mobile-cart-jump" href="#cart-title">
+              Ver venta actual <strong>{mxn(total.toString())}</strong>
+            </a>
             <div className="pos-selectors">
               <label>
                 Empresa
@@ -719,9 +723,9 @@ export default function PosPanel({ userId }: { userId: string }) {
                     setScanProduct(null);
                   }}
                 >
-                  {tenants.map((t) => (
+                  {tenants.map((t, index) => (
                     <option key={t.tenantId} value={t.tenantId}>
-                      {t.tenantId}
+                      {companyLabel(t.tenantId, index)}
                     </option>
                   ))}
                 </select>
@@ -748,7 +752,10 @@ export default function PosPanel({ userId }: { userId: string }) {
               </label>
             </div>
 
-            <section className="pos-cart" aria-labelledby="scan-title">
+            <section
+              className="pos-cart scan-panel"
+              aria-labelledby="scan-title"
+            >
               <h2 id="scan-title">Escanear producto</h2>
               <form
                 onSubmit={(e) => {
@@ -819,7 +826,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                 </form>
               )}
             </section>
-            <section className="stack">
+            <section className="stack suspended-panel">
               <div className="actions">
                 <button
                   type="button"
@@ -926,6 +933,19 @@ export default function PosPanel({ userId }: { userId: string }) {
                   />
                 </label>
                 <div className="pos-catalog">
+                  {!products.some(
+                    (p) =>
+                      p.status === "active" &&
+                      `${p.name} ${p.sku}`
+                        .toLocaleLowerCase()
+                        .includes(search.toLocaleLowerCase()),
+                  ) && (
+                    <p className="muted" role="status">
+                      No hay coincidencias. Cambia la búsqueda o revisa el{" "}
+                      <Link href="/products">catálogo de productos</Link>.
+                    </p>
+                  )}
+
                   {products
                     .filter(
                       (p) =>
@@ -969,7 +989,9 @@ export default function PosPanel({ userId }: { userId: string }) {
                 </div>
               </section>
               <section className="pos-cart" aria-labelledby="cart-title">
-                <h2 id="cart-title">Venta actual</h2>
+                <h2 id="cart-title" tabIndex={-1}>
+                  Venta actual
+                </h2>
                 {!draft?.lines.length ? (
                   <p className="muted">Agrega un producto para comenzar.</p>
                 ) : (
@@ -1087,7 +1109,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                       : "Completar venta"}
                 </button>
                 {pending ? (
-                  <p role="status">
+                  <p role="status" className="notice">
                     Conservamos esta venta para reintentar sin duplicarla. No
                     cierres esta página hasta confirmar el resultado.
                   </p>

@@ -9,7 +9,7 @@ export default async function LoginPage() {
     <main className="login">
       <p className="brand">SmartRetail</p>
       <h1>Bienvenido de nuevo</h1>
-      <p className="muted">Inicia sesión para administrar tus productos.</p>
+      <p className="muted">Accede a tu tienda.</p>
       <LoginForm configured={authConfiguration() !== null} />
     </main>
   );

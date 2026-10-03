@@ -1,4 +1,5 @@
 "use client";
+import { formatDateTime } from "../../components/presentation";
 import { useEffect, useRef, useState } from "react";
 import { completeSale, quantity, quoteSaleReturn } from "@smartretail/domain";
 import {
@@ -298,14 +299,14 @@ export default function ReturnPanel({
     }
   }
   return (
-    <section aria-labelledby="returns-title">
+    <section className="returns-panel" aria-labelledby="returns-title">
       <h2 id="returns-title">Devoluciones y reembolsos registrados</h2>
       <p>
         La venta original permanece intacta. Tarjeta: registro contable, sin
         confirmación bancaria.
       </p>
       {confirmed && (
-        <p role="status">
+        <p role="status" className="notice">
           Reembolso registrado: {mxn(confirmed.total.minorUnits)}. Devolución{" "}
           {confirmed.id}.
         </p>
@@ -317,9 +318,14 @@ export default function ReturnPanel({
       )}
       {!returns.length && <p>No hay devoluciones registradas.</p>}
       {returns.map((r) => (
-        <article key={r.id} className="ticket-lines">
-          <h3>Devolución {r.id}</h3>
-          <time dateTime={r.createdAt}>{r.createdAt}</time>
+        <article key={r.id} className="ticket-lines return-record">
+          <h3>Devolución registrada</h3>
+          <details className="reference no-print">
+            <summary>Referencia de la devolución</summary>
+            <span className="sale-id">{r.id}</span>
+          </details>
+          <p className="sale-id print-only">Devolución: {r.id}</p>
+          <time dateTime={r.createdAt}>{formatDateTime(r.createdAt)}</time>
           {r.lines.map((l) => (
             <p key={l.productId}>
               {recorded.sale.lines.find((s) => s.productId === l.productId)
@@ -417,7 +423,11 @@ export default function ReturnPanel({
               >
                 Devolver todo lo disponible
               </button>
-              {!pending && previewError && <p role="alert">{previewError}</p>}
+              {!pending && previewError && (
+                <p role="alert" className="error">
+                  {previewError}
+                </p>
+              )}
               <p>
                 Total histórico a reembolsar:{" "}
                 <strong>
@@ -498,7 +508,7 @@ export default function ReturnPanel({
                 Actualizar caja
               </button>
               {pending && (
-                <p role="status">
+                <p role="status" className="notice">
                   Conservamos la devolución {pending.id} para reintentar sin
                   duplicar stock ni efectivo.
                 </p>

@@ -1,6 +1,6 @@
 "use client";
+import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import {
   CashMovementInputSchema,
   OpenCashShiftSchema,
@@ -269,12 +269,7 @@ export default function CashPanel({ userId }: { userId: string }) {
     <>
       <header className="topbar no-print">
         <strong>SmartRetail</strong>
-        <nav className="actions">
-          <Link href="/pos">Punto de venta</Link>
-          <Link href="/cash">Caja</Link>
-          <Link href="/sales">Ventas</Link>
-          <Link href="/inventory">Inventario</Link>
-        </nav>
+        <AppNavigation current="/cash" />
       </header>
       <main className="workspace">
         <h1>Caja</h1>
@@ -287,7 +282,11 @@ export default function CashPanel({ userId }: { userId: string }) {
             {error}
           </p>
         )}
-        {notice && <p role="status">{notice}</p>}
+        {notice && (
+          <p role="status" className="notice">
+            {notice}
+          </p>
+        )}
         {!tenants.length && !loading ? (
           <p>No tienes permiso para consultar caja.</p>
         ) : (
@@ -306,8 +305,10 @@ export default function CashPanel({ userId }: { userId: string }) {
                     setShift(null);
                   }}
                 >
-                  {tenants.map((t) => (
-                    <option key={t}>{t}</option>
+                  {tenants.map((t, index) => (
+                    <option key={t} value={t}>
+                      {companyLabel(t, index)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -361,7 +362,10 @@ export default function CashPanel({ userId }: { userId: string }) {
                   </h2>
                   {shift && (
                     <>
-                      <p className="sale-id">Turno: {shift.id}</p>
+                      <details className="reference">
+                        <summary>Referencia del turno</summary>
+                        <p className="sale-id">{shift.id}</p>
+                      </details>
                       <dl className="cash-summary">
                         {[
                           ["Fondo inicial", shift.openingCash],
@@ -375,9 +379,29 @@ export default function CashPanel({ userId }: { userId: string }) {
                           typeof label === "string" &&
                           value &&
                           typeof value === "object" ? (
-                            <div key={label}>
+                            <div
+                              key={label}
+                              className={
+                                label === "Efectivo esperado"
+                                  ? "cash-highlight"
+                                  : label === "Diferencia"
+                                    ? "cash-difference"
+                                    : undefined
+                              }
+                            >
                               <dt>{label}</dt>
-                              <dd>{mxn(value.minorUnits)}</dd>
+                              <dd>
+                                {mxn(value.minorUnits)}
+                                {label === "Diferencia" && (
+                                  <small>
+                                    {BigInt(value.minorUnits) < 0n
+                                      ? "Faltante"
+                                      : BigInt(value.minorUnits) > 0n
+                                        ? "Sobrante"
+                                        : "Sin diferencia"}
+                                  </small>
+                                )}
+                              </dd>
                             </div>
                           ) : null,
                         )}
@@ -484,7 +508,9 @@ export default function CashPanel({ userId }: { userId: string }) {
                           Se conservará la diferencia; no se ajustarán
                           movimientos automáticamente.
                         </p>
-                        <button disabled={locked}>Cerrar caja</button>
+                        <button className="danger" disabled={locked}>
+                          Cerrar caja
+                        </button>
                       </form>
                     </>
                   )}

@@ -1,4 +1,5 @@
 "use client";
+import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -185,24 +186,7 @@ export default function InventoryPanel() {
             SmartRetail
           </Link>
         )}
-        <nav className="actions" aria-label="Principal">
-          {saving || pending ? (
-            <>
-              <span>Productos</span>
-              <span aria-current="page">Inventario</span>
-            </>
-          ) : (
-            <>
-              <Link href="/products">Productos</Link>
-              <Link href="/inventory" aria-current="page">
-                Inventario
-              </Link>
-              <Link href="/pos">Punto de venta</Link>
-            </>
-          )}
-          <Link href="/cash">Caja</Link>
-          <Link href="/sales">Ventas</Link>
-        </nav>
+        <AppNavigation current="/inventory" blocked={!!(saving || pending)} />
         <button
           className="secondary"
           disabled={saving || pending !== undefined}
@@ -253,16 +237,16 @@ export default function InventoryPanel() {
                 setNotice("");
               }}
             >
-              {tenants.map((tenant) => (
+              {tenants.map((tenant, index) => (
                 <option key={tenant.tenantId} value={tenant.tenantId}>
-                  {tenant.tenantId}
+                  {companyLabel(tenant.tenantId, index)}
                 </option>
               ))}
             </select>
           </label>
         ) : (
           tenants.length === 1 && (
-            <p className="muted tenant-id">Empresa: {tenantId}</p>
+            <p className="company-context">Empresa activa</p>
           )
         )}
         {error && (
@@ -356,12 +340,12 @@ export default function InventoryPanel() {
                   </p>
                 ) : (
                   <div
-                    className="table-scroll"
+                    className="table-scroll responsive-table"
                     tabIndex={0}
                     role="region"
-                    aria-label="Tabla de inventario, desplazamiento horizontal"
+                    aria-label="Existencias por ubicación"
                   >
-                    <table className="inventory-table">
+                    <table className="data-table inventory-table">
                       <thead>
                         <tr>
                           {[
@@ -382,13 +366,25 @@ export default function InventoryPanel() {
                           .filter((row) => row.locationId === locationId)
                           .map((row) => (
                             <tr key={row.productId}>
-                              <th scope="row">{row.productName}</th>
-                              <td>{row.sku}</td>
-                              <td>{row.quantity.unit}</td>
-                              <td className="amount">
+                              <th scope="row">
+                                {row.productName}
+                                <small className="row-location">
+                                  {
+                                    locations.find(
+                                      (l) => l.id === row.locationId,
+                                    )?.name
+                                  }
+                                </small>
+                              </th>
+                              <td data-label="SKU">{row.sku}</td>
+                              <td data-label="Unidad">{row.quantity.unit}</td>
+                              <td
+                                className="amount stock-quantity"
+                                data-label="Cantidad"
+                              >
                                 {milliUnitsToDecimal(row.quantity.milliUnits)}
                               </td>
-                              <td>
+                              <td data-label="Acciones" className="row-actions">
                                 <div className="actions">
                                   {(
                                     [

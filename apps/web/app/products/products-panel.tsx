@@ -1,7 +1,7 @@
 "use client";
+import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import type {
   ProductDto,
   CreateProductDto,
@@ -146,15 +146,7 @@ export default function ProductsPanel() {
         <a className="brand" href="/products">
           SmartRetail
         </a>
-        <nav className="actions" aria-label="Principal">
-          <Link href="/products" aria-current="page">
-            Productos
-          </Link>
-          <Link href="/inventory">Inventario</Link>
-          <Link href="/pos">Punto de venta</Link>
-          <Link href="/cash">Caja</Link>
-          <Link href="/sales">Ventas</Link>
-        </nav>
+        <AppNavigation current="/products" />
         <button
           className="secondary"
           disabled={saving || loggingOut}
@@ -200,16 +192,16 @@ export default function ProductsPanel() {
                 setEditor(undefined);
               }}
             >
-              {tenants.map((tenant) => (
+              {tenants.map((tenant, index) => (
                 <option key={tenant.tenantId} value={tenant.tenantId}>
-                  {tenant.tenantId}
+                  {companyLabel(tenant.tenantId, index)}
                 </option>
               ))}
             </select>
           </label>
         )}
         {tenants.length === 1 && (
-          <p className="muted tenant-id">Empresa: {tenantId}</p>
+          <p className="company-context">Empresa activa</p>
         )}
         {error && (
           <p role="alert" className="error">
@@ -261,12 +253,12 @@ export default function ProductsPanel() {
               </p>
             ) : (
               <div
-                className="table-scroll"
+                className="table-scroll responsive-table"
                 tabIndex={0}
                 role="region"
-                aria-label="Tabla de productos, desplazamiento horizontal"
+                aria-label="Productos"
               >
-                <table>
+                <table className="data-table">
                   <thead>
                     <tr>
                       {[
@@ -289,24 +281,26 @@ export default function ProductsPanel() {
                     {products.map((product) => (
                       <tr key={product.id}>
                         <th scope="row">{product.name}</th>
-                        <td>{product.sku}</td>
-                        <td>{product.barcode ?? "—"}</td>
-                        <td>{product.unit}</td>
-                        <td className="amount">
+                        <td data-label="SKU">{product.sku}</td>
+                        <td data-label="Código de barras">
+                          {product.barcode ?? "—"}
+                        </td>
+                        <td data-label="Unidad">{product.unit}</td>
+                        <td className="amount" data-label="Costo MXN">
                           $
                           {minorUnitsToDecimal(product.purchaseCost.minorUnits)}
                         </td>
-                        <td className="amount">
+                        <td className="amount price" data-label="Precio MXN">
                           ${minorUnitsToDecimal(product.salePrice.minorUnits)}
                         </td>
-                        <td>
+                        <td data-label="Estado">
                           <span className={`badge ${product.status}`}>
                             {product.status === "active"
                               ? "Activo"
                               : "Inactivo"}
                           </span>
                         </td>
-                        <td>
+                        <td data-label="Acciones" className="row-actions">
                           {canWrite ? (
                             <button
                               className="secondary"

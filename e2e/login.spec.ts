@@ -45,9 +45,19 @@ test.describe("login", () => {
 
   test("captures the login baseline", async ({ page }) => {
     await page.goto("/login");
-    await expect(page).toHaveScreenshot("login.png", {
-      fullPage: true,
-      animations: "disabled",
-    });
+    const configured = !(await page
+      .getByRole("button", { name: "Iniciar sesión" })
+      .isDisabled());
+    await expect(page).toHaveScreenshot(
+      configured ? "login-configured.png" : "login.png",
+      {
+        fullPage: true,
+        animations: "disabled",
+        // Next development tools are external to the application baseline.
+        stylePath: "e2e/screenshot.css",
+        // Avoid changing input attributes before React finishes hydration.
+        caret: "initial",
+      },
+    );
   });
 });

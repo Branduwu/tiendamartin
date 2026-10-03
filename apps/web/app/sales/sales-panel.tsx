@@ -1,4 +1,6 @@
 "use client";
+import { formatDateTime } from "../components/presentation";
+import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type {
@@ -71,11 +73,7 @@ export default function SalesPanel() {
     <>
       <header className="topbar">
         <strong>SmartRetail</strong>
-        <nav className="actions">
-          <Link href="/pos">Punto de venta</Link>
-          <Link href="/cash">Caja</Link>
-          <Link href="/sales">Ventas</Link>
-        </nav>
+        <AppNavigation current="/sales" />
       </header>
       <main className="workspace">
         <h1>Historial de ventas</h1>
@@ -100,63 +98,94 @@ export default function SalesPanel() {
               setLoading(true);
             }}
           >
-            {tenants.map((t) => (
-              <option key={t}>{t}</option>
+            {tenants.map((t, index) => (
+              <option key={t} value={t}>
+                {companyLabel(t, index)}
+              </option>
             ))}
           </select>
         </label>
         {loading ? (
-          <p>Cargando ventas…</p>
+          <p className="card" role="status">
+            Cargando ventas…
+          </p>
         ) : !tenants.length ? (
-          <p>No tienes permiso para consultar ventas.</p>
+          <p className="card">No tienes permiso para consultar ventas.</p>
         ) : !sales.length ? (
-          <p>No hay ventas registradas.</p>
+          <p className="card muted">
+            No hay ventas registradas. Completa una venta desde Punto de venta
+            para consultar su ticket aquí.
+          </p>
         ) : (
-          <div className="table-scroll">
-            <table>
+          <div className="table-scroll responsive-table">
+            <table className="data-table">
               <thead>
                 <tr>
-                  <th>Fecha</th>
-                  <th>Venta</th>
-                  <th>Ubicación</th>
-                  <th>Total MXN</th>
-                  <th>Pago</th>
-                  <th>Usuario</th>
-                  <th>Turno</th>
-                  <th>Devoluciones</th>
-                  <th>Ticket</th>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Venta</th>
+                  <th scope="col">Ubicación</th>
+                  <th scope="col">Total MXN</th>
+                  <th scope="col">Pago</th>
+                  <th scope="col">Usuario</th>
+                  <th scope="col">Turno</th>
+                  <th scope="col">Devoluciones</th>
+                  <th scope="col">Ticket</th>
                 </tr>
               </thead>
               <tbody>
                 {sales.map((s) => (
                   <tr key={s.sale.id}>
-                    <td>
-                      <time dateTime={s.createdAt}>{s.createdAt}</time>
+                    <td data-label="Fecha">
+                      <time dateTime={s.createdAt}>
+                        {formatDateTime(s.createdAt)}
+                      </time>
                     </td>
-                    <td className="sale-id">{s.sale.id}</td>
-                    <td>
+                    <td data-label="Venta">
+                      <details className="reference">
+                        <summary>{s.sale.id.slice(0, 8)}</summary>
+                        <span className="sale-id">{s.sale.id}</span>
+                      </details>
+                    </td>
+                    <td data-label="Ubicación">
                       {locations.find((l) => l.id === s.locationId)?.name ??
                         s.locationId}
                     </td>
-                    <td>${minorUnitsToDecimal(s.sale.total.minorUnits)}</td>
-                    <td>
+                    <td className="amount price" data-label="Total MXN">
+                      ${minorUnitsToDecimal(s.sale.total.minorUnits)}
+                    </td>
+                    <td data-label="Pago">
                       {s.payments
                         .map((p) =>
                           p.method === "cash" ? "Efectivo" : "Tarjeta",
                         )
                         .join(" + ") || "Sin pago (total cero)"}
                     </td>
-                    <td className="sale-id">{s.createdBy}</td>
-                    <td className="sale-id">
-                      {s.shiftId ?? "Anterior a caja"}
+                    <td data-label="Usuario">
+                      <details className="reference">
+                        <summary>Ref. {s.createdBy.slice(0, 8)}</summary>
+                        <span className="sale-id">{s.createdBy}</span>
+                      </details>
                     </td>
-                    <td>
+                    <td data-label="Turno">
+                      <details className="reference">
+                        <summary>
+                          {s.shiftId ? "Ver referencia" : "Anterior a caja"}
+                        </summary>
+                        <span className="sale-id">
+                          {s.shiftId ?? "Anterior a caja"}
+                        </span>
+                      </details>
+                    </td>
+                    <td data-label="Devoluciones">
                       {returnedIds.includes(s.sale.id)
                         ? "Con devoluciones"
                         : "Sin devoluciones"}
                     </td>
-                    <td>
-                      <Link href={`/sales/${s.sale.id}?tenantId=${tenant}`}>
+                    <td data-label="Ticket" className="row-actions">
+                      <Link
+                        className="button-link secondary"
+                        href={`/sales/${s.sale.id}?tenantId=${tenant}`}
+                      >
                         Ver ticket
                       </Link>
                     </td>
