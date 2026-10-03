@@ -31,3 +31,8 @@ Login usa `login.png` sin Auth configurado y `login-configured.png` con Auth dis
 Suite final configurada: 12 PASS y 24 SKIP explícitos sin credenciales email/password; el modo sin Auth se valida aparte con los 12 tests de login. Smoke privado independiente y read-only con OTP real autorizado: 28 pantallas finales y 32 checks de estados, cero POST comerciales, axe sin violaciones. Error de login probado con respuesta ficticia interceptada; no es evidencia de password login real. Las sesiones se revocan y las capturas privadas no se versionan.
 
 Producción UX02: smoke remoto read-only de 28 vistas más ocho focales POS/login tras terminar consultas, todos PASS; cero errores de render/hidratación y cero violaciones axe. Deployment `dpl_2sTLw8cQ4thhGkTGBLf5wBAUtjSf` READY. Ejecuciones operacionales realizadas por DEVELOPER; QA revisó visualmente las capturas y baselines locales, sin atribuirle ejecución cloud.
+
+## TASK-020 — smoke focal de compras
+
+e2e/purchasing.spec.ts revisa suppliers list, purchases list, detalle y formulario de recepción en desktop/mobile-small, sin escrituras. Requiere E2E_EMAIL/E2E_PASSWORD y, para detalle/formulario, E2E_PURCHASE_ID/E2E_TENANT_ID de una orden ordered/partially_received; omite explícitamente sin esas variables. Traces/vídeo permanecen desactivados.
+La ejecución privada autorizada usa OTP real sin contraseña, no persiste sesiones y comprueba ocho vistas con axe, creación UI y recepción parcial/total, respuesta perdida/recarga/replay y controles negativos. Evidencia fuera de Git; no equivale a probar password login.

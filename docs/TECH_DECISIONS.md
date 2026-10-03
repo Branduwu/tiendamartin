@@ -598,3 +598,9 @@ SaleId identifica el comando durable y los movimientos conservan UUID estables. 
 Sólo owner/admin reciben sales.read/create. Cash/card son registros del método declarado, sin gateway. Cada pago es positivo y su suma debe coincidir exactamente; una venta de total cero, permitida por Product existente, utiliza cero filas de pago. Límites BIGINT de almacenamiento se verifican sin conversión a number.
 
 El POS guarda únicamente el comando pendiente en sessionStorage bajo el subject verificado, antes de enviarlo. Recargar conserva IDs, tenant y desglose de pago; un resultado incierto bloquea edición y se reintenta sin nuevo ID. Recuperación corrupta/no autorizada bloquea y conserva el registro para consultar su estado. Esta recuperación cubre recargas de la misma pestaña; cerrar la pestaña o borrar almacenamiento requiere consultar el recibo mediante SaleId, no constituye una cola durable ni garantía distribuida exactly-once.
+
+## TASK-020 — compras y recepciones — 2026-10-03
+
+Proveedores pertenecen al tenant; las órdenes conservan costos MXN y cantidades exactas por línea. Sólo draft admite reemplazar líneas; ordenar fija snapshots. Se permite cancelar una orden parcialmente recibida conservando todas sus recepciones y ledger. No hay cuentas por pagar ni actualización automática de Product.purchaseCost.
+Límites técnicos:1–50 líneas por orden/comando, texto hasta2000 caracteres y payload HTTP16KiB; listados muestran las100 órdenes más recientes. No son máximos comerciales. Money/Quantity reutilizan contratos canónicos existentes sin coerción.
+Una recepción combina orden, receipt durable, movimiento InventoryReceipt, saldo y auditoría en una transacción; constraints diferidos impiden commits incompletos. ID idéntico con payload canónico idéntico es replay; payload distinto produce409. El navegador conserva el comando en sessionStorage de la pestaña por usuario verificado antes del POST; fallos inciertos no generan otro ID.

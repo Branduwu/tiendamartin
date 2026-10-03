@@ -12,3 +12,5 @@ export { PostgresCash } from "./cash";
 export { PostgresSuspendedSales } from "./suspended-sales";
 
 export { PostgresSaleReturns } from "./sale-returns";
+
+export { PostgresPurchasing } from "./purchasing";

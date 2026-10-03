@@ -5,6 +5,8 @@ const pages = [
   ["/pos", "Punto de venta"],
   ["/cash", "Caja"],
   ["/sales", "Ventas"],
+  ["/suppliers", "Proveedores"],
+  ["/purchases", "Compras"],
 ] as const;
 export default function AppNavigation({
   current,
@@ -16,7 +18,14 @@ export default function AppNavigation({
   return (
     <nav className="app-nav" aria-label="Principal">
       {pages.map(([href, label]) =>
-        blocked && ["/products", "/inventory", "/pos"].includes(href) ? (
+        blocked &&
+        [
+          "/products",
+          "/inventory",
+          "/pos",
+          "/suppliers",
+          "/purchases",
+        ].includes(href) ? (
           <span
             key={href}
             aria-disabled="true"

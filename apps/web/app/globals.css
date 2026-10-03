@@ -835,3 +835,34 @@ tbody tr:hover {
     border-color: black;
   }
 }
+
+/* Purchasing forms reuse the existing cards, tokens and mobile table pattern. */
+.purchase-draft-line {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 1rem;
+}
+.purchase-draft-line legend {
+  font-weight: 700;
+  padding-inline: 0.35rem;
+}
+textarea {
+  font: inherit;
+  width: 100%;
+  min-height: 100px;
+  padding: 0.75rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid #819b8e;
+  border-radius: 7px;
+  resize: vertical;
+}
+textarea:disabled {
+  background: var(--disabled);
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 1rem;
+}

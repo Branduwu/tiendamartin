@@ -105,3 +105,5 @@ export { salePayments, type SalePayment } from "./sale-payment";
 export * from "./cash";
 
 export * from "./sale-return";
+
+export * from "./purchasing";

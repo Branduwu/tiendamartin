@@ -74,3 +74,5 @@ export * from "./cash";
 export * from "./suspended-sales";
 
 export * from "./sale-return";
+
+export * from "./purchasing";

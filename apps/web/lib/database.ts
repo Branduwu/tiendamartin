@@ -2,6 +2,7 @@ import "server-only";
 import {
   Pool,
   PostgresInventory,
+  PostgresPurchasing,
   PostgresSales,
   PostgresCash,
   PostgresSaleReturns,
@@ -41,3 +42,10 @@ export const suspendedSalesForUser = (userId: string, tenantId: string) =>
 
 export const returnsForUser = (userId: string, tenantId: string) =>
   new PostgresSaleReturns(databasePool(), { userId, tenantId });
+
+export const purchasingForUser = (
+  userId: string,
+  tenantId: string,
+  correlationId?: string,
+) =>
+  new PostgresPurchasing(databasePool(), { userId, tenantId }, correlationId);

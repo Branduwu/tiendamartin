@@ -20,6 +20,8 @@ import {
   inventoryMovementId,
   inventoryTransferId,
   inventoryAdjustmentReason,
+  PurchaseConflictError,
+  type PurchaseDraftInput,
   type InventoryTransfer,
 } from "@smartretail/domain";
 import {
@@ -49,6 +51,7 @@ import {
 } from "@smartretail/application";
 import {
   PostgresInventory,
+  PostgresPurchasing,
   PostgresSales,
   PostgresSuspendedSales,
   PostgresCash,
@@ -310,6 +313,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.purchase_orders') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/012_purchasing.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -346,7 +362,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2251,7 +2267,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(20);
+    expect(tables.rows).toHaveLength(26);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -3038,6 +3054,456 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           [tenantA, ownerUser],
         ),
       ).rejects.toThrow();
+    });
+  });
+
+  describe("TASK020 purchasing transactions", () => {
+    const purchaseRepo = (
+      userId = ownerUser,
+      tenantId = tenantA,
+      runtime = false,
+    ) => new PostgresPurchasing(runtime ? apiPool : pool, { userId, tenantId });
+    async function purchase(ordered = true, extra = false) {
+      const repo = purchaseRepo();
+      const supplier = await repo.createSupplier(randomUUID(), {
+        name: "Supply",
+        status: "active",
+      });
+      const lines = [
+        {
+          productId: product,
+          quantityOrdered: quantity("piece", 10000n),
+          unitCost: money(777n),
+        },
+      ];
+      if (extra) {
+        const id = productId("550e8400-e29b-41d4-a716-446655440099");
+        await db.createProduct(fixtureProduct(id, "SECOND", null));
+        lines.push({
+          productId: id,
+          quantityOrdered: quantity("piece", 10000n),
+          unitCost: money(999n),
+        });
+      }
+      const input: PurchaseDraftInput = {
+        id: randomUUID(),
+        supplierId: supplier.id,
+        locationId: source,
+        lines,
+      };
+      const draft = await repo.createPurchase(input);
+      return {
+        repo,
+        input,
+        supplier,
+        order: ordered ? await repo.changePurchase(draft.id, "order") : draft,
+      };
+    }
+    const incoming = (amount = 4000n, id = randomUUID()) => ({
+      id,
+      lines: [{ productId: product, quantity: quantity("piece", amount) }],
+    });
+    it("supplier create/edit/deactivate preserves used supplier and forbids hard delete", async () => {
+      const p = await purchase();
+      const updated = await p.repo.updateSupplier(p.supplier.id, {
+        name: "Updated",
+        status: "inactive",
+      });
+      expect(updated.status).toBe("inactive");
+      expect((await p.repo.listSuppliers())[0]?.name).toBe("Updated");
+      await expect(
+        sql(tenantA, (c) =>
+          c.query("DELETE FROM retail.suppliers WHERE id=$1", [p.supplier.id]),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      expect((await p.repo.readPurchase(p.order.id)).supplierId).toBe(
+        p.supplier.id,
+      );
+    });
+    it("clerk can read suppliers/orders and cannot create/edit them", async () => {
+      const p = await purchase();
+      const clerk = purchaseRepo(clerkUser);
+      expect((await clerk.listSuppliers()).length).toBe(1);
+      expect((await clerk.listPurchases()).length).toBe(1);
+      await expect(
+        clerk.createSupplier(randomUUID(), {
+          name: "Denied",
+          status: "active",
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(clerk.updatePurchase(p.input)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        clerk.changePurchase(p.order.id, "cancel"),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("admin has all purchasing permissions", async () => {
+      for (const permission of [
+        "suppliers.read",
+        "suppliers.write",
+        "purchases.read",
+        "purchases.write",
+        "purchases.receive",
+      ] as const)
+        await purchaseRepo(adminUser).authorize(permission);
+    });
+    it("draft replacement preserves zero received and independent cost snapshot", async () => {
+      const p = await purchase(false);
+      const updated = await p.repo.updatePurchase({
+        ...p.input,
+        notes: "Draft changed",
+        lines: [
+          {
+            ...p.input.lines[0]!,
+            unitCost: money(888n),
+            quantityOrdered: quantity("piece", 12000n),
+          },
+        ],
+      });
+      expect(updated.lines[0]?.quantityReceived.milliUnits).toBe(0n);
+      expect(updated.lines[0]?.unitCost.minorUnits).toBe(888n);
+      expect((await db.listProducts())[0]?.purchaseCost.minorUnits).toBe(1250n);
+    });
+    it("inactive supplier cannot create draft or be ordered", async () => {
+      const p = await purchase(false);
+      await p.repo.updateSupplier(p.supplier.id, { status: "inactive" });
+      await expect(
+        p.repo.createPurchase({ ...p.input, id: randomUUID() }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        p.repo.changePurchase(p.order.id, "order"),
+      ).rejects.toThrow();
+    });
+    it("foreign supplier and foreign order cannot cross tenant boundaries", async () => {
+      const p = await purchase();
+      const other = purchaseRepo(ownerUser, tenantB);
+      const foreign = await other.createSupplier(randomUUID(), {
+        name: "Foreign",
+        status: "active",
+      });
+      await expect(
+        p.repo.createPurchase({
+          ...p.input,
+          id: randomUUID(),
+          supplierId: foreign.id,
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(other.readPurchase(p.order.id)).rejects.toThrow();
+      expect((await other.listPurchases()).length).toBe(0);
+      const command = incoming();
+      await p.repo.receivePurchaseOrder(p.order.id, command);
+      await expect(
+        other.receivePurchaseOrder(p.order.id, command),
+      ).rejects.toThrow();
+      const foreignOrder = await other.createPurchase({
+        ...p.input,
+        id: randomUUID(),
+        supplierId: foreign.id,
+      });
+      await other.changePurchase(foreignOrder.id, "order");
+      await expect(
+        other.receivePurchaseOrder(foreignOrder.id, command),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      expect(
+        (
+          await sql(tenantB, (c) =>
+            c.query(
+              "SELECT id FROM retail.purchase_receipts WHERE tenant_id=$1",
+              [tenantA],
+            ),
+          )
+        ).rows,
+      ).toHaveLength(0);
+      expect(await stock()).toBe(14000n);
+    });
+    it("foreign product and location are rejected", async () => {
+      const p = await purchase(false);
+      const foreignProduct = productId(randomUUID()),
+        foreignLocation = inventoryLocationId(randomUUID());
+      await other.createProduct(
+        fixtureProduct(foreignProduct, "FOREIGN", null),
+      );
+      await other.createLocation(
+        createInventoryLocation({
+          id: foreignLocation,
+          name: inventoryLocationName("Other"),
+          code: inventoryLocationCode("OTHER"),
+          status: "active",
+        }),
+      );
+      await expect(
+        p.repo.createPurchase({
+          ...p.input,
+          id: randomUUID(),
+          locationId: foreignLocation,
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        p.repo.createPurchase({
+          ...p.input,
+          id: randomUUID(),
+          lines: [{ ...p.input.lines[0]!, productId: foreignProduct }],
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("ordered lines cannot be freely edited", async () => {
+      const p = await purchase();
+      await expect(p.repo.updatePurchase(p.input)).rejects.toBeInstanceOf(
+        PurchaseConflictError,
+      );
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "DELETE FROM retail.purchase_order_lines WHERE purchase_id=$1",
+            [p.order.id],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "P0001" });
+    });
+    it("clerk partial then full receipt updates ledger and exact stock without product cost mutation", async () => {
+      const p = await purchase();
+      const clerk = purchaseRepo(clerkUser);
+      expect(
+        (await clerk.receivePurchaseOrder(p.order.id, incoming())).order.status,
+      ).toBe("partially_received");
+      expect(await stock()).toBe(14000n);
+      const full = await clerk.receivePurchaseOrder(
+        p.order.id,
+        incoming(6000n),
+      );
+      expect(full.order.status).toBe("received");
+      expect(full.order.lines[0]?.quantityReceived.milliUnits).toBe(10000n);
+      expect(await stock()).toBe(20000n);
+      expect((await db.listProducts())[0]?.purchaseCost.minorUnits).toBe(1250n);
+      const count = await admin.query(
+        "SELECT count(*)::int n FROM retail.inventory_movements WHERE purchase_receipt_id IS NOT NULL",
+      );
+      expect(count.rows[0]?.n).toBe(2);
+    });
+    it("over-receive and mismatched unit roll back entirely", async () => {
+      const p = await purchase();
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, incoming(11000n)),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, {
+          id: randomUUID(),
+          lines: [{ productId: product, quantity: quantity("kg", 1n) }],
+        }),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      expect(await stock()).toBe(10000n);
+      expect((await p.repo.readPurchase(p.order.id)).status).toBe("ordered");
+    });
+    it("stable receipt ID replays and different payload conflicts", async () => {
+      const p = await purchase();
+      const command = incoming();
+      await p.repo.receivePurchaseOrder(p.order.id, command);
+      expect(
+        (await p.repo.receivePurchaseOrder(p.order.id, command)).replayed,
+      ).toBe(true);
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, incoming(1000n, command.id)),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      expect(await stock()).toBe(14000n);
+    });
+    it("two concurrent final receipts cannot over-receive", async () => {
+      const p = await purchase();
+      const result = await Promise.allSettled([
+        p.repo.receivePurchaseOrder(p.order.id, incoming(10000n)),
+        p.repo.receivePurchaseOrder(p.order.id, incoming(10000n)),
+      ]);
+      expect(result.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(result.filter((r) => r.status === "rejected")).toHaveLength(1);
+      expect(await stock()).toBe(20000n);
+    });
+    it("concurrent identical receipt ID commits only once", async () => {
+      const p = await purchase();
+      const command = incoming(10000n);
+      const result = await Promise.all([
+        p.repo.receivePurchaseOrder(p.order.id, command),
+        p.repo.receivePurchaseOrder(p.order.id, command),
+      ]);
+      expect(result.map((r) => r.replayed).sort()).toEqual([false, true]);
+      expect(await stock()).toBe(20000n);
+    });
+    it("second-line storage failure rolls back first movement, quantities, receipt and audit", async () => {
+      const p = await purchase(true, true);
+      const second = p.input.lines[1]!.productId;
+      await receiveInventory(db, {
+        id: inventoryMovementId(randomUUID()),
+        type: "receipt",
+        productId: second,
+        locationId: source,
+        quantity: quantity("piece", 9223372036854775000n),
+      });
+      const auditBefore = (
+        await admin.query("SELECT count(*)::int n FROM retail.purchasing_audit")
+      ).rows[0]?.n;
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, {
+          id: randomUUID(),
+          lines: [
+            { productId: product, quantity: quantity("piece", 1000n) },
+            { productId: second, quantity: quantity("piece", 1000n) },
+          ],
+        }),
+      ).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+      expect(
+        (await p.repo.readPurchase(p.order.id)).lines.every(
+          (l) => l.quantityReceived.milliUnits === 0n,
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.purchase_receipts",
+          )
+        ).rows[0]?.n,
+      ).toBe(0);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.purchasing_audit",
+          )
+        ).rows[0]?.n,
+      ).toBe(auditBefore);
+    });
+    it("cancel after partial keeps receipts and refuses a new receipt", async () => {
+      const p = await purchase();
+      const command = incoming();
+      await p.repo.receivePurchaseOrder(p.order.id, command);
+      expect((await p.repo.changePurchase(p.order.id, "cancel")).status).toBe(
+        "cancelled",
+      );
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, incoming(6000n)),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      expect(
+        (await p.repo.receivePurchaseOrder(p.order.id, command)).replayed,
+      ).toBe(true);
+      expect(await stock()).toBe(14000n);
+    });
+    it("draft and received reject new receptions", async () => {
+      const p = await purchase(false);
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, incoming()),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      await p.repo.changePurchase(p.order.id, "order");
+      await p.repo.receivePurchaseOrder(p.order.id, incoming(10000n));
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, incoming(1000n)),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+    });
+    it("inactive membership cannot replay a durable receipt", async () => {
+      const p = await purchase();
+      const command = incoming();
+      await p.repo.receivePurchaseOrder(p.order.id, command);
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, ownerUser],
+      );
+      await expect(
+        p.repo.receivePurchaseOrder(p.order.id, command),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        purchaseRepo(outsiderUser).listSuppliers(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("SQL cannot forge quantityReceived or received status without ledger", async () => {
+      const p = await purchase();
+      await expect(
+        sql(tenantA, async (c) => {
+          await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+            randomUUID(),
+          ]);
+          return c.query(
+            "UPDATE retail.purchase_order_lines SET quantity_received=1000 WHERE purchase_id=$1",
+            [p.order.id],
+          );
+        }),
+      ).rejects.toMatchObject({ code: "23514" });
+      await expect(
+        sql(tenantA, async (c) => {
+          await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+            randomUUID(),
+          ]);
+          return c.query(
+            "UPDATE retail.purchase_orders SET status='received' WHERE id=$1",
+            [p.order.id],
+          );
+        }),
+      ).rejects.toMatchObject({ code: "23514" });
+    });
+    it("SQL draft line replacement has mandatory actor/company/correlation audit", async () => {
+      const p = await purchase(false);
+      const before = (
+        await admin.query("SELECT count(*)::int n FROM retail.purchasing_audit")
+      ).rows[0]?.n;
+      await sql(tenantA, async (c) => {
+        await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+          randomUUID(),
+        ]);
+        await c.query(
+          "DELETE FROM retail.purchase_order_lines WHERE purchase_id=$1",
+          [p.order.id],
+        );
+        await c.query(
+          "INSERT INTO retail.purchase_order_lines(tenant_id,purchase_id,product_id,unit,quantity_ordered,unit_cost) VALUES($1,$2,$3,'piece',10000,222)",
+          [tenantA, p.order.id, product],
+        );
+      });
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.purchasing_audit",
+          )
+        ).rows[0]?.n,
+      ).toBe(before + 2);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.purchasing_audit WHERE correlation_id IS NULL OR actor_user_id<>$1 OR tenant_id<>$2",
+            [ownerUser, tenantA],
+          )
+        ).rows[0]?.n,
+      ).toBe(0);
+    });
+    it("restricted production role works without owner/BYPASSRLS and cannot alter membership/audit", async () => {
+      const p = await purchase();
+      const runtime = purchaseRepo(ownerUser, tenantA, true);
+      expect(
+        (await runtime.receivePurchaseOrder(p.order.id, incoming(10000n))).order
+          .status,
+      ).toBe("received");
+      await expect(
+        sql(tenantA, (c) => c.query("DELETE FROM retail.purchasing_audit")),
+      ).rejects.toMatchObject({ code: "42501" });
+      const roles = await apiPool.query(
+        "SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user",
+      );
+      expect(roles.rows[0]).toMatchObject({
+        rolsuper: false,
+        rolbypassrls: false,
+      });
+      const tables = await admin.query(
+        "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relname=ANY($1::text[])",
+        [
+          [
+            "suppliers",
+            "purchase_orders",
+            "purchase_order_lines",
+            "purchase_receipts",
+            "purchase_receipt_lines",
+            "purchasing_audit",
+          ],
+        ],
+      );
+      expect(tables.rows).toHaveLength(6);
+      expect(
+        tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
+      ).toBe(true);
     });
   });
 });
