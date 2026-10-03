@@ -43,3 +43,5 @@ Cierre TASK-020: browser OTP real8 vistas locales +8 productivas PASS, axe0/over
 
 e2e/customers.spec.ts añade tres checks read-only (directorio, historial, cliente opcional POS) en desktop/mobile-small. Email/password ausentes:6SKIP explícitos; detalle necesita E2E_CUSTOMER_ID/E2E_TENANT_ID. No se persisten credenciales, traces ni vídeo.
 Smoke privado autorizado OTP real local:8 vistas clientes/POS/historial/ticket, axe0/overflow0/render0; venta asociada con respuesta perdida/reload/replay, cliente inactivo e historial intacto, Público general. Quick-create y cambio de empresa360px adicionales PASS; QA revisó cuatro PNG locales. Ejecuciones realizadas por DEVELOPER; no equivalen a password login.
+
+Cierre TASK-021: smoke OTP productivo8 vistas PASS con axe0/overflow0/render0; venta asociada/replay tras respuesta perdida, snapshot ticket/historial preservado al desactivar, nueva inactive409 y Público general201. Adapter confirma una venta asociada, otra general y stock8000; fixtures y ledger preservados. Deployment dpl_AGDV1w6sC9WdgkQ9iN3QqYnNJvfo READY. Ejecución cloud DEVELOPER; password6SKIP sigue explícito.
