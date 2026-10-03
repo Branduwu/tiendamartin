@@ -8,6 +8,7 @@ import {
 } from "@smartretail/domain";
 export type SaleReturnInput = Readonly<{
   id: string;
+  correlationId?: string;
   shiftId?: string;
   cashMovementId?: string;
   lines: readonly (ReturnSelection & Readonly<{ movementId: string }>)[];

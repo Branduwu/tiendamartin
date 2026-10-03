@@ -42,7 +42,10 @@ export async function handleReturns(
     requireSameOrigin(request);
     const parsed = CreateSaleReturnSchema.safeParse(await jsonBody(request));
     if (!parsed.success) throw new InvalidInput();
-    const result = await repo.returnSale(sale.data, returnInput(parsed.data));
+    const result = await repo.returnSale(sale.data, {
+      ...returnInput(parsed.data),
+      correlationId,
+    });
     console.info(
       JSON.stringify({
         operation: "sales.return",

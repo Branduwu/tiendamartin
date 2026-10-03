@@ -81,11 +81,12 @@ Requisitos: Node.js `24.13.1`, pnpm `11.27.1` y una base PostgreSQL de desarroll
 ```powershell
 corepack pnpm install --frozen-lockfile
 corepack pnpm check
+corepack pnpm test:integration:required
 corepack pnpm --filter @smartretail/web dev
 corepack pnpm --filter @smartretail/web build
 ```
 
-La app web usa Next.js y la app movil requiere Expo. Las migraciones y los datos de desarrollo deben ser sinteticos y mantenerse fuera de produccion.
+`test:integration:required` exige `SMARTRETAIL_PG_TEST_CONFIG` y falla si no existe la base PostgreSQL desechable; `pnpm test` puede omitir esas pruebas en desarrollo. La app web usa Next.js y la app movil requiere Expo. Las migraciones y los datos de desarrollo deben ser sinteticos y mantenerse fuera de produccion.
 
 ## Variables de entorno
 
@@ -114,6 +115,7 @@ Las dos variables `NEXT_PUBLIC_` contienen configuracion publica de Auth. `DATAB
 - [Decisiones tecnicas](docs/TECH_DECISIONS.md)
 - [Despliegue](docs/DEPLOYMENT.md)
 - [Estado del proyecto](docs/PROJECT_STATE.md)
+- [E2E y auditoría visual UX](docs/E2E.md)
 
 ## Publicacion y secretos
 

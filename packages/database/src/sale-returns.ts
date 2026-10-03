@@ -280,6 +280,10 @@ export class PostgresSaleReturns
               bigintParameter(refund.amount.minorUnits),
             ],
           );
+        await client.query(
+          "SELECT retail.record_sale_return_audit($1::uuid,$2::uuid,$3::uuid,$4::uuid)",
+          [result.id, originalId, result.id, snapshot.correlationId ?? null],
+        );
         const stored = await this.returned(client, result.id);
         if (!stored) throw new Error("Return not persisted");
         return { record: stored.record, replayed: false };

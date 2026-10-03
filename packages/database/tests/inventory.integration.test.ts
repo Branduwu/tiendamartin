@@ -281,6 +281,35 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.audit_log') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/010_audit_log.sql", import.meta.url),
+          "utf8",
+        ),
+      );
+    if (
+      !(
+        await admin.query(
+          "SELECT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='sale_return_audit_complete') AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL(
+            "../migrations/011_harden_sale_return_audit.sql",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -317,7 +346,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -418,6 +447,170 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       expect(await expected()).toBe(0n);
       expect(await repo().readSale(original.sale.id)).toEqual(original);
       expect(await count()).toEqual({ returns: "1", receipts: "1", cash: "1" });
+    });
+    it("records a tenant-scoped immutable audit entry", async () => {
+      const original = await sold("card");
+      const result = await repo().returnSale(
+        original.sale.id,
+        command(1000n, "card"),
+      );
+      const audit = (
+        await admin.query<{
+          id: string;
+          tenant_id: string;
+          actor_user_id: string;
+          action: string;
+          entity_type: string;
+          entity_id: string;
+          metadata: {
+            sale_id: string;
+            total_minor_units: string;
+            refund_methods: string[];
+          };
+        }>(
+          "SELECT id,tenant_id,actor_user_id,action,entity_type,entity_id,metadata FROM retail.audit_log WHERE entity_id=$1",
+          [result.record.id],
+        )
+      ).rows[0];
+      if (!audit) throw new Error("Missing return audit entry");
+      expect(audit).toMatchObject({
+        tenant_id: tenantA,
+        actor_user_id: ownerUser,
+        action: "sales.return",
+        entity_type: "sale_return",
+        entity_id: result.record.id,
+        metadata: {
+          sale_id: original.sale.id,
+          total_minor_units: "2000",
+          refund_methods: ["card"],
+        },
+      });
+      await expect(
+        admin.query(
+          "UPDATE retail.audit_log SET action='tampered' WHERE id=$1",
+          [audit.id],
+        ),
+      ).rejects.toThrow();
+    });
+    it("audit omission or incorrect metadata rolls back all return effects", async () => {
+      const original = await sold();
+      const migration = await readFile(
+        new URL(
+          "../migrations/011_harden_sale_return_audit.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      );
+      const restoreFunction = migration.slice(
+        migration.indexOf(
+          "CREATE OR REPLACE FUNCTION retail.record_sale_return_audit",
+        ),
+        migration.indexOf("CREATE POLICY audit_read"),
+      );
+      try {
+        for (const body of [
+          "BEGIN RETURN; END;",
+          "BEGIN INSERT INTO retail.audit_log(id,tenant_id,actor_user_id,action,entity_type,entity_id,metadata) VALUES(p_audit_id,current_setting('app.tenant_id')::uuid,current_setting('app.user_id')::uuid,'sales.return','sale_return',p_return_id,'{}'); END;",
+        ]) {
+          await admin.query(
+            `CREATE OR REPLACE FUNCTION retail.record_sale_return_audit(p_audit_id uuid,p_original_sale_id uuid,p_return_id uuid,p_request_correlation_id uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,retail AS $$ ${body} $$`,
+          );
+          await expect(
+            repo().returnSale(original.sale.id, command()),
+          ).rejects.toMatchObject({
+            code: "23514",
+            message: "Return audit incomplete",
+          });
+          expect(await count()).toEqual({
+            returns: "0",
+            receipts: "0",
+            cash: "0",
+          });
+          expect(await stock()).toBe(5000n);
+          expect(await expected()).toBe(6000n);
+          expect(
+            (await admin.query("SELECT count(*) AS n FROM retail.audit_log"))
+              .rows[0]?.n,
+          ).toBe("0");
+        }
+      } finally {
+        await admin.query(restoreFunction);
+      }
+    });
+    it("retry preserves one audit and later audit cannot be fabricated", async () => {
+      const original = await sold("card"),
+        c = command(1000n, "card");
+      const result = await repo().returnSale(original.sale.id, c);
+      await repo().returnSale(original.sale.id, c);
+      expect(
+        (await admin.query("SELECT count(*) AS n FROM retail.audit_log"))
+          .rows[0]?.n,
+      ).toBe("1");
+      await expect(
+        sql(tenantA, (client) =>
+          client.query(
+            "SELECT retail.record_sale_return_audit($1,$2,$3,NULL)",
+            [randomUUID(), original.sale.id, result.record.id],
+          ),
+        ),
+      ).rejects.toMatchObject({
+        code: "23514",
+        message: "Invalid return audit context",
+      });
+    });
+    it("zero-cent fractional return records empty audit refund methods", async () => {
+      const p = createProduct({
+        ...fixtureProduct(productId(randomUUID()), "FRACTION", null),
+        unit: "kg",
+        salePrice: money(500n),
+      });
+      await db.createProduct(p);
+      await receiveInventory(db, {
+        id: inventoryMovementId(randomUUID()),
+        type: "receipt",
+        productId: p.id,
+        locationId: source,
+        quantity: quantity("kg", 3n),
+      });
+      const original = (
+        await completeSaleTransaction(repo(), {
+          shiftId,
+          locationId: source,
+          draft: addSaleProduct(
+            createSaleDraft(randomUUID()),
+            p,
+            quantity("kg", 3n),
+          ),
+          payments: [{ method: "card", amount: money(2n) }],
+          movements: [{ productId: p.id, movementId: randomUUID() }],
+        })
+      ).recorded;
+      const input = (refunds: SaleReturnInput["refunds"]): SaleReturnInput => ({
+        id: randomUUID(),
+        lines: [
+          {
+            saleLineId: p.id,
+            productId: p.id,
+            quantity: quantity("kg", 1n),
+            movementId: randomUUID(),
+          },
+        ],
+        refunds,
+      });
+      await repo().returnSale(
+        original.sale.id,
+        input([{ method: "card", amount: money(1n) }]),
+      );
+      const zero = await repo().returnSale(original.sale.id, input([]));
+      expect(zero.record.total.minorUnits).toBe(0n);
+      expect(
+        (
+          await admin.query(
+            "SELECT metadata->'refund_methods' AS methods FROM retail.audit_log WHERE entity_id=$1",
+            [zero.record.id],
+          )
+        ).rows[0]?.methods,
+      ).toEqual([]);
     });
     it("partial and second return add receipts without modifying original issue", async () => {
       const original = await sold();
@@ -2058,7 +2251,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(19);
+    expect(tables.rows).toHaveLength(20);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);

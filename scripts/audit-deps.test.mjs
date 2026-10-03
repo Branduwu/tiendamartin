@@ -10,7 +10,7 @@ const tree = {
   certificates: "0.0.6",
   cliForge: "1.4.0",
   certificatesForge: "1.4.0",
-  lockHash: "4f6e45ecc32bb547ca1f2171c2a39b6c21e63203d0aa2fe67dd194ddb1931261",
+  lockHash: "1d5780c7948af063b677825a9b81900835964a10b6c572701fa02030be2319f7",
   appConfigHash:
     "b9448506cc52aa6c96030eeda50d75aa55b3ee480fd9e2338d7405751df125f2",
   dynamicConfig: false,
@@ -52,9 +52,81 @@ function fixture() {
           },
         ],
       },
+      1240992: {
+        id: 1240992,
+        github_advisory_id: "GHSA-vfj7-8cjw-p6xm",
+        module_name: "braces",
+        severity: "high",
+        url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        patched_versions: null,
+        findings: [
+          {
+            version: "3.0.3",
+            dev: false,
+            optional: false,
+            bundled: false,
+            paths: [
+              "apps__mobile>expo>@expo/cli>@expo/log-box>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/log-box>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/log-box>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/log-box>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro>metro-transform-worker>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro-config>@expo/metro>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro-config>@expo/metro>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro-config>@expo/metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro-config>@expo/metro>metro-transform-worker>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/router-server>expo-constants>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/router-server>expo-constants>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/router-server>expo-font>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>@expo/router-server>expo-font>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/cli>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/devtools>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/devtools>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/log-box>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/log-box>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/log-box>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/log-box>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro>metro-transform-worker>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro-config>@expo/metro>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro-config>@expo/metro>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro-config>@expo/metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/metro-config>@expo/metro>metro-transform-worker>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-asset>expo-constants>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-asset>expo-constants>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-asset>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-asset>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-constants>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-constants>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-file-system>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-file-system>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-font>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-font>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-modules-core>expo-modules-jsi>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-modules-core>expo-modules-jsi>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-modules-core>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>expo-modules-core>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>expo>@expo/dom-webview>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>react-native>@react-native/community-cli-plugin>metro>metro-file-map>micromatch>braces",
+              "apps__mobile>react-native>@react-native/community-cli-plugin>metro-config>metro>metro-file-map>micromatch>braces",
+              "apps__web>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces",
+            ],
+          },
+        ],
+      },
     },
     metadata: {
-      vulnerabilities: { info: 0, low: 0, moderate: 1, high: 1, critical: 0 },
+      vulnerabilities: { info: 0, low: 0, moderate: 1, high: 2, critical: 0 },
     },
   };
 }
@@ -68,8 +140,12 @@ test("approved exact risk passes and still reports HIGH and MODERATE, without ch
     result.lines.join("\n"),
     /1 HIGH accepted risk: GHSA-86w9-cpqp-85rv/,
   );
+  assert.match(
+    result.lines.join("\n"),
+    /GHSA-vfj7-8cjw-p6xm \/ CVE-2026-93687/,
+  );
   assert.match(result.lines.join("\n"), /MODERATE uuid: GHSA-w5hq-g745-h8pq/);
-  assert.match(result.lines[0], /1 MODERATE \| 1 HIGH/);
+  assert.match(result.lines[0], /1 MODERATE \| 2 HIGH/);
   assert.deepEqual(report, before);
 });
 
@@ -100,6 +176,14 @@ test("same GHSA is never accepted as CRITICAL", () => {
   report.advisories[1240912].severity = "critical";
   report.metadata.vulnerabilities.high = 0;
   report.metadata.vulnerabilities.critical = 1;
+  assert.equal(evaluateAudit(report, tree, reviewedAt).exitCode, 1);
+});
+
+test("braces exception rejects production or unexpected paths", () => {
+  const report = fixture();
+  report.advisories[1240992].findings[0].paths = [
+    "apps__web>next>micromatch>braces",
+  ];
   assert.equal(evaluateAudit(report, tree, reviewedAt).exitCode, 1);
 });
 
@@ -176,6 +260,7 @@ test("malformed responses, findings, severity, errors and inconsistent counts fa
 test("no accepted advisory means no exception or reachability pin is applied", () => {
   const report = fixture();
   delete report.advisories[1240912];
+  delete report.advisories[1240992];
   report.metadata.vulnerabilities.high = 0;
   const result = evaluateAudit(report, undefined, reviewedAt);
   assert.equal(result.exitCode, 0);
@@ -184,4 +269,37 @@ test("no accepted advisory means no exception or reachability pin is applied", (
 
 test("installed reviewed tree resolves both real node-forge dependencies", () => {
   assert.deepEqual(readReviewedTree(), tree);
+});
+
+test("braces alone requires exact identity, full chain set, context and expiry", () => {
+  const edits = [
+    (a) => (a.module_name = "other"),
+    (a) => (a.id = 1),
+    (a) => (a.findings[0].version = "3.0.4"),
+    (a) => (a.severity = "critical"),
+    (a) => (a.patched_versions = ">=3.0.4"),
+    (a) => a.findings[0].paths.pop(),
+    (a) =>
+      (a.findings[0].paths[0] = "apps__mobile>unexpected>micromatch>braces"),
+    (a) => a.findings.push(structuredClone(a.findings[0])),
+  ];
+  for (const edit of edits) {
+    const report = fixture();
+    edit(report.advisories[1240992]);
+    assert.equal(evaluateAudit(report, tree, reviewedAt).exitCode, 1);
+  }
+  const report = fixture();
+  delete report.advisories[1240912];
+  report.metadata.vulnerabilities.high = 1;
+  assert.equal(evaluateAudit(report, tree, reviewedAt).exitCode, 0);
+  assert.equal(evaluateAudit(report, undefined, reviewedAt).exitCode, 1);
+  assert.equal(
+    evaluateAudit(report, { ...tree, lockHash: "changed" }, reviewedAt)
+      .exitCode,
+    1,
+  );
+  assert.equal(
+    evaluateAudit(report, tree, new Date("2026-11-02T00:00:00Z")).exitCode,
+    1,
+  );
 });

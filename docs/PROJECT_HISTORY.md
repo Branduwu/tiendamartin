@@ -27,7 +27,7 @@ Este resumen reconstruye la evolucion real a partir de `PROJECT_STATE.md`, `TECH
 | TASK-015 / 015A | ⚠️ Riesgo documentado | Sale core, carrito POS y gate temporal por HIGH de node-forge. |
 | TASK-016 | 🚀 Produccion | Checkout transaccional, pagos cash/card/mixto, ventas y POS. |
 | TASK-017 | 🚀 Produccion | Caja, turnos, cierres, historial y ticket imprimible. |
-| TASK-018 | 🚀 Produccion | Barcode, lookup, ventas suspendidas y recuperacion idempotente. El paso de login habitual con contraseña quedo pendiente de confirmacion manual. |
+| TASK-018 | 🚀 Produccion | Barcode, lookup, ventas suspendidas y recuperacion idempotente. El login habitual con email/password fue verificado posteriormente mediante logout real y acceso a Productos, Inventario y POS. |
 | TASK-019 | 🚧 WIP | Devoluciones: existen piezas locales relacionadas, pero la tarea quedo incompleta y no se declara terminada. |
 
 ## Arquitectura en produccion

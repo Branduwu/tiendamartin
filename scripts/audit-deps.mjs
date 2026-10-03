@@ -30,11 +30,27 @@ const acceptedRisk = {
     cliForge: "1.4.0",
     certificatesForge: "1.4.0",
     lockHash:
-      "4f6e45ecc32bb547ca1f2171c2a39b6c21e63203d0aa2fe67dd194ddb1931261",
+      "1d5780c7948af063b677825a9b81900835964a10b6c572701fa02030be2319f7",
     appConfigHash:
       "b9448506cc52aa6c96030eeda50d75aa55b3ee480fd9e2338d7405751df125f2",
     dynamicConfig: false,
   },
+};
+
+// TASK-UX01 checkpoint: SECURITY approved this exact tooling-only availability
+// risk. braces has no patched official release; the web production graph does
+// not contain this chain and mobile is not deployed. This is not remediation.
+// Review/expiry: 2026-11-02. Any package, version, path or runtime-scope
+// change must block until independently reviewed.
+const acceptedBracesRisk = {
+  ghsa: "GHSA-vfj7-8cjw-p6xm",
+  cve: "CVE-2026-93687",
+  npmId: 1240992,
+  module: "braces",
+  version: "3.0.3",
+  expires: "2026-11-02T00:00:00Z",
+  pathsCount: 54,
+  pathsHash: "2c62ee30a0f7ba358dfb187f995e0b698755dff48a307dfce58664ed2ea721fb",
 };
 
 function object(value) {
@@ -102,6 +118,40 @@ export function evaluateAudit(report, tree, now = new Date()) {
         accepted++;
         lines.push(
           `1 HIGH accepted risk: ${ghsa} (node-forge 1.4.0; expires 2026-11-02)`,
+        );
+      } else if (ghsa === acceptedBracesRisk.ghsa) {
+        const findings = advisory.findings;
+        if (
+          advisory.id !== acceptedBracesRisk.npmId ||
+          advisory.module_name !== acceptedBracesRisk.module ||
+          advisory.severity !== "high" ||
+          advisory.url !==
+            `https://github.com/advisories/${acceptedBracesRisk.ghsa}` ||
+          advisory.patched_versions !== null ||
+          findings.length !== 1 ||
+          !object(tree) ||
+          !Object.entries(acceptedRisk.tree).every(([k, v]) => tree[k] === v) ||
+          !findings.every(
+            (finding) =>
+              finding.version === acceptedBracesRisk.version &&
+              finding.dev === false &&
+              finding.optional === false &&
+              finding.bundled === false &&
+              finding.paths.length === acceptedBracesRisk.pathsCount &&
+              new Set(finding.paths).size === finding.paths.length &&
+              createHash("sha256")
+                .update([...finding.paths].sort().join("\n"))
+                .digest("hex") === acceptedBracesRisk.pathsHash,
+          ) ||
+          !Number.isFinite(now.getTime()) ||
+          now.getTime() >= Date.parse(acceptedBracesRisk.expires)
+        )
+          throw new Error(
+            "Accepted braces advisory changed or expired: review required",
+          );
+        accepted++;
+        lines.push(
+          `1 HIGH accepted risk: ${ghsa} / ${acceptedBracesRisk.cve} (${acceptedBracesRisk.module}@${acceptedBracesRisk.version}; tooling-only; expires 2026-11-02)`,
         );
       } else {
         lines.push(
@@ -185,8 +235,10 @@ function main() {
   if (audit.error || ![0, 1].includes(audit.status))
     throw new Error("pnpm audit failed");
   const report = JSON.parse(audit.stdout.replace(/^\uFEFF/, ""));
-  const needsReview = Object.values(report.advisories ?? {}).some(
-    (advisory) => advisory?.github_advisory_id === acceptedRisk.ghsa,
+  const needsReview = Object.values(report.advisories ?? {}).some((advisory) =>
+    [acceptedRisk.ghsa, acceptedBracesRisk.ghsa].includes(
+      advisory?.github_advisory_id,
+    ),
   );
   const result = evaluateAudit(
     report,

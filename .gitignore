@@ -36,6 +36,8 @@ build/
 coverage/
 playwright-report/
 test-results/
+playwright-report/
+.auth/
 *.tsbuildinfo
 
 # Logs and temporary files
