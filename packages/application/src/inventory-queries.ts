@@ -8,6 +8,9 @@ export type InventoryStock = Readonly<{
   balance: StockBalance;
   productName: string;
   sku: string;
+  minimumStock?: import("@smartretail/domain").Quantity;
+  inventoryState?: import("./inventory-minimum").InventoryState;
+  suggestedQuantity?: import("@smartretail/domain").Quantity;
   locationName: string;
   locationCode: string;
 }>;

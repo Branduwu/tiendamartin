@@ -1,5 +1,10 @@
 import { PostgresInventory } from "./database";
 import {
+  productId,
+  inventoryLocationId,
+  type UnitCode,
+} from "@smartretail/domain";
+import {
   PermissionDeniedError,
   mexicoDate,
   reportFilters,
@@ -49,11 +54,14 @@ const productsSql = `WITH ${bounds},${stock}, sold AS (
  GROUP BY l.product_id ORDER BY sum(l.line_total_minor_units) DESC,l.product_id LIMIT 20)
  SELECT p.id,p.name,p.unit,d.quantity::text,d.revenue::text,coalesce(st.stock,0)::text AS stock FROM sold d
  JOIN retail.products p ON p.tenant_id=$1 AND p.id=d.product_id LEFT JOIN stock st ON st.id=p.id ORDER BY d.revenue DESC,p.id`;
-const inventorySql = `WITH ${stock} SELECT
- (SELECT count(*)::text FROM stock WHERE status='active' AND stock>0 AND stock<=$9::numeric) AS low,
- (SELECT count(*)::text FROM stock WHERE status='active' AND stock=0) AS empty,
- coalesce((SELECT jsonb_agg(jsonb_build_object('id',id,'name',name,'unit',unit,'stock',stock::text) ORDER BY stock,id)
- FROM (SELECT * FROM stock WHERE status='active' AND stock<=$9::numeric ORDER BY stock,id LIMIT 100) a),'[]'::jsonb) AS alerts`;
+// One persisted projection serves dashboard, alerts and purchase prefill.
+const inventorySql = `WITH configured AS (SELECT * FROM retail.inventory_threshold_status
+ WHERE tenant_id=$1 AND ($4::uuid IS NULL OR location_id=$4) AND ($5::uuid IS NULL OR id=$5)) SELECT
+ (SELECT count(DISTINCT id)::text FROM configured WHERE state='low') AS low,
+ (SELECT count(DISTINCT id)::text FROM configured WHERE state='out') AS empty,
+ coalesce((SELECT jsonb_agg(jsonb_build_object('id',id,'name',name,'sku',sku,'locationId',location_id,'locationName',location_name,
+ 'unit',unit,'stock',stock::text,'minimum',minimum::text,'suggested',suggested::text,'state',state) ORDER BY stock,id,location_id)
+ FROM (SELECT * FROM configured WHERE state IN ('low','out') ORDER BY stock,id,location_id LIMIT 100) a),'[]'::jsonb) AS alerts`;
 const purchaseScope = `o.tenant_id=$1 AND ($4::uuid IS NULL OR o.location_id=$4) AND ($10::uuid IS NULL OR o.supplier_id=$10)
  AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM retail.purchase_order_lines l WHERE l.tenant_id=o.tenant_id AND l.purchase_id=o.id AND l.product_id=$5))`;
 const purchasesSql = `WITH ${bounds}, orders AS (
@@ -82,6 +90,79 @@ export class PostgresReporting
   extends PostgresInventory
   implements ReportingQueries
 {
+  async inventoryAlerts(
+    location?: string,
+    product?: string,
+  ): Promise<OperationalReport["inventory"]> {
+    if (location !== undefined) inventoryLocationId(location);
+    if (product !== undefined) productId(product);
+    return this.transaction(
+      "inventory.read",
+      async (c) => {
+        await c.query("SET LOCAL statement_timeout='5s'");
+        for (const [table, id] of [
+          ["products", product],
+          ["inventory_locations", location],
+        ] as const)
+          if (
+            id !== undefined &&
+            !(
+              await c.query(
+                `SELECT 1 FROM retail.${table} WHERE tenant_id=$1 AND id=$2`,
+                [this.tenant, id],
+              )
+            ).rowCount
+          )
+            throw new PermissionDeniedError();
+        const row = (
+          await c.query<OperationalReport["inventory"]>(
+            inventorySql.replace(
+              "WITH ",
+              "WITH input AS (SELECT $1::uuid,$2::text,$3::text,$4::uuid,$5::uuid), ",
+            ),
+            [this.tenant, null, null, location ?? null, product ?? null],
+          )
+        ).rows[0];
+        if (!row) throw new Error("Missing inventory projection");
+        return row;
+      },
+      true,
+    );
+  }
+  async replenishment(product: string, location: string) {
+    productId(product);
+    inventoryLocationId(location);
+    return this.transaction(
+      "inventory.read",
+      async (c) => {
+        await c.query("SET LOCAL statement_timeout='5s'");
+        if (
+          !(
+            await c.query<{ allowed: boolean }>(
+              "SELECT retail.has_permission('purchases.write') AS allowed",
+            )
+          ).rows[0]?.allowed
+        )
+          throw new PermissionDeniedError();
+        const row = (
+          await c.query<{ unit: UnitCode; suggested: string; state: string }>(
+            "SELECT unit,suggested::text,state FROM retail.inventory_threshold_status WHERE tenant_id=$1 AND id=$2 AND location_id=$3",
+            [this.tenant, product, location],
+          )
+        ).rows[0];
+        if (!row) throw new PermissionDeniedError();
+        if (!["low", "out"].includes(row.state) || BigInt(row.suggested) <= 0n)
+          throw new RangeError("No positive replenishment suggestion");
+        return {
+          tenantId: this.tenant,
+          productId: product,
+          locationId: location,
+          quantityOrdered: { unit: row.unit, milliUnits: row.suggested },
+        };
+      },
+      true,
+    );
+  }
   async reportOptions(): Promise<ReportOptions> {
     return this.transaction(
       "reports.read",
@@ -143,7 +224,7 @@ export class PostgresReporting
           filters.customerId ?? null,
           filters.paymentMethod ?? null,
           today,
-          filters.lowStockMilliUnits,
+          null, // Reserved placeholder; minima are persisted per product/location.
           filters.supplierId ?? null,
         ];
         // Each query has its own placeholder subset; trim trailing values only.

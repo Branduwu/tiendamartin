@@ -294,17 +294,28 @@ export class PostgresInventory
           sku: string;
           location_name: string;
           location_code: string;
+          minimum: string | null;
+          suggested: string | null;
+          state: import("@smartretail/application").InventoryState;
         }
       >(
         `SELECT p.id AS product_id,l.id AS location_id,p.unit,COALESCE(b.milli_units,0)::text AS milli_units,
-        p.name AS product_name,p.sku,l.name AS location_name,l.code AS location_code
+        p.name AS product_name,p.sku,l.name AS location_name,l.code AS location_code,m.milli_units::text AS minimum,retail.inventory_stock_state(coalesce(b.milli_units,0),m.milli_units) AS state,retail.inventory_shortfall(coalesce(b.milli_units,0),m.milli_units)::text AS suggested
         FROM retail.products p JOIN retail.inventory_locations l ON l.tenant_id=p.tenant_id
         LEFT JOIN retail.stock_balances b ON b.tenant_id=p.tenant_id AND b.product_id=p.id AND b.location_id=l.id
+        LEFT JOIN retail.inventory_minimums m ON m.tenant_id=p.tenant_id AND m.product_id=p.id AND m.location_id=l.id
         WHERE p.tenant_id=$1 AND ($2::uuid IS NULL OR l.id=$2) ORDER BY l.name,p.name,p.id`,
         [this.tenant, location],
       );
       return result.rows.map((row) => ({
         balance: balanceFromRow(row),
+        inventoryState: row.state,
+        ...(row.minimum === null
+          ? {}
+          : { minimumStock: quantity(row.unit, BigInt(row.minimum)) }),
+        ...(row.suggested === null
+          ? {}
+          : { suggestedQuantity: quantity(row.unit, BigInt(row.suggested)) }),
         productName: row.product_name,
         sku: row.sku,
         locationName: row.location_name,

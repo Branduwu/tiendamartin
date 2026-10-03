@@ -33,7 +33,7 @@ const metrics = {
   general: "1",
 };
 const report: OperationalReport = {
-  filters: { from: "2026-10-01", to: "2026-10-03", lowStockMilliUnits: "1000" },
+  filters: { from: "2026-10-01", to: "2026-10-03" },
   timezone: "America/Mexico_City",
   today: "2026-10-03",
   todaySales: metrics,

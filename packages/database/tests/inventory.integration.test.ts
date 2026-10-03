@@ -23,6 +23,7 @@ import {
   PurchaseConflictError,
   type PurchaseDraftInput,
   type InventoryTransfer,
+  type Quantity,
 } from "@smartretail/domain";
 import {
   receiveInventory,
@@ -55,6 +56,7 @@ import {
 } from "@smartretail/application";
 import {
   PostgresInventory,
+  PostgresInventoryMinimum,
   PostgresPurchasing,
   PostgresCustomers,
   PostgresReporting,
@@ -358,6 +360,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.inventory_minimums') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/015_inventory_minimums.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -394,7 +409,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2299,7 +2314,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(28);
+    expect(tables.rows).toHaveLength(30);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -3867,10 +3882,564 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       ).rejects.toMatchObject({ code: "42501" });
     });
   });
+  describe("TASK023 inventory minimums and replenishment", () => {
+    const minimum = (
+      userId = ownerUser,
+      tenantId = tenantA,
+      correlation = randomUUID(),
+    ) =>
+      new PostgresInventoryMinimum(apiPool, { userId, tenantId }, correlation);
+    const reporting = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresReporting(apiPool, { userId, tenantId });
+    const configured = () =>
+      admin.query(
+        "SELECT tenant_id,product_id,location_id,unit,milli_units::text FROM retail.inventory_minimums ORDER BY tenant_id,product_id,location_id",
+      );
+    const audits = () =>
+      admin.query(
+        "SELECT * FROM retail.inventory_minimum_audit ORDER BY created_at,id",
+      );
+    async function inventorySnapshot() {
+      return {
+        balances: (
+          await admin.query(
+            "SELECT * FROM retail.stock_balances ORDER BY tenant_id,product_id,location_id",
+          )
+        ).rows,
+        movements: (
+          await admin.query(
+            "SELECT * FROM retail.inventory_movements ORDER BY tenant_id,id",
+          )
+        ).rows,
+        commands: (
+          await admin.query(
+            "SELECT * FROM retail.inventory_commands ORDER BY tenant_id,id",
+          )
+        ).rows,
+      };
+    }
+    async function directInsert(
+      tenant: string,
+      item: string,
+      location: string,
+      unit = "piece",
+      amount = "1000",
+      user = ownerUser,
+    ) {
+      return sql(
+        tenantA,
+        async (c) => {
+          await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+            randomUUID(),
+          ]);
+          return c.query(
+            "INSERT INTO retail.inventory_minimums(tenant_id,product_id,location_id,unit,milli_units) VALUES($1,$2,$3,$4,$5)",
+            [tenant, item, location, unit, amount],
+          );
+        },
+        user,
+      );
+    }
+    async function fractionalProduct() {
+      const item = createProduct({
+        ...fixtureProduct(productId(randomUUID()), "WEIGHT", null),
+        unit: "kg",
+      });
+      await db.createProduct(item);
+      return item.id;
+    }
+
+    it("set update and remove audit exact before/after without changing stock or ledger", async () => {
+      const before = await inventorySnapshot();
+      const correlation = randomUUID();
+      const repo = minimum(ownerUser, tenantA, correlation);
+      await repo.setMinimum(product, source, quantity("piece", 12000n));
+      expect((await configured()).rows).toEqual([
+        {
+          tenant_id: tenantA,
+          product_id: product,
+          location_id: source,
+          unit: "piece",
+          milli_units: "12000",
+        },
+      ]);
+      await repo.setMinimum(product, source, quantity("piece", 15000n));
+      expect((await configured()).rows[0]?.milli_units).toBe("15000");
+      await repo.setMinimum(product, source, null);
+      expect((await configured()).rows).toEqual([]);
+      const rows = (await audits()).rows;
+      expect(
+        rows.map((r) => [r.action, r.before_milli_units, r.after_milli_units]),
+      ).toEqual([
+        ["minimum.set", null, "12000"],
+        ["minimum.set", "12000", "15000"],
+        ["minimum.remove", "15000", null],
+      ]);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          tenant_id: tenantA,
+          product_id: product,
+          location_id: source,
+          unit: "piece",
+          actor_user_id: ownerUser,
+          correlation_id: correlation,
+        });
+        expect(row.created_at).toBeInstanceOf(Date);
+        expect(row.id).toEqual(expect.any(String));
+      }
+      expect(await inventorySnapshot()).toEqual(before);
+    });
+
+    it("owner and admin write while clerk reads alerts and grid but cannot write", async () => {
+      await minimum(adminUser).setMinimum(
+        product,
+        source,
+        quantity("piece", 12000n),
+      );
+      expect((await audits()).rows[0]?.actor_user_id).toBe(adminUser);
+      expect((await reporting(clerkUser).inventoryAlerts()).low).toBe("1");
+      const clerk = new PostgresInventory(apiPool, {
+        tenantId: tenantA,
+        userId: clerkUser,
+      });
+      expect((await clerk.listStock(source))[0]).toMatchObject({
+        minimumStock: quantity("piece", 12000n),
+        inventoryState: "low",
+      });
+      const before = (await audits()).rows;
+      for (const value of [quantity("piece", 20000n), null])
+        await expect(
+          minimum(clerkUser).setMinimum(product, source, value),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        directInsert(tenantA, product, destination, "piece", "1000", clerkUser),
+      ).rejects.toMatchObject({ code: "42501" });
+      expect((await audits()).rows).toEqual(before);
+    });
+
+    it("outsider and revoked membership cannot read or configure minimums", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 12000n));
+      for (const user of [outsiderUser, ownerUser]) {
+        if (user === ownerUser)
+          await admin.query(
+            "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+            [tenantA, ownerUser],
+          );
+        await expect(
+          minimum(user).setMinimum(product, source, null),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+        await expect(reporting(user).inventoryAlerts()).rejects.toBeInstanceOf(
+          PermissionDeniedError,
+        );
+        expect(
+          (
+            await sql(
+              tenantA,
+              (c) => c.query("SELECT * FROM retail.inventory_minimums"),
+              user,
+            )
+          ).rows,
+        ).toEqual([]);
+      }
+      expect((await configured()).rows).toHaveLength(1);
+      expect((await audits()).rows).toHaveLength(1);
+    });
+
+    it("RLS scopes configuration audit and alerts even with shared product and location IDs", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 12000n));
+      await minimum(ownerUser, tenantB).setMinimum(
+        product,
+        source,
+        quantity("piece", 3000n),
+      );
+      const rows = await sql(tenantA, (c) =>
+        c.query(
+          "SELECT tenant_id,milli_units::text FROM retail.inventory_minimums",
+        ),
+      );
+      expect(rows.rows).toEqual([{ tenant_id: tenantA, milli_units: "12000" }]);
+      expect(
+        (
+          await sql(tenantA, (c) =>
+            c.query("SELECT tenant_id FROM retail.inventory_minimum_audit"),
+          )
+        ).rows,
+      ).toEqual([{ tenant_id: tenantA }]);
+      expect(
+        (await reporting(ownerUser, tenantB).inventoryAlerts()).alerts[0],
+      ).toMatchObject({ stock: "0", minimum: "3000", state: "out" });
+      await expect(
+        directInsert(tenantB, product, destination),
+      ).rejects.toMatchObject({ code: "42501" });
+      expect(
+        (
+          await sql(undefined, (c) =>
+            c.query("SELECT * FROM retail.inventory_minimums"),
+          )
+        ).rows,
+      ).toEqual([]);
+    });
+
+    it("missing and foreign product or location fail closed at repository and composite FK", async () => {
+      const foreign = productId(randomUUID()),
+        location = inventoryLocationId(randomUUID());
+      await other.createProduct(fixtureProduct(foreign, "FOREIGN-MIN", null));
+      await other.createLocation(
+        createInventoryLocation({
+          id: location,
+          code: inventoryLocationCode("FOREIGN-MIN"),
+          name: inventoryLocationName("Foreign"),
+          status: "active",
+        }),
+      );
+      for (const [item, place] of [
+        [foreign, source],
+        [product, location],
+        [randomUUID(), source],
+        [product, randomUUID()],
+      ]) {
+        await expect(
+          minimum().setMinimum(item!, place!, quantity("piece", 1000n)),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+        await expect(
+          directInsert(tenantA, item!, place!),
+        ).rejects.toMatchObject({ code: "23503" });
+        await expect(
+          reporting().inventoryAlerts(place!, item!),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+        await expect(
+          reporting().replenishment(item!, place!),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+      }
+      expect((await configured()).rows).toEqual([]);
+      expect((await audits()).rows).toEqual([]);
+    });
+
+    it("product unit mismatch fails in repository and SQL FK without partial audit", async () => {
+      await expect(
+        minimum().setMinimum(product, source, quantity("kg", 1000n)),
+      ).rejects.toBeInstanceOf(TypeError);
+      await expect(
+        directInsert(tenantA, product, source, "kg"),
+      ).rejects.toMatchObject({ code: "23503" });
+      expect((await configured()).rows).toEqual([]);
+      expect((await audits()).rows).toEqual([]);
+    });
+
+    it("negative and fractional piece minimums fail application and SQL constraints", async () => {
+      for (const amount of [-1000n, 1001n]) {
+        await expect(
+          minimum().setMinimum(product, source, {
+            unit: "piece",
+            milliUnits: amount,
+          } as Quantity),
+        ).rejects.toBeInstanceOf(RangeError);
+        await expect(
+          directInsert(tenantA, product, source, "piece", amount.toString()),
+        ).rejects.toMatchObject({ code: "23514" });
+      }
+      expect((await configured()).rows).toEqual([]);
+      expect((await audits()).rows).toEqual([]);
+    });
+
+    it("fractional quantities preserve exact BIGINT maximum and overflow leaves prior value intact", async () => {
+      const item = await fractionalProduct();
+      await minimum().setMinimum(
+        item,
+        source,
+        quantity("kg", 9223372036854775807n),
+      );
+      const before = (await audits()).rows;
+      expect((await configured()).rows[0]?.milli_units).toBe(
+        "9223372036854775807",
+      );
+      expect(
+        (await reporting().inventoryAlerts(source, item)).alerts[0],
+      ).toMatchObject({
+        unit: "kg",
+        stock: "0",
+        minimum: "9223372036854775807",
+        suggested: "9223372036854775807",
+      });
+      expect(
+        (await reporting().replenishment(item, source)).quantityOrdered,
+      ).toEqual({ unit: "kg", milliUnits: "9223372036854775807" });
+      await expect(
+        minimum().setMinimum(item, source, {
+          unit: "kg",
+          milliUnits: 9223372036854775808n,
+        } as Quantity),
+      ).rejects.toBeInstanceOf(RangeError);
+      await expect(
+        directInsert(tenantA, item, destination, "kg", "9223372036854775808"),
+      ).rejects.toMatchObject({ code: "22003" });
+      expect((await configured()).rows[0]?.milli_units).toBe(
+        "9223372036854775807",
+      );
+      expect((await audits()).rows).toEqual(before);
+    });
+
+    it("location specific low normal and out states agree across grid alerts and dashboard", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 12000n));
+      await minimum().setMinimum(
+        product,
+        destination,
+        quantity("piece", 3000n),
+      );
+      const alerts = await reporting().inventoryAlerts();
+      expect(alerts).toMatchObject({ low: "1", empty: "1" });
+      expect(alerts.alerts).toHaveLength(2);
+      expect(alerts.alerts.find((a) => a.locationId === source)).toEqual({
+        id: product,
+        name: "Producto",
+        sku: "SKU-1",
+        locationId: source,
+        locationName: "Almacén",
+        unit: "piece",
+        stock: "10000",
+        minimum: "12000",
+        suggested: "2000",
+        state: "low",
+      });
+      expect(
+        alerts.alerts.find((a) => a.locationId === destination),
+      ).toMatchObject({
+        stock: "0",
+        minimum: "3000",
+        suggested: "3000",
+        state: "out",
+      });
+      expect(
+        (await reporting().operationalReport(reportPeriod("30d"))).inventory,
+      ).toEqual(alerts);
+      expect((await db.listStock(source))[0]).toMatchObject({
+        inventoryState: "low",
+        suggestedQuantity: quantity("piece", 2000n),
+      });
+      await minimum().setMinimum(product, source, quantity("piece", 9000n));
+      expect((await db.listStock(source))[0]?.inventoryState).toBe("normal");
+      expect(await reporting().inventoryAlerts(source, product)).toEqual({
+        low: "0",
+        empty: "0",
+        alerts: [],
+      });
+    });
+
+    it("equality is low but zero shortfall cannot prefill or create a purchase", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 10000n));
+      expect(
+        (await reporting().inventoryAlerts(source, product)).alerts[0],
+      ).toMatchObject({ state: "low", suggested: "0" });
+      await expect(
+        reporting().replenishment(product, source),
+      ).rejects.toBeInstanceOf(RangeError);
+      await minimum().setMinimum(product, destination, quantity("piece", 0n));
+      expect(
+        (await reporting().inventoryAlerts(destination, product)).alerts[0],
+      ).toMatchObject({ state: "out", minimum: "0", suggested: "0" });
+      await expect(
+        reporting().replenishment(product, destination),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::text n FROM retail.purchase_orders",
+          )
+        ).rows[0]?.n,
+      ).toBe("0");
+    });
+
+    it("unconfigured zero stock remains out in grid but contributes no automatic alerts", async () => {
+      expect((await db.listStock(destination))[0]).toMatchObject({
+        inventoryState: "out",
+        balance: { quantity: quantity("piece", 0n) },
+      });
+      expect((await db.listStock(source))[0]?.inventoryState).toBe(
+        "unconfigured",
+      );
+      expect(await reporting().inventoryAlerts()).toEqual({
+        low: "0",
+        empty: "0",
+        alerts: [],
+      });
+      await expect(
+        reporting().replenishment(product, destination),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await minimum().setMinimum(
+        product,
+        destination,
+        quantity("piece", 3000n),
+      );
+      await minimum().setMinimum(product, destination, null);
+      expect(
+        (await reporting().operationalReport(reportPeriod("30d"))).inventory,
+      ).toEqual({ low: "0", empty: "0", alerts: [] });
+    });
+
+    it("inactive configured products or locations are excluded from shared alert projection", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 12000n));
+      await minimum().setMinimum(
+        product,
+        destination,
+        quantity("piece", 3000n),
+      );
+      // Location status has no runtime write grant; prepare only this disposable fixture.
+      await admin.query(
+        "UPDATE retail.inventory_locations SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+        [tenantA, destination],
+      );
+      expect((await reporting().inventoryAlerts()).alerts).toHaveLength(1);
+      await sql(tenantA, (c) =>
+        c.query(
+          "UPDATE retail.products SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+          [tenantA, product],
+        ),
+      );
+      expect(await reporting().inventoryAlerts()).toEqual({
+        low: "0",
+        empty: "0",
+        alerts: [],
+      });
+      expect(
+        (await reporting().operationalReport(reportPeriod("30d"))).inventory
+          .alerts,
+      ).toEqual([]);
+    });
+
+    it("prefill returns exact live suggestion with no supplier or automatic PO and requires both permissions", async () => {
+      await minimum().setMinimum(product, source, quantity("piece", 15000n));
+      const before = await inventorySnapshot();
+      const auditBefore = (await audits()).rows;
+      expect(await reporting().replenishment(product, source)).toEqual({
+        tenantId: tenantA,
+        productId: product,
+        locationId: source,
+        quantityOrdered: { unit: "piece", milliUnits: "5000" },
+      });
+      expect(await inventorySnapshot()).toEqual(before);
+      await issueInventory(db, issue(1000n));
+      expect(
+        (await reporting(adminUser).replenishment(product, source))
+          .quantityOrdered.milliUnits,
+      ).toBe("6000");
+      await expect(
+        reporting(clerkUser).replenishment(product, source),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      for (const permission of ["inventory.read", "purchases.write"]) {
+        await admin.query(
+          "DELETE FROM retail.role_permissions WHERE role='owner' AND permission=$1",
+          [permission],
+        );
+        try {
+          await expect(
+            reporting().replenishment(product, source),
+          ).rejects.toBeInstanceOf(PermissionDeniedError);
+        } finally {
+          await admin.query(
+            "INSERT INTO retail.role_permissions VALUES('owner',$1)",
+            [permission],
+          );
+        }
+      }
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::text n FROM retail.purchase_orders",
+          )
+        ).rows[0]?.n,
+      ).toBe("0");
+      expect((await audits()).rows).toEqual(auditBefore);
+      const after = await inventorySnapshot();
+      expect(after.movements).toHaveLength(before.movements.length + 1);
+    });
+
+    it("concurrent upserts and removals preserve unique pair and serial audit history", async () => {
+      const correlations = [randomUUID(), randomUUID()];
+      const repos = correlations.map(
+        (c) =>
+          new PostgresInventoryMinimum(
+            pool,
+            { tenantId: tenantA, userId: ownerUser },
+            c,
+          ),
+      );
+      await Promise.all(
+        repos.map((r, i) =>
+          r.setMinimum(
+            product,
+            source,
+            quantity("piece", i === 0 ? 12000n : 15000n),
+          ),
+        ),
+      );
+      const rows = (await audits()).rows;
+      expect((await configured()).rows).toHaveLength(1);
+      expect(rows).toHaveLength(2);
+      expect(rows[0]?.before_milli_units).toBeNull();
+      expect(rows[1]?.before_milli_units).toBe(rows[0]?.after_milli_units);
+      expect((await configured()).rows[0]?.milli_units).toBe(
+        rows[1]?.after_milli_units,
+      );
+      expect(rows.map((r) => r.correlation_id).sort()).toEqual(
+        [...correlations].sort(),
+      );
+      await Promise.all(repos.map((r) => r.setMinimum(product, source, null)));
+      expect((await configured()).rows).toEqual([]);
+      const final = (await audits()).rows;
+      expect(final).toHaveLength(3);
+      expect(final[2]).toMatchObject({
+        action: "minimum.remove",
+        before_milli_units: rows[1]?.after_milli_units,
+        after_milli_units: null,
+      });
+      await Promise.all([
+        repos[0]!.setMinimum(product, source, quantity("piece", 18000n)),
+        repos[1]!.setMinimum(product, source, null),
+      ]);
+      const raced = (await audits()).rows;
+      const remaining = (await configured()).rows;
+      expect(raced.slice(0, 3)).toEqual(final);
+      expect(raced[3]).toMatchObject({
+        action: "minimum.set",
+        before_milli_units: null,
+        after_milli_units: "18000",
+      });
+      if (remaining.length === 0) {
+        expect(raced).toHaveLength(5);
+        expect(raced[4]).toMatchObject({
+          action: "minimum.remove",
+          before_milli_units: "18000",
+          after_milli_units: null,
+        });
+      } else {
+        expect(remaining).toHaveLength(1);
+        expect(remaining[0]?.milli_units).toBe("18000");
+        expect(raced).toHaveLength(4);
+      }
+      for (const query of [
+        "UPDATE retail.inventory_minimum_audit SET action='minimum.remove'",
+        "DELETE FROM retail.inventory_minimum_audit",
+        "INSERT INTO retail.inventory_minimum_audit SELECT * FROM retail.inventory_minimum_audit",
+      ]) {
+        await expect(sql(tenantA, (c) => c.query(query))).rejects.toMatchObject(
+          { code: "42501" },
+        );
+      }
+      await expect(
+        admin.query(
+          "UPDATE retail.inventory_minimum_audit SET action='minimum.remove'",
+        ),
+      ).rejects.toThrow();
+      await expect(
+        admin.query("DELETE FROM retail.inventory_minimum_audit"),
+      ).rejects.toThrow();
+      expect((await audits()).rows).toEqual(raced);
+    });
+  });
+
   describe("TASK022 operational reporting", () => {
     const filters = (extra: Partial<ReportFilters> = {}): ReportFilters => ({
       ...reportPeriod("30d"),
-      lowStockMilliUnits: "1000",
       ...extra,
     });
     const repo = (userId = ownerUser, tenantId = tenantA) =>
@@ -4075,6 +4644,10 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       expect(r.inventory.empty).toBe("0");
     });
     it("location isolates sales and reports absent balances as zero stock", async () => {
+      await new PostgresInventoryMinimum(apiPool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).setMinimum(product, destination, quantity("piece", 1000n));
       await sell();
       const r = await query({ locationId: destination });
       expect(r.sales.count).toBe("0");
@@ -4116,15 +4689,18 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         general: "0",
       });
     });
-    it("stock low threshold is explicit and separate from exhausted", async () => {
-      const r = await query({ lowStockMilliUnits: "10000" });
+    it("stock minimum is configured per pair and separate from exhausted", async () => {
+      const minimum = new PostgresInventoryMinimum(apiPool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      });
+      await minimum.setMinimum(product, source, quantity("piece", 10000n));
+      const r = await query();
       expect(r.inventory).toMatchObject({ low: "1", empty: "0" });
-      expect((await query({ lowStockMilliUnits: "9999" })).inventory.low).toBe(
-        "0",
-      );
-      expect(
-        (await query({ lowStockMilliUnits: "0" })).inventory.alerts,
-      ).toEqual([]);
+      await minimum.setMinimum(product, source, quantity("piece", 9000n));
+      expect((await query()).inventory.low).toBe("0");
+      await minimum.setMinimum(product, source, null);
+      expect((await query()).inventory.alerts).toEqual([]);
     });
     it("purchase statuses costs and receipts use supplier snapshot independently of sales", async () => {
       const p = new PostgresPurchasing(apiPool, {

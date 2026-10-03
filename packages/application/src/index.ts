@@ -62,3 +62,5 @@ export * from "./purchasing";
 export * from "./customers";
 
 export * from "./reporting";
+
+export * from "./inventory-minimum";

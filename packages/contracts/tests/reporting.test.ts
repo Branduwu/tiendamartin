@@ -1,9 +1,8 @@
 import { expect, it } from "vitest";
 import { ReportQuerySchema } from "../src/reporting";
-it("provides explicit today and one base unit low stock defaults", () => {
+it("defaults only the period without inventing minimum stock", () => {
   expect(ReportQuerySchema.parse({})).toEqual({
     period: "today",
-    lowStockMilliUnits: "1000",
   });
 });
 it("requires custom endpoints and rejects ignored dates on presets", () => {
@@ -30,7 +29,7 @@ it("denies arbitrary keys tenant/user/role and invalid references", () => {
   ])
     expect(ReportQuerySchema.safeParse(input).success).toBe(false);
 });
-it("never coerces numeric stock threshold or unknown payment method", () => {
+it("rejects obsolete global thresholds and unknown payment methods", () => {
   for (const input of [
     { lowStockMilliUnits: 1000 },
     { lowStockMilliUnits: "1000.0" },

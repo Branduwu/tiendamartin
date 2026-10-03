@@ -31,6 +31,9 @@ export const InventoryCountSchema = z.strictObject({
 export const InventoryStockSchema = StockBalanceSchema.extend({
   productName: ProductNameSchema,
   sku: SkuSchema,
+  minimumStock: QuantitySchema.optional(),
+  inventoryState: z.enum(["normal", "low", "out", "unconfigured"]).optional(),
+  suggestedQuantity: QuantitySchema.optional(),
   locationName: InventoryLocationNameSchema,
   locationCode: InventoryLocationCodeSchema,
 });

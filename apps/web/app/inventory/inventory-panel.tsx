@@ -10,6 +10,8 @@ import type {
 import { browserAuth } from "../../lib/supabase/client";
 import { milliUnitsToDecimal } from "../../lib/quantity-input";
 import InventoryForm, { type Command, type Action } from "./inventory-form";
+import InventoryMinimumForm from "../components/inventory-minimum-form";
+import InventoryStateBadge from "../components/inventory-state-badge";
 
 type Tenant = { tenantId: string; permissions: string[] };
 class ApiFailure extends Error {
@@ -36,13 +38,18 @@ export default function InventoryPanel() {
     row?: InventoryStockDto;
   }>();
   const [pending, setPending] = useState<Command>();
+  const [minimumEditor, setMinimumEditor] = useState<InventoryStockDto>();
   const [reload, setReload] = useState(0);
   const [accessReload, setAccessReload] = useState(0);
   const [loadFailed, setLoadFailed] = useState<"access" | "stock">();
   const permissions =
     tenants.find((tenant) => tenant.tenantId === tenantId)?.permissions ?? [];
   const blocked =
-    loading || saving || editor !== undefined || loadFailed !== undefined;
+    loading ||
+    saving ||
+    editor !== undefined ||
+    minimumEditor !== undefined ||
+    loadFailed !== undefined;
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(path, { ...init, cache: "no-store" });
     if (response.status === 401) {
@@ -176,6 +183,46 @@ export default function InventoryPanel() {
     setError("");
     setNotice("");
   };
+  async function saveMinimum(
+    minimumStock: InventoryStockDto["minimumStock"] | null,
+  ) {
+    if (
+      !minimumEditor ||
+      saving ||
+      !permissions.includes("inventory.minimum.write")
+    )
+      return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      await api("/api/v1/inventory/minimums", {
+        method: "PATCH",
+        headers: {
+          "x-tenant-id": tenantId,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          productId: minimumEditor.productId,
+          locationId: minimumEditor.locationId,
+          minimumStock,
+        }),
+      });
+      setMinimumEditor(undefined);
+      setNotice(minimumStock ? "Mínimo guardado." : "Mínimo eliminado.");
+      setStock([]);
+      setLoading(true);
+      setReload((value) => value + 1);
+    } catch (failure) {
+      setError(
+        failure instanceof ApiFailure
+          ? failure.message
+          : "No pudimos confirmar el mínimo. Reintenta guardar la misma configuración.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
     <>
       <header className="topbar">
@@ -271,6 +318,15 @@ export default function InventoryPanel() {
             onCancel={() => setEditor(undefined)}
           />
         )}
+        {minimumEditor && (
+          <InventoryMinimumForm
+            key={`${minimumEditor.productId}/${minimumEditor.locationId}`}
+            row={minimumEditor}
+            busy={saving}
+            onSave={saveMinimum}
+            onCancel={() => setMinimumEditor(undefined)}
+          />
+        )}
         {loading ? (
           <p role="status" className="card">
             Cargando inventario…
@@ -299,6 +355,13 @@ export default function InventoryPanel() {
           <section className="card" aria-label="Existencias">
             <div className="list-heading">
               <h2>Existencias por ubicación</h2>
+              {!blocked && (
+                <Link
+                  href={`/inventory/alerts?${new URLSearchParams({ tenantId, ...(locationId ? { locationId } : {}) })}`}
+                >
+                  Ver alertas
+                </Link>
+              )}
               <button
                 className="secondary"
                 disabled={blocked}
@@ -350,9 +413,8 @@ export default function InventoryPanel() {
                         <tr>
                           {[
                             "Producto",
-                            "SKU",
-                            "Unidad",
                             "Cantidad",
+                            "Mínimo / estado",
                             "Acciones",
                           ].map((label) => (
                             <th scope="col" key={label}>
@@ -369,6 +431,7 @@ export default function InventoryPanel() {
                               <th scope="row">
                                 {row.productName}
                                 <small className="row-location">
+                                  SKU: {row.sku} ·{" "}
                                   {
                                     locations.find(
                                       (l) => l.id === row.locationId,
@@ -376,16 +439,41 @@ export default function InventoryPanel() {
                                   }
                                 </small>
                               </th>
-                              <td data-label="SKU">{row.sku}</td>
-                              <td data-label="Unidad">{row.quantity.unit}</td>
                               <td
                                 className="amount stock-quantity"
                                 data-label="Cantidad"
                               >
-                                {milliUnitsToDecimal(row.quantity.milliUnits)}
+                                {milliUnitsToDecimal(row.quantity.milliUnits)}{" "}
+                                {row.quantity.unit}
+                              </td>
+                              <td data-label="Mínimo / estado">
+                                <InventoryStateBadge
+                                  state={row.inventoryState}
+                                />
+                                <small className="row-location">
+                                  {row.minimumStock
+                                    ? `Mínimo: ${milliUnitsToDecimal(row.minimumStock.milliUnits)} ${row.minimumStock.unit}`
+                                    : "Sin mínimo configurado"}
+                                </small>
                               </td>
                               <td data-label="Acciones" className="row-actions">
                                 <div className="actions">
+                                  {permissions.includes(
+                                    "inventory.minimum.write",
+                                  ) && (
+                                    <button
+                                      className="secondary"
+                                      disabled={blocked}
+                                      aria-label={`Configurar mínimo de ${row.productName}`}
+                                      onClick={() => {
+                                        setMinimumEditor(row);
+                                        setError("");
+                                        setNotice("");
+                                      }}
+                                    >
+                                      Configurar mínimo
+                                    </button>
+                                  )}
                                   {(
                                     [
                                       [

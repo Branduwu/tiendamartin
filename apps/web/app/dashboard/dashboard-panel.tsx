@@ -61,7 +61,7 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
 }
 export default function DashboardPanel() {
   const company = usePurchasingCompany("reports.read");
-  const [query, setQuery] = useState("period=today&lowStockMilliUnits=1000"),
+  const [query, setQuery] = useState("period=today"),
     [loaded, setLoaded] = useState<{ key: string; value: OperationalReport }>(),
     [options, setOptions] = useState<{
       tenant: string;
@@ -203,7 +203,7 @@ export default function DashboardPanel() {
               disabled={exporting}
               onChange={(e) => {
                 company.setTenantId(e.target.value);
-                setQuery("period=today&lowStockMilliUnits=1000");
+                setQuery("period=today");
                 setError("");
               }}
             >
@@ -291,21 +291,10 @@ export default function DashboardPanel() {
                         <option value="card">Tarjeta</option>
                       </select>
                     </label>
-                    <label>
-                      Umbral stock bajo (milésimas)
-                      <input
-                        name="lowStockMilliUnits"
-                        inputMode="numeric"
-                        pattern="0|[1-9][0-9]{0,17}"
-                        maxLength={18}
-                        defaultValue="1000"
-                        required
-                      />
-                    </label>
                   </div>
                   <p className="muted">
-                    1000 milésimas = 1 unidad base del producto. Stock bajo:
-                    mayor que cero y hasta el umbral. Selectores: primeras 100
+                    Mínimos configurados por producto y ubicación. Sin mínimo no
+                    se genera alerta automática. Selectores: primeras 100
                     referencias.
                   </p>
                 </details>
@@ -461,19 +450,28 @@ export default function DashboardPanel() {
                   <section className="card" aria-labelledby="stock-title">
                     <h2 id="stock-title">Alertas de inventario actual</h2>
                     <p className="muted">
-                      Productos activos. Primeras 100 alertas; los contadores
-                      incluyen todas. No dependen del periodo de ventas.
+                      Productos y ubicaciones activos con mínimo configurado.
+                      Primeras 100 alertas por ubicación; los contadores
+                      incluyen productos distintos en cada estado. No dependen
+                      del periodo de ventas.
                     </p>
+                    <Link
+                      href={`/inventory/alerts?tenantId=${company.tenantId}`}
+                      className="button secondary"
+                    >
+                      Ver alertas y reabastecimiento
+                    </Link>
                     {!report.inventory.alerts.length ? (
                       <p>No hay productos agotados ni con stock bajo.</p>
                     ) : (
                       <ul className="report-alerts">
                         {report.inventory.alerts.map((p) => (
-                          <li key={p.id}>
+                          <li key={p.id + p.locationId}>
                             <strong>{p.name}</strong>
                             <span>
-                              {p.stock === "0" ? "Agotado" : "Stock bajo"} ·{" "}
-                              {units(p.stock)} {p.unit}
+                              {p.state === "out" ? "Agotado" : "Stock bajo"} ·{" "}
+                              {units(p.stock)} {p.unit} · {p.locationName} ·
+                              Mínimo {units(p.minimum)}
                             </span>
                           </li>
                         ))}

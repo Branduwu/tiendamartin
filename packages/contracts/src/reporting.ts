@@ -11,10 +11,6 @@ export const ReportQuerySchema = z
     supplierId: UuidSchema.optional(),
     customerId: UuidSchema.optional(),
     paymentMethod: z.enum(["cash", "card"]).optional(),
-    lowStockMilliUnits: z
-      .string()
-      .regex(/^(0|[1-9]\d{0,17})$/)
-      .default("1000"),
   })
   .refine((v) =>
     v.period === "custom"

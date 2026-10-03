@@ -1,7 +1,9 @@
 import "server-only";
+import type { InventoryMinimumRepository } from "@smartretail/application";
 import {
   Pool,
   PostgresInventory,
+  PostgresInventoryMinimum,
   PostgresPurchasing,
   PostgresSales,
   PostgresCustomers,
@@ -33,6 +35,16 @@ export const tenantsForUser = (userId: string) =>
 export const productsForUser = (userId: string, tenantId: string) =>
   new PostgresInventory(databasePool(), { userId, tenantId });
 export const inventoryForUser = productsForUser;
+export const inventoryMinimumForUser = (
+  userId: string,
+  tenantId: string,
+  correlationId?: string,
+): InventoryMinimumRepository =>
+  new PostgresInventoryMinimum(
+    databasePool(),
+    { userId, tenantId },
+    correlationId,
+  );
 export const salesForUser = (userId: string, tenantId: string) =>
   new PostgresSales(databasePool(), { userId, tenantId });
 

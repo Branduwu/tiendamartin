@@ -1,3 +1,4 @@
+import type { InventoryAlert } from "./inventory-minimum";
 import { productId } from "@smartretail/domain";
 /** Reporting queries are read-only projections, outside the commercial domain. */
 export type ReportFilters = Readonly<{
@@ -8,7 +9,6 @@ export type ReportFilters = Readonly<{
   supplierId?: string;
   customerId?: string;
   paymentMethod?: "cash" | "card";
-  lowStockMilliUnits: string;
 }>;
 export type SalesMetrics = Readonly<{
   gross: string;
@@ -40,12 +40,7 @@ export type OperationalReport = Readonly<{
   inventory: {
     low: string;
     empty: string;
-    alerts: readonly {
-      id: string;
-      name: string;
-      unit: string;
-      stock: string;
-    }[];
+    alerts: readonly InventoryAlert[];
   };
   purchases: {
     created: string;
@@ -103,11 +98,6 @@ export function reportFilters(input: ReportFilters): ReportFilters {
     end = day(input.to);
   if (end < start || end - start > 365 * 86400000)
     throw new RangeError("Report range must contain 1 to 366 days");
-  if (
-    typeof input.lowStockMilliUnits !== "string" ||
-    !/^(0|[1-9]\d{0,17})$/.test(input.lowStockMilliUnits)
-  )
-    throw new TypeError("Invalid stock threshold");
   for (const id of [
     input.locationId,
     input.productId,

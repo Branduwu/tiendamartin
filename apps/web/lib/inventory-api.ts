@@ -92,6 +92,23 @@ export async function handleInventory(
           ...balanceDto(row.balance),
           productName: row.productName,
           sku: row.sku,
+          inventoryState: row.inventoryState,
+          ...(row.minimumStock
+            ? {
+                minimumStock: {
+                  unit: row.minimumStock.unit,
+                  milliUnits: row.minimumStock.milliUnits.toString(),
+                },
+              }
+            : {}),
+          ...(row.suggestedQuantity
+            ? {
+                suggestedQuantity: {
+                  unit: row.suggestedQuantity.unit,
+                  milliUnits: row.suggestedQuantity.milliUnits.toString(),
+                },
+              }
+            : {}),
           locationName: row.locationName,
           locationCode: row.locationCode,
         })),

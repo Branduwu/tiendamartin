@@ -17,3 +17,5 @@ export { PostgresPurchasing } from "./purchasing";
 export * from "./customers";
 
 export { PostgresReporting } from "./reporting";
+
+export { PostgresInventoryMinimum } from "./inventory-minimum";

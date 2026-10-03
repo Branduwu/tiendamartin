@@ -35,7 +35,6 @@ export async function handleReports(
       ...(period === "custom" && from && to
         ? { from, to }
         : reportPeriod(period === "custom" ? "today" : period)),
-      lowStockMilliUnits: rest.lowStockMilliUnits,
       ...(rest.locationId ? { locationId: rest.locationId } : {}),
       ...(rest.productId ? { productId: rest.productId } : {}),
       ...(rest.supplierId ? { supplierId: rest.supplierId } : {}),

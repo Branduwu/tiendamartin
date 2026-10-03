@@ -14,6 +14,12 @@ import {
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { formatDateTime } from "../components/presentation";
 import {
+  replenishmentPath,
+  trustedPurchasePrefill,
+  type PurchasePrefill,
+  type ReplenishmentRequest,
+} from "../components/purchase-prefill";
+import {
   purchasingApi,
   PurchasingApiError,
   usePurchasingCompany,
@@ -44,10 +50,12 @@ export default function PurchasesPanel({
   userId,
   initialPurchaseId,
   initialTenantId,
+  replenishment,
 }: {
   userId: string;
   initialPurchaseId?: string;
-  initialTenantId?: string;
+  initialTenantId?: string | undefined;
+  replenishment?: ReplenishmentRequest | undefined;
 }) {
   const router = useRouter(),
     company = usePurchasingCompany("purchases.read", initialTenantId);
@@ -70,6 +78,9 @@ export default function PurchasesPanel({
     [rejected, setRejected] = useState(false),
     [quantities, setQuantities] = useState<Record<string, string>>({});
   const sending = useRef(false);
+  const consumedPrefill = useRef("");
+  const [prefill, setPrefill] = useState<PurchasePrefill>();
+  const [prefillError, setPrefillError] = useState("");
   const canWrite = company.permissions.includes("purchases.write"),
     canReceive = company.permissions.includes("purchases.receive");
   useEffect(() => {
@@ -107,11 +118,16 @@ export default function PurchasesPanel({
   const targetId =
     initialPurchaseId ??
     (pending?.tenantId === company.tenantId ? pending.purchaseId : undefined);
-  const loadKey = `${company.tenantId}:${targetId ?? ""}:${reload}`;
+  const requestedPrefillKey = replenishment
+    ? `${replenishment.tenantId}:${replenishment.productId}:${replenishment.locationId}`
+    : "";
+  const loadKey = `${company.tenantId}:${targetId ?? ""}:${reload}:${requestedPrefillKey}`;
   const loading = !!company.tenantId && loadedKey !== loadKey;
   useEffect(() => {
     if (!company.tenantId) return;
     const c = new AbortController();
+    const requestPrefill =
+      !!replenishment && consumedPrefill.current !== requestedPrefillKey;
     Promise.all([
       purchasingApi<{ purchases: PurchaseOrderDto[] }>(
         "/api/v1/purchases",
@@ -140,8 +156,31 @@ export default function PurchasesPanel({
             { signal: c.signal },
           )
         : Promise.resolve(null),
+      requestPrefill && replenishment
+        ? purchasingApi<unknown>(
+            replenishmentPath(replenishment),
+            replenishment.tenantId,
+            { signal: c.signal },
+          )
+            .then((value) => ({ value, error: "" }))
+            .catch((e) => {
+              if (
+                !c.signal.aborted &&
+                e instanceof PurchasingApiError &&
+                e.status === 401
+              )
+                router.replace("/login");
+              return {
+                value: undefined,
+                error:
+                  e instanceof Error
+                    ? e.message
+                    : "No pudimos consultar la sugerencia.",
+              };
+            })
+        : Promise.resolve(null),
     ])
-      .then(([p, s, pr, l, d]) => {
+      .then(([p, s, pr, l, d, suggestion]) => {
         if (c.signal.aborted) return;
         setOrders(p.purchases);
         setSuppliers(s.suppliers);
@@ -150,6 +189,34 @@ export default function PurchasesPanel({
         setDetail(d?.purchase ?? null);
         setLoadedKey(loadKey);
         setEditor(undefined);
+        setPrefill(undefined);
+        if (suggestion && replenishment) {
+          consumedPrefill.current = requestedPrefillKey;
+          try {
+            if (suggestion.error) throw new Error(suggestion.error);
+            if (company.tenantId !== replenishment.tenantId || !canWrite)
+              throw new Error(
+                "No tienes permiso para preparar esta compra en la empresa solicitada.",
+              );
+            const value = trustedPurchasePrefill(
+              suggestion.value,
+              replenishment,
+              pr.products,
+              l.locations,
+            );
+            if (sessionStorage.getItem(pendingKey))
+              throw new Error(
+                "Confirma primero la recepción pendiente antes de preparar el reabastecimiento.",
+              );
+            setPrefill(value);
+            setPrefillError("");
+            setEditor(null);
+          } catch (e) {
+            setPrefillError(
+              e instanceof Error ? e.message : "Sugerencia de compra inválida.",
+            );
+          }
+        }
       })
       .catch((e) => {
         if (c.signal.aborted) return;
@@ -165,7 +232,17 @@ export default function PurchasesPanel({
           router.replace("/login");
       });
     return () => c.abort();
-  }, [company.tenantId, targetId, reload, router, loadKey]);
+  }, [
+    company.tenantId,
+    targetId,
+    reload,
+    router,
+    loadKey,
+    replenishment,
+    requestedPrefillKey,
+    canWrite,
+    pendingKey,
+  ]);
   function fail(e: unknown) {
     setError(
       e instanceof Error && e.name === "ZodError"
@@ -366,6 +443,7 @@ export default function PurchasesPanel({
               <button
                 disabled={!canWrite || saving || loading || !!pending}
                 onClick={() => {
+                  setPrefill(undefined);
                   setEditor(null);
                   setError("");
                 }}
@@ -383,6 +461,9 @@ export default function PurchasesPanel({
               disabled={saving || !!pending}
               onChange={(e) => {
                 company.setTenantId(e.target.value);
+                setEditor(undefined);
+                setPrefill(undefined);
+                setPrefillError("");
                 setQuantities({});
                 setDetail(null);
               }}
@@ -406,6 +487,24 @@ export default function PurchasesPanel({
           <p role="status" className="notice">
             {notice}
           </p>
+        )}
+        {prefillError && (
+          <div>
+            <p role="alert" className="error">
+              {prefillError}
+            </p>
+            <button
+              className="secondary"
+              disabled={saving || loading || !!pending}
+              onClick={() => {
+                consumedPrefill.current = "";
+                setPrefillError("");
+                setReload((n) => n + 1);
+              }}
+            >
+              Reintentar sugerencia
+            </button>
+          </div>
         )}
         {pending && (
           <section className="warning" role="status">
@@ -442,9 +541,16 @@ export default function PurchasesPanel({
         {editor !== undefined && !loading && (
           <section className="card">
             <h2>{editor ? "Editar borrador" : "Nueva orden"}</h2>
+            {prefill && (
+              <p className="notice">
+                Cantidad sugerida consultada en inventario. Selecciona un
+                proveedor y revisa el borrador antes de guardarlo.
+              </p>
+            )}
             <DraftForm
-              key={editor?.id ?? "new"}
+              key={editor?.id ?? `new:${requestedPrefillKey}`}
               current={editor}
+              prefill={prefill}
               suppliers={suppliers}
               locations={locations}
               products={products}
@@ -739,6 +845,7 @@ type DraftLine = {
 };
 function DraftForm({
   current,
+  prefill,
   suppliers,
   locations,
   products,
@@ -747,6 +854,7 @@ function DraftForm({
   onCancel,
 }: {
   current: PurchaseOrderDto | null;
+  prefill?: PurchasePrefill | undefined;
   suppliers: SupplierDto[];
   locations: InventoryLocationDto[];
   products: ProductDto[];
@@ -760,11 +868,13 @@ function DraftForm({
   const [id] = useState(() => current?.id ?? crypto.randomUUID()),
     [supplierId, setSupplierId] = useState(
       current?.supplierId ??
-        suppliers.find((s) => s.status === "active")?.id ??
-        "",
+        (prefill
+          ? ""
+          : (suppliers.find((s) => s.status === "active")?.id ?? "")),
     ),
     [locationId, setLocationId] = useState(
       current?.locationId ??
+        prefill?.locationId ??
         locations.find((l) => l.status === "active")?.id ??
         "",
     ),
@@ -786,7 +896,19 @@ function DraftForm({
           amount: milliUnitsToDecimal(l.quantityOrdered.milliUnits),
           cost: minorUnitsToDecimal(l.unitCost.minorUnits),
         }))
-      : [fresh()],
+      : prefill
+        ? [
+            {
+              key: crypto.randomUUID(),
+              productId: prefill.productId,
+              amount: prefill.amount,
+              cost: minorUnitsToDecimal(
+                products.find((p) => p.id === prefill.productId)!.purchaseCost
+                  .minorUnits,
+              ),
+            },
+          ]
+        : [fresh()],
   );
   function change(key: string, fields: Partial<DraftLine>) {
     setLines((old) =>

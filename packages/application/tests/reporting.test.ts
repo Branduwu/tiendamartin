@@ -3,7 +3,6 @@ import { mexicoDate, reportFilters, reportPeriod } from "../src/reporting";
 const valid = {
   from: "2026-10-01",
   to: "2026-10-03",
-  lowStockMilliUnits: "1000",
 };
 it("resolves today at Mexico midnight instead of UTC date", () => {
   expect(mexicoDate(new Date("2026-10-03T05:59:59Z"))).toBe("2026-10-02");
@@ -43,14 +42,8 @@ it("rejects impossible reversed oversized and unbounded dates", () => {
       reportFilters({ ...valid, from: from ?? "", to: to ?? "" }),
     ).toThrow();
 });
-it("threshold is canonical bounded integer without money/quantity coercion", () => {
-  for (const value of ["-1", "01", "1.5", "1e3", " 1", "9".repeat(19)])
-    expect(() =>
-      reportFilters({ ...valid, lowStockMilliUnits: value }),
-    ).toThrow();
-  expect(
-    reportFilters({ ...valid, lowStockMilliUnits: "0" }).lowStockMilliUnits,
-  ).toBe("0");
+it("does not invent a global stock minimum in report filters", () => {
+  expect(reportFilters(valid)).toEqual(valid);
 });
 it("validates primitive references and payment filters for non HTTP callers", () => {
   expect(() => reportFilters({ ...valid, productId: "bad" })).toThrow();
