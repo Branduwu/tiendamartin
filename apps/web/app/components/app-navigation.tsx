@@ -1,5 +1,6 @@
 import Link from "next/link";
 const pages = [
+  ["/dashboard", "Dashboard"],
   ["/products", "Productos"],
   ["/inventory", "Inventario"],
   ["/pos", "Punto de venta"],
@@ -27,6 +28,7 @@ export default function AppNavigation({
           "/suppliers",
           "/purchases",
           "/customers",
+          "/dashboard",
         ].includes(href) ? (
           <span
             key={href}

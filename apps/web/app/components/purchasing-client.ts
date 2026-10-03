@@ -55,7 +55,8 @@ export type PurchasingTenant = {
   permissions: readonly string[];
 };
 export function usePurchasingCompany(
-  permission: "suppliers.read" | "purchases.read" | "customers.read",
+  permission:
+    "suppliers.read" | "purchases.read" | "customers.read" | "reports.read",
   preferred?: string,
 ) {
   const [tenants, setTenants] = useState<PurchasingTenant[]>([]),

@@ -44,6 +44,8 @@ import {
   ProductNotFoundError,
   CustomerNotFoundError,
   CustomerUnavailableError,
+  reportPeriod,
+  type ReportFilters,
   CashStateConflictError,
   openCashRegisterShift,
   recordCashMovement,
@@ -55,6 +57,7 @@ import {
   PostgresInventory,
   PostgresPurchasing,
   PostgresCustomers,
+  PostgresReporting,
   PostgresSales,
   PostgresSuspendedSales,
   PostgresCash,
@@ -339,6 +342,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       await admin.query(
         await readFile(
           new URL("../migrations/013_customers.sql", import.meta.url),
+          "utf8",
+        ),
+      );
+    if (
+      !(
+        await admin.query(
+          "SELECT 1 FROM retail.role_permissions WHERE permission='reports.read' LIMIT 1",
+        )
+      ).rowCount
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/014_reporting.sql", import.meta.url),
           "utf8",
         ),
       );
@@ -3849,6 +3865,426 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           ),
         ),
       ).rejects.toMatchObject({ code: "42501" });
+    });
+  });
+  describe("TASK022 operational reporting", () => {
+    const filters = (extra: Partial<ReportFilters> = {}): ReportFilters => ({
+      ...reportPeriod("30d"),
+      lowStockMilliUnits: "1000",
+      ...extra,
+    });
+    const repo = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresReporting(apiPool, { userId, tenantId });
+    const query = (extra: Partial<ReportFilters> = {}) =>
+      repo().operationalReport(filters(extra));
+    async function sell(
+      method: "cash" | "card" | "mixed" = "cash",
+      customerId?: string,
+      price = 2000n,
+    ) {
+      const item =
+        price === 2000n
+          ? fixtureProduct()
+          : createProduct({
+              ...fixtureProduct(),
+              id: productId(randomUUID()),
+              sku: sku(("BIG-" + randomUUID()).toUpperCase()),
+              barcode: barcode(randomUUID()),
+              salePrice: money(price),
+            });
+      if (price !== 2000n) {
+        await db.createProduct(item);
+        await receiveInventory(db, { ...receipt(), productId: item.id });
+      }
+      const draft = addSaleProduct(
+        createSaleDraft(randomUUID(), customerId),
+        item,
+        quantity("piece", 1000n),
+      );
+      const payments =
+        method === "mixed"
+          ? [
+              { method: "cash" as const, amount: money(price / 2n) },
+              { method: "card" as const, amount: money(price - price / 2n) },
+            ]
+          : [{ method, amount: money(price) }];
+      const value = await completeSaleTransaction(
+        new PostgresSales(apiPool, { userId: ownerUser, tenantId: tenantA }),
+        {
+          shiftId,
+          locationId: source,
+          draft,
+          payments,
+          movements: [{ productId: item.id, movementId: randomUUID() }],
+        },
+      );
+      return value.recorded;
+    }
+    async function returned(saleId: string) {
+      return new PostgresSaleReturns(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).returnSale(saleId, {
+        id: randomUUID(),
+        shiftId,
+        cashMovementId: randomUUID(),
+        lines: [
+          {
+            saleLineId: product,
+            productId: product,
+            quantity: quantity("piece", 1000n),
+            movementId: randomUUID(),
+          },
+        ],
+        refunds: [{ method: "cash", amount: money(2000n) }],
+      });
+    }
+    it("empty history yields exact zero summaries and bounded daily rows", async () => {
+      const r = await query();
+      expect(r.sales).toMatchObject({
+        gross: "0",
+        count: "0",
+        average: "0",
+        net: "0",
+      });
+      expect(r.days).toHaveLength(30);
+      expect(r.products).toEqual([]);
+      expect(r.purchases.receivedAmount).toBe("0");
+    });
+    it("totals and mean retain monetary integers above JS safe range", async () => {
+      await sell("card", undefined, 9007199254740993n);
+      await sell("card", undefined, 9007199254740994n);
+      const r = await query();
+      expect(r.sales).toMatchObject({
+        gross: "18014398509481987",
+        average: "9007199254740994",
+        count: "2",
+        card: "18014398509481987",
+        cash: "0",
+      });
+    });
+    it("mixed payments do not multiply sales totals or quantities", async () => {
+      await sell("mixed");
+      const r = await query();
+      expect(r.sales).toMatchObject({
+        gross: "2000",
+        count: "1",
+        cash: "1000",
+        card: "1000",
+      });
+      expect(r.products[0]).toMatchObject({
+        quantity: "1000",
+        revenue: "2000",
+        stock: "9000",
+      });
+    });
+    it("completed returns reduce net by return date and preserve gross", async () => {
+      const s = await sell();
+      await returned(s.sale.id);
+      const r = await query();
+      expect(r.sales).toMatchObject({
+        gross: "2000",
+        refunds: "2000",
+        net: "0",
+        count: "1",
+      });
+      expect(r.cash).toMatchObject({ expected: "0", cashOut: "2000" });
+      expect(r.products[0]?.stock).toBe("10000");
+    });
+    it("Mexico presets and daily groupings remain independent of session timezone", async () => {
+      await sell();
+      const c = await apiPool.connect();
+      await c.query("SET TIME ZONE 'Pacific/Auckland'");
+      c.release();
+      const first = await query();
+      const d = await apiPool.connect();
+      await d.query("SET TIME ZONE 'UTC'");
+      d.release();
+      const second = await query();
+      expect(first.sales).toEqual(second.sales);
+      expect(first.todaySales).toEqual(second.todaySales);
+      expect(second.days.find((x) => x.count === "1")?.date).toBe(second.today);
+      const boundary = await admin.query(
+        "SELECT '2026-10-03'::date::timestamp AT TIME ZONE 'America/Mexico_City' AS start, '2026-10-04'::date::timestamp AT TIME ZONE 'America/Mexico_City' AS finish",
+      );
+      expect(boundary.rows[0].start.toISOString()).toBe(
+        "2026-10-03T06:00:00.000Z",
+      );
+      expect(boundary.rows[0].finish.toISOString()).toBe(
+        "2026-10-04T06:00:00.000Z",
+      );
+    });
+
+    it("return from an earlier sale produces exact negative net in current period", async () => {
+      // Control only the default for new fixtures in this disposable database.
+      // Existing ledger rows are never updated and the schema default is restored.
+      let sold;
+      await admin.query(
+        "ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT (clock_timestamp()-interval '2 days')",
+      );
+      try {
+        sold = await sell();
+      } finally {
+        await admin.query(
+          "ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT clock_timestamp()",
+        );
+      }
+      await returned(sold.sale.id);
+      const r = await query({ ...reportPeriod("today") });
+      expect(r.sales).toMatchObject({
+        gross: "0",
+        refunds: "2000",
+        net: "-2000",
+        count: "0",
+        average: "0",
+      });
+    });
+    it("actual report includes midnight start and excludes next midnight exactly", async () => {
+      for (const timestamp of [
+        "2026-10-03T05:59:59Z",
+        "2026-10-03T06:00:00Z",
+        "2026-10-04T05:59:59Z",
+        "2026-10-04T06:00:00Z",
+      ]) {
+        // Fixed internal timestamp literals, not request values.
+        await admin.query(
+          `ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT '${timestamp}'::timestamptz`,
+        );
+        try {
+          await sell("card");
+        } finally {
+          await admin.query(
+            "ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT clock_timestamp()",
+          );
+        }
+      }
+      const r = await query({ from: "2026-10-03", to: "2026-10-03" });
+      expect(r.sales).toMatchObject({
+        gross: "4000",
+        count: "2",
+        card: "4000",
+      });
+      expect(r.days[0]?.date).toBe("2026-10-03");
+    });
+    it("date range excludes history without excluding current inventory", async () => {
+      await sell();
+      const r = await query({ from: "2020-01-01", to: "2020-01-01" });
+      expect(r.sales.gross).toBe("0");
+      expect(r.todaySales.gross).toBe("2000");
+      expect(r.products).toEqual([]);
+      expect(r.inventory.empty).toBe("0");
+    });
+    it("location isolates sales and reports absent balances as zero stock", async () => {
+      await sell();
+      const r = await query({ locationId: destination });
+      expect(r.sales.count).toBe("0");
+      expect(r.inventory.empty).toBe("1");
+      expect(r.inventory.alerts[0]?.stock).toBe("0");
+    });
+    it("product and payment select whole matching transactions explicitly", async () => {
+      await sell("mixed");
+      await sell("card");
+      const cash = await query({ productId: product, paymentMethod: "cash" });
+      expect(cash.sales).toMatchObject({
+        gross: "2000",
+        count: "1",
+        cash: "1000",
+        card: "1000",
+      });
+      expect(cash.products[0]?.quantity).toBe("1000");
+    });
+    it("inactive historical customer groups correctly versus public general", async () => {
+      const customers = new PostgresCustomers(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const c = await customers.createCustomer(randomUUID(), {
+        name: "Customer",
+        status: "active",
+      });
+      await sell("cash", c.id);
+      await sell("card");
+      await customers.updateCustomer(c.id, { status: "inactive" });
+      expect((await query()).sales).toMatchObject({
+        customers: "1",
+        associated: "1",
+        general: "1",
+      });
+      expect((await query({ customerId: c.id })).sales).toMatchObject({
+        gross: "2000",
+        associated: "1",
+        general: "0",
+      });
+    });
+    it("stock low threshold is explicit and separate from exhausted", async () => {
+      const r = await query({ lowStockMilliUnits: "10000" });
+      expect(r.inventory).toMatchObject({ low: "1", empty: "0" });
+      expect((await query({ lowStockMilliUnits: "9999" })).inventory.low).toBe(
+        "0",
+      );
+      expect(
+        (await query({ lowStockMilliUnits: "0" })).inventory.alerts,
+      ).toEqual([]);
+    });
+    it("purchase statuses costs and receipts use supplier snapshot independently of sales", async () => {
+      const p = new PostgresPurchasing(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const supplier = await p.createSupplier(randomUUID(), {
+        name: "Supplier",
+        status: "active",
+      });
+      const draft = await p.createPurchase({
+        id: randomUUID(),
+        supplierId: supplier.id,
+        locationId: source,
+        lines: [
+          {
+            productId: product,
+            quantityOrdered: quantity("piece", 10000n),
+            unitCost: money(777n),
+          },
+        ],
+      });
+      await p.changePurchase(draft.id, "order");
+      await p.receivePurchaseOrder(draft.id, {
+        id: randomUUID(),
+        lines: [{ productId: product, quantity: quantity("piece", 4000n) }],
+      });
+      const r = await query({ supplierId: supplier.id });
+      expect(r.purchases).toMatchObject({
+        created: "1",
+        pending: "0",
+        partial: "1",
+        received: "0",
+        orderedAmount: "7770",
+        receivedAmount: "3108",
+      });
+      expect(r.sales.gross).toBe("0");
+    });
+    it("cash ledger and close snapshots reflect shortage without changing movements", async () => {
+      const cash = new PostgresCash(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      await cash.moveCash({
+        id: randomUUID(),
+        shiftId,
+        type: "cash_in",
+        amount: money(500n),
+        reason: "Float",
+      });
+      await cash.moveCash({
+        id: randomUUID(),
+        shiftId,
+        type: "cash_out",
+        amount: money(100n),
+        reason: "Expense",
+      });
+      await cash.closeShift(shiftId, money(350n));
+      const r = await query();
+      expect(r.cash).toMatchObject({
+        open: "0",
+        closed: "1",
+        expected: "400",
+        shortage: "50",
+        surplus: "0",
+        cashIn: "500",
+        cashOut: "100",
+      });
+      const rows = await admin.query(
+        "SELECT count(*)::text AS n FROM retail.cash_movements WHERE tenant_id=$1",
+        [tenantA],
+      );
+      expect(rows.rows[0]?.n).toBe("2");
+    });
+    it("owner admin allowed while clerk outsider and revoked owner denied", async () => {
+      expect(
+        (await repo(adminUser).operationalReport(filters())).sales.count,
+      ).toBe("0");
+      for (const user of [clerkUser, outsiderUser]) {
+        await expect(
+          repo(user).operationalReport(filters()),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+        await expect(repo(user).reportOptions()).rejects.toBeInstanceOf(
+          PermissionDeniedError,
+        );
+      }
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, ownerUser],
+      );
+      await expect(query()).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("RLS hides other tenant and all foreign filter references fail closed", async () => {
+      await sell();
+      expect(
+        (await repo(ownerUser, tenantB).operationalReport(filters())).sales
+          .gross,
+      ).toBe("0");
+      const customers = new PostgresCustomers(pool, {
+          userId: ownerUser,
+          tenantId: tenantB,
+        }),
+        suppliers = new PostgresPurchasing(pool, {
+          userId: ownerUser,
+          tenantId: tenantB,
+        });
+      const c = await customers.createCustomer(randomUUID(), {
+          name: "Foreign",
+          status: "active",
+        }),
+        v = await suppliers.createSupplier(randomUUID(), {
+          name: "Foreign",
+          status: "active",
+        });
+      for (const extra of [
+        { customerId: c.id },
+        { supplierId: v.id },
+        { productId: randomUUID() },
+        { locationId: randomUUID() },
+      ])
+        await expect(query(extra)).rejects.toBeInstanceOf(
+          PermissionDeniedError,
+        );
+    });
+    it("report permission independently denies even when all underlying reads remain", async () => {
+      await admin.query(
+        "DELETE FROM retail.role_permissions WHERE role='owner' AND permission='reports.read'",
+      );
+      try {
+        await expect(query()).rejects.toBeInstanceOf(PermissionDeniedError);
+      } finally {
+        await admin.query(
+          "INSERT INTO retail.role_permissions VALUES('owner','reports.read')",
+        );
+      }
+    });
+    it("selectors are bounded and read-only transaction uses repeatable snapshot", async () => {
+      const options = await repo().reportOptions();
+      expect(options.locations).toHaveLength(2);
+      expect(options.products).toHaveLength(1);
+      class Inspect extends PostgresReporting {
+        inspect() {
+          return this.transaction(
+            "reports.read",
+            async (c) =>
+              (
+                await c.query(
+                  "SELECT current_setting('transaction_read_only') AS ro,current_setting('transaction_isolation') AS isolation",
+                )
+              ).rows[0],
+            true,
+          );
+        }
+      }
+      expect(
+        await new Inspect(apiPool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        }).inspect(),
+      ).toMatchObject({ ro: "on", isolation: "repeatable read" });
     });
   });
 });

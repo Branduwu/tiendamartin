@@ -98,11 +98,14 @@ export class PostgresInventory
   protected async transaction<T>(
     permission: Permission,
     work: (client: PoolClient) => Promise<T>,
+    readOnly = false,
   ): Promise<T> {
     const client = await this.pool.connect();
     let broken = false;
     try {
-      await client.query("BEGIN");
+      await client.query(
+        readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN",
+      );
       await client.query("SET LOCAL statement_timeout='15s'");
       await assertApplicationRole(client);
       await client.query("SELECT set_config('app.tenant_id',$1,true)", [

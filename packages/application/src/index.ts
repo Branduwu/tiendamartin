@@ -60,3 +60,5 @@ export * from "./sale-return";
 
 export * from "./purchasing";
 export * from "./customers";
+
+export * from "./reporting";

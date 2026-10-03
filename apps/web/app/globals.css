@@ -893,3 +893,86 @@ textarea:disabled {
 .customer-results button {
   flex-shrink: 0;
 }
+
+.report-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+.report-kpis > div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  min-width: 0;
+}
+.report-kpis dt {
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.report-kpis dd {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.report-trend {
+  margin: 1rem 0;
+}
+.report-trend svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+}
+.report-trend .actions {
+  justify-content: space-between;
+}
+.trend-line {
+  stroke: var(--primary);
+  stroke-width: 3;
+}
+.trend-baseline {
+  stroke: var(--border);
+}
+.trend-dot {
+  fill: var(--primary);
+}
+.report-scroll {
+  max-height: 650px;
+  overflow: auto;
+}
+.report-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.report-alerts {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+}
+.report-alerts li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .report-sections {
+    grid-template-columns: 1fr;
+  }
+  .report-kpis {
+    grid-template-columns: 1fr;
+  }
+  .report-scroll {
+    max-height: none;
+    overflow: visible;
+  }
+}

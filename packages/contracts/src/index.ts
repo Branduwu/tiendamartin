@@ -77,3 +77,5 @@ export * from "./sale-return";
 
 export * from "./purchasing";
 export * from "./customer";
+
+export * from "./reporting";
