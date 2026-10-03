@@ -28,3 +28,11 @@ QA Sagan revisó imágenes y código en lectura; cuatro hallazgos intermedios de
 - **UX-P3:** el contrato actual sólo aporta identificadores de tenant/usuario; nombres comerciales y nombres del cajero requieren una futura tarea de datos, sin inventarlos aquí. Las referencias siguen consultables.
 - La suite privada por email/password conserva SKIP explícito sin `E2E_EMAIL` / `E2E_PASSWORD`; el smoke OTP no demuestra ese flujo de contraseña. Impresión CSS comprobada, impresión física no ejecutada.
 - No hay UX-P1/P2 abiertos en pantallas y estados revisados. No se realizaron fuzzing masivo ni mutaciones financieras para esta tarea visual.
+
+## Cierre productivo
+
+Commit `35f6f39` publicado en `main` sin force. Vercel existente: deployment `dpl_2sTLw8cQ4thhGkTGBLf5wBAUtjSf`, READY, build remoto PASS en https://smartretail-sepia.vercel.app.
+
+Smoke remoto DEVELOPER: 28 vistas PASS en los cuatro tamaños, Auth owner OTP/getClaims real, cero errores de render/hidratación, cero violaciones axe y sin overflow en vistas privadas. Comprobación focal POS/login tras finalizar las consultas: ocho vistas adicionales PASS; existencias visibles. Health200. Escrituras comerciales bloqueadas en el navegador del smoke; no se modificaron datos financieros, inventario ni fixtures.
+
+QA final independiente de los ocho baselines favorable: portal ausente y encabezados completos; SECURITY focal favorable con observación documental cerrada después de la revisión efectiva. No sustituye E2E de password ni impresión física.
