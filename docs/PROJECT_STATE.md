@@ -1,0 +1,737 @@
+# Estado de SmartRetail
+
+## Auditoría inicial — TASK-001 — 2026-09-22
+
+Ruta auditada: `C:\Users\jivas\Desktop\Tienda`. La carpeta estaba completamente vacía, incluidos elementos ocultos: enumeración con `Get-ChildItem -Force`, cero entradas. No había código funcional.
+
+| Área | Evidencia inicial |
+| --- | --- |
+| Git | `git rev-parse --show-toplevel` y `git status --short --branch` terminaron con código 128: no es un repositorio Git ni está dentro de uno. |
+| Archivos/carpetas | Cero entradas; `rg --files` no encontró archivos. |
+| Paquetes, dependencias y frameworks | No hay manifiestos, lockfiles, directorios de dependencias ni frameworks instalados en el proyecto. No se evaluaron instalaciones globales. |
+| Variables de entorno | No hay archivos de entorno ni código que declare nombres. No se imprimieron valores ni se inspeccionaron secretos del entorno del proceso. |
+| Pruebas y validadores | No hay suites, scripts ni configuración de validación del proyecto. |
+| Despliegue y documentación | No hay configuración de despliegue, CI ni documentación previa. No se inspeccionaron servicios externos. |
+| AGENTS.md | No existía en la raíz ni en los ancestros comprobados: `C:\`, `C:\Users`, `C:\Users\jivas`, `C:\Users\jivas\Desktop`. No hubo reglas locales que reemplazar ni conflictos que resolver. |
+
+## Confirmado y propuesto
+
+Confirmado por la solicitud: SmartRetail está orientado a inventario y punto de venta web/iOS/Android; seguridad, trazabilidad, integridad transaccional y separación empresarial son requisitos. TASK-001 autoriza solamente auditoría y los cinco documentos. No autoriza instalaciones, inicialización de frameworks, migraciones, tablas, credenciales, cambios externos, despliegues, commits o push.
+
+Tecnologías, estructura, estrategia de persistencia y servicios descritos en [ARCHITECTURE](ARCHITECTURE.md) son propuestas, no decisiones aprobadas. Los controles de [SECURITY](SECURITY.md) son requisitos por implementar y verificar. Se estableció [AGENTS.md](../AGENTS.md) como protocolo de tareas y responsabilidades.
+
+## Entregables y validación
+
+Únicos entregables: `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md`, `docs/PROJECT_STATE.md` y `docs/TASK_TEMPLATE.md`. No se creó código de producción ni infraestructura.
+
+Validaciones ejecutadas por DEVELOPER con PowerShell, Git y `rg` disponibles, sin instalaciones:
+
+- Comparación del inventario contra los cinco archivos permitidos: coincide exactamente; no hay código de producción ni archivos adicionales.
+- Lectura UTF-8, documentos no vacíos, bloques de código cerrados y destinos de enlaces locales existentes: todos pasan. Revisión documental de estructura y reglas: sin contradicciones detectadas.
+- Búsqueda limitada de patrones de claves privadas, JWT, tokens conocidos y asignaciones de credenciales en los cinco Markdown: sin coincidencias. No equivale a un escaneo exhaustivo; no se imprimieron valores secretos.
+- Git volvió a devolver código 128 en ambos comandos: continúa sin inicializar. No es posible obtener un diff de Git; la evidencia de alcance es el inventario inicial vacío y el final de cinco documentos.
+- No se ejecutaron pruebas funcionales, lint ni compilaciones: no existen suites, herramientas configuradas o aplicaciones. No se hicieron instalaciones, migraciones, cambios externos, despliegues, commits o push.
+
+Revisiones independientes realmente ejecutadas mediante subagentes en modo lectura:
+
+| Revisor | Alcance y resultado | Limitación |
+| --- | --- | --- |
+| QA (`qa_review`) | Leyó la solicitud y los cinco documentos; verificó 13 enlaces relativos, bloques Markdown, inventario y ausencia de Git. Sin hallazgos que requieran corrección. | Revisión documental; el inventario inicial se acredita con la evidencia DEVELOPER, no mediante observación retroactiva. |
+| SECURITY (`security_review`) | Leyó los cinco documentos y revisó autorización, aislamiento, RLS, sesiones, secretos, validaciones, transacciones, dependencias y límites de las afirmaciones. Sin hallazgos de seguridad dentro del alcance. | No hay código, dependencias o infraestructura cuya seguridad pueda comprobarse en ejecución. |
+
+Las revisiones iniciales señalaron únicamente que esta sección estaba pendiente de registrar sus resultados; se completó con la evidencia recibida. Estado de TASK-001: COMPLETADA como auditoría documental, sin acreditar funcionamiento del producto.
+
+## Riesgos y siguiente tarea propuesta al cierre de TASK-001
+
+No existe control de versiones ni una base ejecutable. No se pueden evaluar vulnerabilidades de dependencias, comportamiento comercial o infraestructura. Las decisiones pendientes se mantienen en ARCHITECTURE para evitar duplicarlas aquí. No hay bloqueo para completar la auditoría documental.
+
+TASK-002 propuesta (no iniciada): acordar una base técnica mínima mediante una decisión documentada sobre gestor de paquetes, versiones compatibles, límites API/base de datos y alcance multiempresa/offline. Definir archivos permitidos y criterios con [TASK_TEMPLATE](TASK_TEMPLATE.md). La inicialización del repositorio y frameworks requerirá una tarea posterior expresamente acotada; no forma parte de TASK-001.
+
+## TASK-002 — decisiones técnicas — 2026-09-22
+
+Estado actual sustituye la propuesta de siguiente tarea anterior. Se leyeron los cinco documentos y se verificó inventario incluyendo ocultos: exactamente los cinco archivos del cierre anterior, sin código, manifiestos, lockfiles ni Git. No se detectaron modificaciones ajenas al comparar el contenido con el cierre documentado de TASK-001; no existe historial Git que permita acreditar autoría. Se tomaron hashes antes de editar para comprobar que AGENTS.md y TASK_TEMPLATE.md permanezcan intactos.
+
+Herramientas consultadas sin instalación/actualización: `node --version` → 24.13.1; `npm.cmd --version` → 11.8.0; `git --version` → 2.51.0.windows.1. `npm --version` encontró un launcher PowerShell bloqueado por política; se usó el ejecutable CMD disponible sin modificarla. `Get-Command pnpm` no encontró pnpm en PATH. `git rev-parse --show-toplevel` sigue indicando ausencia de repositorio. No se imprimieron variables del entorno ni secretos.
+
+Se creó [TECH_DECISIONS](TECH_DECISIONS.md), fuente principal con matriz de versiones/fuentes oficiales consultadas el 2026-09-22, dependencias entre paquetes, comparación de dos estrategias PostgreSQL y selección concreta de SQL con rol restringido/contexto transaccional/RLS. Incluye diseño de prueba negativa, calidad/seguridad/CI, ambientes y valores de negocio propuestos. Se actualizaron ARCHITECTURE y SECURITY para alinearlos; AGENTS.md y TASK_TEMPLATE.md fuera del alcance de edición.
+
+Confirmado: alcance documental y requisitos de aislamiento, trazabilidad e integridad. Propuesto, no aprobado: stack, arquitectura SQL/RLS, herramientas y valores de negocio. Los pins pendientes y verificaciones de ejecución están identificados en TECH_DECISIONS; la estrategia de aislamiento está definida, pero no implementada ni probada. No existen servicios para inspeccionar o modificar.
+
+Validaciones realmente ejecutadas por DEVELOPER con PowerShell/Git disponibles:
+
+- Inventario final coincide exactamente con seis Markdown: un archivo creado y tres documentos modificados, sin otros archivos ni carpetas nuevas.
+- Hashes SHA-256 de AGENTS.md y TASK_TEMPLATE.md coinciden con los tomados al inicio: ambos intactos.
+- Se comprobaron contenido UTF-8, bloques Markdown cerrados y 17 enlaces locales: pasan. No se detectaron contradicciones materiales en la lectura final.
+- Búsqueda limitada de patrones de credenciales en los seis documentos: sin coincidencias; no equivale a escaneo exhaustivo ni auditoría de dependencias inexistentes.
+- Git continúa sin inicializar: `git rev-parse --show-toplevel` devuelve código 128. Sin diff disponible, el alcance se acredita por inventario y hashes de archivos protegidos.
+- Se consultaron fuentes oficiales por web para versiones, requisitos y mecanismos de seguridad; enlaces y fecha se registran en TECH_DECISIONS. No se ejecutaron pruebas de compatibilidad, RLS, builds, lint ni auditoría de paquetes: no existen código, base de datos o dependencias del proyecto.
+
+Revisiones separadas realmente ejecutadas, en modo lectura, sobre solicitud y documentos finales:
+
+| Revisor | Resultado y evidencia | Límites |
+| --- | --- | --- |
+| QA (`qa_task002`) | Sin hallazgos que requieran corrección. Contrastó independientemente fuentes oficiales de Next, Expo, pnpm, Zod, Vitest y Playwright; verificó cobertura, coherencia y 17 enlaces locales. | Versiones exactas/peers y compatibilidad ejecutada siguen pendientes; integridad de archivos protegidos acreditada por hashes DEVELOPER. |
+| SECURITY (`security_task002`) | Sin hallazgos que requieran corrección documental. Revisó identidad, contexto SQL, membresías, RLS, pooling, privilegios, credenciales, CI y ambientes; contrastó PostgreSQL SET/RLS y Supabase conexiones/getUser. | No comprobó controles en ejecución: no hay implementación, base de datos ni infraestructura. |
+
+Ambos revisores señalaron únicamente registrar sus resultados en esta sección antes del cierre; se incorporaron al recibirlos. No se instalaron herramientas, crearon aplicaciones/tablas/credenciales, ejecutaron migraciones, inicializaron Git, modificaron servicios externos ni realizaron despliegues, commits o push.
+
+Estado de TASK-002: **COMPLETADA en alcance documental**. Sin bloqueos para entregar una arquitectura aprobable. Persisten las aprobaciones de negocio/técnicas y comprobaciones previas a instalación/persistencia expresadas en TECH_DECISIONS; no se afirma compatibilidad global ni seguridad operativa demostradas.
+
+Siguiente tarea prevista: TASK-003, únicamente cuando se solicite con alcance y archivos permitidos. Requiere aprobar o ajustar las propuestas y resolver los pins/peers aplicables antes de instalar. No iniciada por TASK-002.
+
+## TASK-003 — Git y workspace raíz — 2026-09-22
+
+Estado inicial verificado: seis Markdown, sin Git/manifiestos/apps/dependencias. Se leyeron los seis documentos y no se detectaron cambios ajenos respecto al cierre anterior; se tomaron hashes de los cuatro documentos fuera del alcance para verificar conservación. Windows NT 10.0.26200.0, proceso win32 x64; Node 24.13.1, npm 11.8.0, Git 2.51.0.windows.1 y Corepack 0.34.6; pnpm no estaba en PATH. Consultas mediante ejecutables/CMD sin cambiar la política PowerShell.
+
+Creado: package.json, pnpm-workspace.yaml, pnpm-lock.yaml, .gitignore, .editorconfig y .gitattributes; operación autorizada adicional: .git en la raíz. Modificados únicamente TECH_DECISIONS y PROJECT_STATE. AGENTS, ARCHITECTURE, SECURITY y TASK_TEMPLATE se conservan. No se crearon carpetas futuras ni paquetes vacíos.
+
+pnpm **12.5.1** descargado como binario oficial Windows x64, SHA-512 contrastado con metadatos del registro y versión efectiva comprobada. Se conserva la candidata sin actualización automática. [TECH_DECISIONS §7](TECH_DECISIONS.md) registra configuración, fuentes, integridad y comandos de uso. La raíz es privada, sin scripts ni dependencias; engines y comprobaciones de peers son estrictos. Reconocimiento del workspace: solo `smartretail@0.0.0` en la raíz.
+
+Incidencias reales y resolución:
+
+- La consulta inicial al registro desde sandbox falló con «No es posible conectar con el servidor remoto»; la misma consulta con ejecución autorizada fuera del sandbox funcionó. No se alteró TLS ni seguridad de red.
+- La primera ejecución de pnpm en sandbox quedó sin salida y se interrumpió. El mismo binario verificado, fuera del sandbox, devolvió 12.5.1. No se probaron gestores/versiones alternativos ni se usó `--force`.
+- Git en sandbox advirtió que no podía leer el ignore global del usuario. Un intento de consulta con `core.excludesFile=NUL` fue rechazado por Git y no persistió configuración. Las comprobaciones finales se ejecutaron con la cuenta del usuario y sus controles normales.
+- `.git` inicialmente pertenecía a la cuenta de sandbox y Git del usuario devolvió «dubious ownership». Se corrigió solo el propietario de los 27 elementos recién creados de `.git` al usuario actual mediante `icacls /setowner /T`; no se agregaron excepciones safe.directory ni se modificó configuración global. Las consultas posteriores de Git pasaron.
+
+Efectos fuera de archivos versionables: `%TEMP%\smartretail-task003-pnpm-12.5.1` contiene tarball y distribución oficial extraída; `%LOCALAPPDATA%\pnpm\store\v11\index.db` fue observado tras instalación. node_modules dentro del proyecto contiene únicamente `.modules.yaml` y `.pnpm-workspace-state-v1.json`, ignorados. Los directorios pnpm-cache y pnpm-state del usuario ya existían; no se borraron ni reconfiguraron. Se observaron 15 archivos recientes bajo `%LOCALAPPDATA%\pnpm-cache\v11` (metadatos pnpm y 14 binarios opcionales), y ninguno reciente bajo pnpm-state. No se instaló el gestor globalmente ni se cambió PATH. La instalación temporal puede desaparecer si se limpia TEMP.
+
+Evidencia ejecutada:
+
+| Validación | Resultado |
+| --- | --- |
+| `git rev-parse --show-toplevel` | `C:/Users/jivas/Desktop/Tienda`. |
+| `git branch --show-current` | `main` (sin primer commit). |
+| `git status --short --untracked-files=all` | Solo 12 archivos fuente/documentación/configuración esperados, todos sin seguimiento. |
+| `git remote` / `git rev-list --all --count` | Sin remotos / 0 commits. |
+| pnpm `--version` | 12.5.1. |
+| package.json parseado y comprobado | JSON válido, private true, pin exacto, sin dependencies/devDependencies/optionalDependencies/scripts. |
+| pnpm `list --recursive --depth -1 --json` | Un proyecto raíz privado; ninguna aplicación. |
+| Lockfile generado por pnpm | Resolución del gestor y documento de importer raíz vacío; nunca editado manualmente. |
+| `install --frozen-lockfile --ignore-scripts --offline` | Éxito, hash del lockfile sin cambios. No scripts de terceros ni dependencias de aplicaciones. |
+| `git check-ignore --no-index` | Rutas de entornos, claves, artefactos y node_modules ignoradas; documentación/manifiestos/lockfile/ejemplos conservados. Sin crear archivos secretos de prueba. |
+
+Validación final: los hashes SHA-256 de AGENTS, ARCHITECTURE, SECURITY y TASK_TEMPLATE coinciden con los iniciales. Inventario raíz y 12 archivos versionables dentro del alcance; solo los dos metadatos esperados en node_modules. Se comprobaron UTF-8, bloques Markdown y 18 enlaces locales, sin errores. Búsqueda limitada de patrones de credenciales sin coincidencias; no constituye auditoría exhaustiva. Hash SHA-256 final del lockfile: `59FEBE21687F411CF0F7836853B7998823365C61129CCA7937D6817CD257B0F6`.
+
+Revisiones independientes realmente ejecutadas en modo lectura:
+
+| Revisor | Resultado y comprobaciones propias | Límites |
+| --- | --- | --- |
+| QA (`qa_task003`) | Sin hallazgos técnicos que requieran corrección. Verificó manifiesto, Git raíz/main/0 commits/sin remotos, inventario de 12 archivos, versión efectiva pnpm 12.5.1 y reconocimiento de una sola raíz privada. | Instalación congelada e integridad histórica acreditadas por DEVELOPER; no repitió operaciones de escritura. |
+| SECURITY (`security_task003`) | Sin hallazgos que requieran corrección. Verificó ignores, ausencia de scripts/dependencias de aplicaciones, configuración Git, búsqueda acotada de secretos y pnpm efectivo. Recalculó SHA-512 del tarball y lo contrastó independientemente con el registro oficial: coincide. | No certifica seguridad del producto. La ausencia de cambios globales y conservación histórica se sustentan en evidencia DEVELOPER. |
+
+Ambos revisores solicitaron únicamente registrar sus resultados en esta sección, lo que se completó con la evidencia recibida. No hay suite funcional, compilación Next/Expo o seguridad del producto que acreditar.
+
+Estado de TASK-003: **COMPLETADA**. Git y workspace raíz válidos; sin commits, remotos, frameworks, servicios, migraciones ni funcionalidades comerciales. Las incidencias del sandbox quedaron resueltas sin cambios globales de seguridad. Pendiente para futuras tareas: configurar TypeScript y aplicaciones/herramientas expresamente autorizadas; conservar o volver a provisionar pnpm si se limpia TEMP.
+
+Próxima tarea propuesta: TASK-004 con alcance explícito para la siguiente base de desarrollo (TypeScript/herramientas o primera aplicación, según solicitud). No iniciada. Cualquier aplicación, dependencia adicional, servicio o despliegue requiere su propia tarea autorizada.
+
+## TASK-003A — comparación pnpm/lockfile — 2026-09-22
+
+Estado inicial: Git main, 0 commits/remotos; Node 24.13.1, pnpm 12.5.1 efectivo, raíz privada sin dependencias. Los 12 archivos versionables seguían sin seguimiento; no se detectaron cambios ajenos. Se leyeron instrucciones/manifiestos/lockfile y documentación requerida antes de editar y se capturaron hashes iniciales. El lockfile de TASK-003 tenía dos documentos YAML y conservaba SHA-256 `59FEBE21687F411CF0F7836853B7998823365C61129CCA7937D6817CD257B0F6`.
+
+Comparación real en dos workspaces temporales equivalentes, sin modificar SmartRetail durante las pruebas: ambas versiones verificadas contra el registro oficial y efectivamente ejecutadas con su propio pin. Fases vacía y con yaml@2.8.1 desechable; instalaciones normales, frozen online/offline, repetición y restauración offline tras eliminar node_modules temporal: todas pasaron. 12 produjo dos documentos en ambas fases; 11 produjo uno. Parser real confirmó estructura/importers/integridad; su API de documento único rechazó 12 con MULTIPLE_DOCS y aceptó 11. Hashes, metodología, incidencias y fuentes están en [TECH_DECISIONS §8](TECH_DECISIONS.md). No se probó GitHub Dependency Graph en SmartRetail.
+
+Decisión aplicada: **pnpm 11.27.1** por interoperabilidad local demostrada sin regresiones en los ensayos mínimos. packageManager y engines.pnpm actualizados; Node y pnpm-workspace.yaml intactos. Lockfile anterior respaldado en TEMP y retirado para regeneración limpia exclusiva por pnpm 11; sin edición manual ni restos de gestor 12. Modificaciones fuente limitadas a package.json, pnpm-lock.yaml, TECH_DECISIONS y PROJECT_STATE.
+
+Validaciones del proyecto ejecutadas:
+
+- Versión 11.27.1 y reconocimiento de solo `smartretail@0.0.0` privado; JSON válido, cero dependencias de aplicaciones.
+- Lockfile parseado: un documento, importer raíz vacío. Sin `12.5.1`, binarios `@pnpm/exe` ni packageManagerDependencies en manifiesto/lockfile.
+- `install --frozen-lockfile --ignore-scripts` y segundo `install --frozen-lockfile --ignore-scripts --offline`: código 0. SHA-256 antes/después idéntico: `17C814B167307942D3609C7B9D916CEDDB85839573AB39BAA114E30EDB132A1A`.
+- `git status --short`: mismo conjunto de archivos iniciales sin seguimiento; `git remote` vacío y `git rev-list --all --count` igual a 0. Sin commits, remotos o cambios globales.
+
+Efectos externos autorizados: carpeta TEMP `smartretail-task003a` para distribución oficial 11, metadatos del registro, fixtures, logs y snapshots; reutilizada la distribución oficial 12 de TASK-003 tras verificar su hash otra vez. Store compartido `%LOCALAPPDATA%\pnpm\store\v11` y cachés pnpm reciben yaml y metadatos de gestores; 11 reutilizó yaml descargado por 12, por lo que no se compara rendimiento ni arranque con caché vacía. Ningún framework ni dependencia de prueba se agregó a SmartRetail. No se cambió PATH, configuración global, TLS o política PowerShell.
+
+Comprobación final contra baseline: solo los cuatro archivos permitidos cambiaron; ocho restantes intactos y mismo inventario de 12 archivos versionables. Pasaron UTF-8, cierre de bloques, 19 enlaces locales y búsqueda acotada de secretos (sin coincidencias; no exhaustiva). node_modules raíz conserva únicamente metadatos del gestor, sin dependencias de producto.
+
+Revisiones independientes realmente ejecutadas en modo lectura:
+
+| Revisor | Resultado propio | Límite |
+| --- | --- | --- |
+| QA (`qa_task003a`) | Sin hallazgos que requieran corrección. Contrastó baseline/alcance, Git, pnpm efectivo, raíz privada y ausencia de dependencias; parseó cuatro snapshots, verificó hashes y distinción entre reproducción local y reportes GitHub. | No repitió instalaciones. Frozen, restauración offline y estabilidad histórica se sustentan en ejecución DEVELOPER; logs persistidos contienen generación/adición. |
+| SECURITY (`security_task003a`) | Sin hallazgos que requieran corrección. Recalculó SHA-512 de ambos tarballs contra metadatos oficiales guardados; comprobó parser, integridad de yaml, lockfile final, alcance y controles strict intactos. | Revisión de cadena de suministro acotada, sin certificación de aplicación inexistente ni ejecución del servicio GitHub. |
+
+Limpieza completada tras ambas revisiones: eliminados únicamente `workspace-12.5.1` y `workspace-11.27.1` bajo TEMP/smartretail-task003a, con rutas absolutas comprobadas. Se preservaron fuera del proyecto snapshots de manifiestos/workspace/lockfiles, results.json, logs, baseline, metadatos oficiales y distribución 11 para uso actual. No se borraron cachés compartidas ni la distribución 12 anterior.
+
+Estado de TASK-003A: **COMPLETADA**. Selección única 11.27.1, lockfile reproducible de un documento y cero dependencias de aplicación, commits o remotos. Pendientes: validación real de futuros consumidores de seguridad/CI y frameworks cuando se autoricen; no garantizados por este ensayo mínimo. No se inicia TASK-004. La futura CI debe aplicar las cinco defensas complementarias de TECH_DECISIONS §8, sin instalarlas en esta tarea.
+
+## TASK-004 — inicialización de apps/web — 2026-09-22
+
+Estado inicial comprobado antes de editar: Node24.13.1, pnpm11.27.1 efectivo, Git main/0 commits/sin remotos, raíz privada, workspace únicamente smartretail y apps/web ausente. Doce archivos previos sin seguimiento, sin cambios ajenos detectados; baseline SHA-256 guardado en TEMP. Lectura de AGENTS, manifiestos y cuatro documentos requeridos completada.
+
+Creados ocho archivos: apps/web/package.json, tsconfig.json, next-env.d.ts, next.config.ts, app/layout.tsx, app/page.tsx, app/globals.css y app/api/v1/health/route.ts. Modificados pnpm-lock.yaml, TECH_DECISIONS y PROJECT_STATE. Raíz/package.json, pnpm-workspace.yaml, ignores y cuatro documentos protegidos conservados. No apps/mobile ni packages, infraestructura, autenticación, SQL ni lógica comercial.
+
+Versiones instaladas exactas: Next16.3.6, React/DOM19.3.0, TypeScript7.0.2, @types/node24.13.6, @types/react y @types/react-dom19.3.0; siete directas (tres runtime, cuatro desarrollo). Workspace reconoce raíz y @smartretail/web, ambas privadas. Sin duplicados inesperados de React. Todos los detalles de metadata, desviaciones y comandos reproducibles en [TECH_DECISIONS §9](TECH_DECISIONS.md).
+
+| Validación ejecutada | Resultado real |
+| --- | --- |
+| pnpm install --ignore-scripts | Instalación y resolución exacta. Ningún hook autorizado. |
+| Typecheck inicial con TS5.9.3 | Falló: cuatro errores URLPattern en declaraciones de Next. No se ocultaron con skipLibCheck. |
+| Typecheck final con TS7.0.2 | next typegen y tsc --noEmit: código 0. Repetido tras restaurar workspace usando excepciones CLI exactas: código 0. |
+| Build de producción | next build, Next16.3.6/Turbopack: código 0; compilación, TypeScript y generación de cuatro páginas completadas. / estática, /api/v1/health dinámica, not-found presente. Sin warnings de compilación. |
+| tsconfig | Controles estrictos activos; skipLibCheck false. Next inicialmente añadió allowJs true y reformateó JSON; se corrigió a false. Build no cambió controles. |
+| Frozen final, dos ejecuciones | Código 0 con diez excepciones temporales de versión exacta. Tres hashes iguales C10CBF2B37559D1B480C65065AFCBB71FC52AC191C27A2AA0806AF023E65F6AA. |
+| Runtime mediante script start | Build servido únicamente en 127.0.0.1:31404. /200, health200 cuerpo exacto {"status":"ok"}, ruta inexistente404. |
+| Headers observados | / y health sin X-Powered-By ni Server; health application/json, sin datos sensibles propios. |
+| Navegador Playwright | Texto español correcto, un h1; 375×812 y 1280×800 sin desbordamiento horizontal (scrollWidth igual al viewport). Consola: 0 errores y 0 advertencias. |
+| pnpm audit --json final | Servicio ejecutado, código 0: info0/low0/moderate0/high0/critical0. 80 entradas de grafo reportadas, incluidas variantes opcionales. |
+| Negativas | Sin .env creado, use client, acceso SQL, Supabase, importaciones cliente de módulos servidor ni telemetría propia. Búsqueda acotada de patrones privados en fuentes/bundle sin coincidencias; no prueba exhaustiva de ausencia de secretos. |
+| Limpieza | Navegador cerrado; servidor interrumpido y sesión terminada. Consulta Win32_Process: 0 procesos Node asociados a la prueba; puerto31404 sin listener. |
+| Git y alcance | main/0 commits/sin remotos. Hashes de archivos previos fuera del alcance intactos; sin commit/push/despliegue. |
+
+Incidencias y límites: pnpm añadió automáticamente excepciones por la publicación reciente de Next; se revirtieron manteniendo hash original del workspace. Frozen y start sin flags fallaron por antigüedad; se resolvió únicamente para paquetes exactos mediante flags de proceso documentados, sin forzar peers ni desactivar controles globales. El primer intento de patrón @next/* con versión fue rechazado; se sustituyó por diez nombres exactos. El gestor temporal sigue dependiendo de TEMP y no está instalado globalmente. Telemetría Next desactivada sólo por variable de proceso documentada. Un bloqueo temporal de herramientas por límite de uso impidió inicialmente HTTP/browser y revisores; tras la indicación del usuario de continuar, se ejecutaron correctamente.
+
+Evidencia auxiliar fuera del repositorio: TEMP/smartretail-task004 contiene baseline, metadatos oficiales, auditoría final, hashes frozen, excepciones CLI, http.json y workspace-final.json (TS7.0.2). **workspace.json, typecheck.log e install.log son históricos de la primera instalación TS5.9.3**, no resultados finales; el typecheck final y build exitosos constan en las salidas de ejecución de la sesión y en esta tabla. Next-env es generado. node_modules, .next y tsbuildinfo son artefactos ignorados. Playwright creó automáticamente un snapshot bajo .playwright-mcp: se trasladó a TEMP/smartretail-task004/browser-snapshot.yml y se retiró sólo su carpeta vacía; no cambió .gitignore.
+
+Revisiones independientes reales, sólo lectura:
+
+| Revisor | Resultado propio | Límites |
+| --- | --- | --- |
+| QA (qa_task004) | Sin hallazgos de código. Verificó estructura, siete pins instalados, controles TS, baseline protegido, Git y hash lock; ejecutó tsc --noEmit --incremental false con código 0. Observación baja: distinguir evidencias iniciales TS5.9.3 de finales TS7.0.2, corregida arriba. | No repitió build/frozen/HTTP; contrastó evidencia DEVELOPER. Relectura documental final completada sin hallazgos pendientes. |
+| SECURITY (security_task004) | Sin HIGH/CRITICAL ni correcciones de código. Ejecutó GET health independiente (200 exacto, sin headers informativos); contrastó integridad Next y hashes, audit0, advisory del parche, fuentes y bundle (10 archivos, 0 source maps). Revisó 288 manifiestos sin hooks preinstall/install/postinstall. Excepción temporal exacta considerada aceptable. | Búsqueda acotada, sin garantía de ausencia de malware/secretos. No repitió audit. No certifica seguridad global ni controles de negocio inexistentes. Relectura documental final completada sin hallazgos pendientes. |
+
+Estado TASK-004: **COMPLETADA**. Implementación, build, runtime, verificaciones técnicas y relecturas finales independientes QA/SECURITY completados sin hallazgos pendientes. La excepción temporal de antigüedad para el parche exacto permanece documentada como condición de reproducción, sin cambios persistentes de política. No se inicia TASK-005.
+
+## TASK-005 — aplicación móvil ejecutada
+
+Estado inicial verificado: apps/web existente, apps/mobile ausente, Node24.13.1, pnpm11.27.1, Git main/0 commits/sin remotos. Se leyeron AGENTS, manifiestos y documentación requerida y se guardó baseline de todos los archivos versionables. No se encontraron cambios ajenos que impidieran la tarea.
+
+Creados físicamente cinco archivos: apps/mobile/package.json, app.json, tsconfig.json, index.ts y App.tsx. Aplicación @smartretail/mobile privada, main index.ts. Scripts reales start/android/ios, typecheck (tsc --noEmit), doctor, export:android/export:ios. Pantalla contiene únicamente los cuatro textos pedidos. Config Expo nombre SmartRetail, slug smartretail-mobile, versión0.0.0, plataformas ios/android, apariencia light; sin Router/navegación/backend/EAS.
+
+Ocho dependencias directas exactas: expo57.0.24, react-native0.86.3, react19.2.3, react-dom19.2.3; desarrollo typescript6.0.3, @types/react19.2.14, @types/react-native__assets-registry0.84.0 y expo-doctor1.21.1. React DOM sólo resuelve el peer Expo sin compartir React web; no soporte web ni react-native-web. Versiones/justificación/fuentes y comandos completos en [TECH_DECISIONS §10](TECH_DECISIONS.md).
+
+| Validación realmente ejecutada | Resultado |
+| --- | --- |
+| Workspace pnpm | Tres proyectos privados: raíz, web y mobile; inventario final guardado. |
+| Typecheck | Código0 con TS6.0.3, strict/noUncheckedIndexedAccess/exactOptionalPropertyTypes y skipLibCheck false. |
+| Expo Doctor1.21.1 | 21/21 comprobaciones, código0. Primer intento20/21 exigió TS6.0.3 y se corrigió sin excluir controles. |
+| Export Android final | Código0; 578 módulos, bundle Hermes1.4MB y metadata en apps/mobile/dist/android. |
+| Export iOS final | Código0; 580 módulos, bundle Hermes1.4MB y metadata en apps/mobile/dist/ios. Compilación nativa iOS no realizada en Windows. |
+| pnpm audit final | Código1 por 1 MODERATE uuid7.0.3; info0/low0/high0/critical0. 539 entradas del grafo completo. No se reporta auditoría limpia. |
+| Dos frozen finales | Ambos código0, con excepciones CLI exactas Next heredadas §9. Tres hashes iguales: 425D86408526ECC1F023DD967D8D19D866271ABAA11AB4B490B3C9067419DEE2. |
+| Permisos introspect final | INTERNET activo; READ/WRITE_EXTERNAL_STORAGE, SYSTEM_ALERT_WINDOW y VIBRATE con tools:node=remove. Sin capacidades sensibles solicitadas en código ni UsageDescription sensibles iOS observadas. |
+| Archivos obligatorios | Test-Path package.json, app.json, App.tsx e index.ts: True para los cuatro antes del reporte. |
+| Alcance | Apps/web y todos los archivos previos fuera del alcance conservan hashes. Sólo lockfile y dos documentos modificados, cinco fuentes móviles nuevas. Un único lock raíz; sin otros gestores/locks ni hoisting forzado. |
+
+Incidencias resueltas: instalación inicial falló peer React DOM19.3/React19.2.3; pin local DOM19.2.3 resolvió validación sin modificar web. Tipos DOM heredados chocaban con globals RN; lib ESNext y tipos reales assets corrigieron errores, sin skipLibCheck. Expo Doctor requirió pin TS6.0.3. `pnpm doctor` colisionó con comando del gestor: usar `run doctor`. La reinstalación implícita de pnpm antes de scripts perdió excepciones Next y falló por antigüedad; se validó instalación explícita y se usó verify-deps-before-run=false sólo en esos procesos. Ninguna configuración global/workspace alterada. Warning de exports NO_COLOR/FORCE_COLOR proveniente del entorno de herramientas, sin fallo del bundle; deprecación uuid7.0.3 documentada.
+
+SECURITY revisó aviso residual GHSA-w5hq-g745-h8pq: xcode3.0.1 usa uuid.v4() sin buffer/offset; aviso afecta v3/v5/v6 con buffer. No vector aplicable observado en esta cadena de herramientas. Parche>=11.1.1 fuera del rango ^7.0.3 de xcode; no override mayor no demostrado. Se conserva riesgo moderado y seguimiento de actualización, no se declara corregido. Config iOS del template permite tráfico arbitrario; esta app no hace red, pendiente revisar ATS antes de distribución. No hubo binarios nativos, ejecución en dispositivo/emulador ni certificación de permisos fusionados. No se iniciaron servicios persistentes, commits, push o despliegues.
+
+Evidencias auxiliares TEMP/smartretail-task005: baseline, metadata Expo/RN/TS, tarball Expo verificado/matriz bundledNativeModules, workspace-final.json, audit-final.json, frozen-hashes.txt, introspect-final.json. Salidas typecheck/Doctor/exports en la sesión de herramientas; artifacts HBC y metadata permanecen ignorados dentro de apps/mobile/dist. Expo/Metro y gestor pueden escribir cachés locales; sin cambios PATH/globales. Evidencias iniciales no sustituyen resultados finales.
+
+Revisiones independientes reales sólo lectura: QA confirmó existencia física, fuente, versiones, alcance y ejecutó tsc sin emitir código0; repitió independientemente con TS6.0.3, código0, y completó relectura final sin hallazgos pendientes. SECURITY detectó permisos heredados, corregidos con bloqueos explícitos; revisó UUID y aceptó registrar aviso residual, inspeccionó bundles mediante búsqueda acotada de secretos sin coincidencias. SECURITY completó relectura final de configuración, introspección, auditoría, hash y documentos sin nuevos bloqueantes; el aviso MODERATE permanece explícitamente residual. No certifica ausencia de malware ni seguridad general. El intento de nuevo subagente falló por thread-store paginated_threads; se reutilizaron sesiones independientes qa_task004/security_task004 con instrucciones expresas de revisar TASK-005 únicamente, sin atribuir esta revisión a TASK-004.
+
+Estado TASK-005: **COMPLETADA**. Implementación y validaciones obligatorias ejecutadas; QA/SECURITY finales completados sin bloqueantes. Permanece el aviso MODERATE documentado y la limitación de no haber compilado ni ejecutado binarios nativos. Comprobación final: cinco archivos físicos, baseline protegido, main/0 commits/sin remotos y cero procesos de validación móviles asociados. No se inicia otra TASK.
+
+## TASK-005A — higiene de dependencias — 2026-09-23
+
+Estado inicial real: apps/mobile con ocho dependencias directas exactas de TASK-005; Expo57.0.24, RN0.86.3, React/DOM19.2.3, TS6.0.3. pnpm11.27.1 efectivo; workspace raíz/web/mobile, Git main/0 commits/sin remotos. AGENTS/manifiestos/config/lock/documentación leídos; baseline y snapshots completos guardados antes del ensayo. El primer intento de herramientas fue bloqueado por límite de uso; tras la indicación continuar se ejecutaron las comprobaciones.
+
+Resultado: **se conservan todas las versiones y dependencias iniciales**. React DOM no es requisito general de renderizado nativo: peer opcional de Expo y router-server transitivo. Retirada real con pnpm terminó0 con warning; typecheck0, Doctor21/21, exports Android/iOS0 y frozen0, pero peers check1 por DOM19.3.0 resuelto con React19.2.3. why mostró dos versiones DOM: quitar la declaración no eliminó físicamente toda presencia transitiva. Pin19.2.3 restaurado por compatibilidad de este monorepo, sin modificar web ni desactivar peers. [TECH_DECISIONS §11](TECH_DECISIONS.md) contiene metadata, comandos, clasificación individual de ocho dependencias y límites.
+
+La restauración mediante pnpm add conservó temporalmente resolución intermedia; regeneración pnpm de lock raíz/interno limpió peers pero introdujo PostCSS8.5.28 incidental. Se descartó íntegramente esa actualización restaurando snapshots originales generados por pnpm, sin editar entradas YAML. Manifiesto y lock final idénticos en bytes a baseline; no nuevos paquetes directos, overrides/resolutions, hoisting o --force. Únicos cambios versionables finales: TECH_DECISIONS y PROJECT_STATE. UI/app.json/tsconfig/web y todos los archivos protegidos conservados.
+
+| Comprobación final realmente ejecutada | Resultado |
+| --- | --- |
+| pnpm peers check | Código0, sin conflictos. |
+| pnpm --filter @smartretail/mobile run typecheck | Código0, TS6.0.3 y controles estrictos intactos. |
+| Expo Doctor1.21.1 | Código0,21/21. |
+| export:android | Código0,578 módulos; HBC1.4MB + metadata en dist/android. |
+| export:ios | Código0,580 módulos; HBC1.4MB + metadata en dist/ios. No compilación nativa iOS en Windows ni prueba de dispositivo. |
+| Dos frozen --ignore-scripts | Código0 ambos; hash inicial/tras1/tras2 idéntico425D86408526ECC1F023DD967D8D19D866271ABAA11AB4B490B3C9067419DEE2, igual al baseline. |
+| Auditoría final | Código1 por1MODERATE UUID; info0/low0/high0/critical0.539entradas del grafo restaurado. |
+| Workspace/locks | Tres proyectos reconocidos, pins iniciales efectivos; único lock versionable raíz. Lock interno pnpm es artefacto del gestor, no lock alternativo de proyecto. |
+
+Advisory GHSA-w5hq-g745-h8pq: @smartretail/mobile@0.0.0 → expo57.0.24 → @expo/config-plugins57.0.9 → xcode3.0.1 → uuid7.0.3 (otras rutas convergen ahí). SECURITY consultó metadata actual: no versión superior estable compatible publicada de Expo57/config-plugins57/xcode que elimine el aviso. Primer parche UUID11.1.1 fuera de ^7.0.3; ramas12/13 corregidas12.0.1/13.0.1. No toda versión superior a11.1.1 está libre del advisory. Uso observado xcode uuid.v4() sin argumentos para identificadores; advisory afecta v3/v5/v6 con buffer. Riesgo MODERATE **residual, no resuelto**; no vector afectado observado en cadena revisada. Condición de eliminación y mitigación acotada en TECH§11. No se añadió UUID directo ni override para aparentar corrección.
+
+Validaciones de scripts usaron verify-deps-before-run=false tras instalación explícita verificada; frozen mantuvo excepciones CLI exactas Next heredadas de TASK-004. Ningún cambio global ni de políticas persistentes. Evidencias TEMP/smartretail-task005a: baseline, snapshots antes/intermedios, workspace-before/final, why-dom/uuid-final, audit-without-dom/final y frozen-hashes. Ejecuciones Doctor/typecheck/exports/peers en salidas de herramientas de la sesión. La auditoría intermedia tras regeneración reportó540entradas por PostCSS incidental; no es el estado final539.
+
+Revisiones independientes sólo lectura ejecutadas para esta tarea en sesiones QA/SECURITY reutilizadas: QA confirmó baseline, metadata peer opcional, cadenas, hash y ejecutó tsc --noEmit --incremental false código0; no repitió Doctor/exports/frozen/audit. SECURITY consultó registro actual y advisory, verificó uso UUID y ausencia de hooks install/preinstall/postinstall en la cadena examinada; no certifica seguridad global ni ausencia de malware. Relectura final QA completada sin hallazgos pendientes. SECURITY solicitó una precisión baja sobre versiones corregidas UUID: se documentaron11.1.1,12.0.1 y13.0.1, sin presentar cualquier versión superior como corregida. Precisión aplicada y revisión SECURITY completada sin pendientes adicionales.
+
+Estado TASK-005A: **COMPLETADA**. Regresiones y revisiones independientes finales aprobadas, precisión documental corregida y riesgo residual documentado. No commit, push, despliegue ni inicio de otra TASK.
+
+## TASK-006A — controles de calidad y seguridad — 2026-09-23
+
+Estado inicial: raíz/web/mobile funcionales; pnpm11.27.1, Node24.13.1, Git main/0commits/sin remotos. WebTS7.0.2 y móvilTS6.0.3, ocho dependencias móviles, advisory UUID1MODERATE conocido. Se inspeccionaron AGENTS/manifiestos/configuraciones/lock/documentación y se tomaron hashes antes de editar. No existían controles lint/formato agregados.
+
+**Bloqueo confirmado:** typescript-eslint8.70.1 declara TS>=4.8.4<6.1.0; web7.0.2 queda fuera. Config Next16.3.6 usa esa familia; no se encontró alternativa oficial compatible que cubra lo solicitado. No se instaló config-next incompatible, ni modificó TS, ni ocultó warnings. Lint web NO está implementado funcionalmente: script ESLint real y flat config de bloqueo terminan2 explicando la condición. React/Next/Core Web Vitals web quedan pendientes. ESLint10.11.0 además no satisface peers React/import; se seleccionó9.39.5 exacto, con deprecación declarada como límite.
+
+Implementado: Prettier3.9.9 raíz; ESLint9.39.5 ambas apps; configuración móvil Expo57.0.2 + config-prettier10.1.8, flat config. Scripts raíz lint/typecheck/format:check/audit:deps/check, lanzadores Node con npm_execpath para funcionar sin pnpm en PATH. No frameworks de pruebas, CI, servicios, Auth ni funcionalidades. Detalles, fuentes oficiales, comandos y límites en [TECH_DECISIONS §12](TECH_DECISIONS.md).
+
+Archivos nuevos: .prettierrc.json, .prettierignore, .gitleaks.toml, apps/mobile/eslint.config.mjs y apps/web/eslint.config.mjs (bloqueo). Modificados: package.json raíz y de ambas apps, pnpm-lock.yaml, TECH_DECISIONS, PROJECT_STATE y apps/mobile/App.tsx **sólo por formato necesario**. Sin cambios de versiones TS, UI funcional, app.json/tsconfig, workspace persistente, documentos protegidos o ignores Git. Next generó tipos/artefactos ignorados durante typecheck; next-env conserva contenido.
+
+| Control final real | Resultado |
+| --- | --- |
+| format:check raíz | Código0, código/configuración alcanzada formateada; documentación histórica no reformateada. |
+| lint móvil | Código0, sin warnings; reglas recomendadas Expo y separación Prettier. |
+| lint web | Código2 por bloqueo explícito TS7; sin análisis web acreditado. |
+| lint agregado | Ejecuta móvil correctamente e intenta web; termina2. |
+| typecheck agregado independiente | Código0; Next typegen+tsc web y tsc móvil realmente ejecutados. |
+| audit:deps | Código0 con umbral HIGH; salida muestra1MODERATE. |
+| Auditoría bruta workspace | Código1: info0/low0/moderate1/high0/critical0;783entradas. UUID residual de §11. Servicio ejecutado, no resultado hardcodeado. |
+| check integral restaurado | Código2: formato0 → lint móvil0 → lint web bloqueado2. No alcanza tipos/auditoría; ambos comprobados aparte, no se declara check verde. |
+| Gitleaks independiente después de check | Binario oficial8.30.1 verificado; escaneo dir real con redacción y configuración acotada: código0, sin coincidencias adicionales. |
+| Dos frozen finales | Código0 ambos; tres hashes idénticos EB1C2EC335FC7A431F564315C9BFBADAA7BA9C43AF525CC068A41941A5ACAE92. Peers check0. |
+
+Pruebas negativas reales sobre App.tsx con respaldo en memoria y restauración de bytes mediante finally, sin probes persistentes:
+
+| Prueba | Fallo observado | Restauración |
+| --- | --- | --- |
+| Formato temporal inválido | format:check1 identifica App.tsx. | SHA256 idéntico antes/después. |
+| Import temporal inexistente | lint1 en móvil: import/no-unresolved (error), import/first (warning). No depende del bloqueo web. | SHA256 idéntico antes/después. |
+| number asignado a string | typecheck2: TS2322 en móvil, tras typecheck web correcto. | SHA256 idéntico antes/después. |
+
+Hash común restaurado App.tsx:11995585B4BEC60CAF572FD004C282577F3D89628A00EDE708ADF74504B37FEE. Primer ensayo lint con debugger no disparó regla; **no cuenta como negativa válida** aunque root falló por web. Se inspeccionaron reglas efectivas y se repitió con import/no-unresolved, obteniendo el fallo correcto. Incidencias al serializar JSON en PowerShell se corrigieron en negative-results.json conforme a las ejecuciones reales, sin atribuir éxito al ensayo inválido. Tras restauración se repitieron formato, lint móvil y typecheck; todos0.
+
+Escaneo inicial default Gitleaks reportó6 claves reales generadas por Next en4artefactos locales (.rscinfo, .previewinfo, prerender-manifest.json, server-reference-manifest.json). No se imprimieron valores ni se declararon falsos secretos. Son claves sensibles internas de build, no credenciales de servicios identificadas en fuentes; no distribuir esos artefactos. Excepciones posteriores sólo generic-api-key AND cuatro rutas exactas AND campos concretos en match; defaults upstream conservados, sin allowlists globales propias, sin omitir .env ni fuentes. Sin escaneo útil de historial porque0commits. Límites de archivos/binarios/exclusiones heredadas y reproducción en TECH§12. No se certifica ausencia de secretos global ni seguridad de producto.
+
+Incidencias de entorno: límite temporal de uso bloqueó consultas/revisores; se retomó tras continuar del usuario. Pnpm temporal anterior desapareció; reprovisionado11.27.1 desde registro con SHA512 verificado, sin instalación global. Prettier3.9.9 publicado recientemente añadió excepción automática de edad: revertida en workspace con hash original intacto, congeladas usando sólo excepción CLI exacta prettier@3.9.9. Scripts de validación usaron variables de proceso documentadas, sin cambios globales; hooks terceros no ejecutados (ignore-scripts). Primeros scripts pnpm anidados fallaron por PATH; sustituidos por lanzadores Node que reutilizan gestor actual.
+
+Evidencia auxiliar TEMP/smartretail-task006a: baseline; metadatos de candidatos y versión seleccionada; gestor/tarball verificado; release Gitleaks, ZIP y checksums; reportes default/scoped/final redactados; configuración efectiva ESLint móvil; negative-results.json; audit-final.json y frozen-hashes.txt. Salidas de ejecuciones en sesión de herramientas. Tiempos scanner sólo los reportados por binario; no se inventó rendimiento.
+
+QA independiente: confirmó bloqueo oficial TS7, pins/configuración/scripts/exclusiones y hashes; repitió Prettier y lint móvil, ambos0. No repitió Doctor (fuera de esta TASK), frozen ni auditoría; contrastó evidencia. SECURITY independiente: comprobó checksum/binario Gitleaks, configuración acotada y audit; repitió scan dir0 sin coincidencias adicionales. Relecturas documentales finales QA y SECURITY completadas sin nuevos hallazgos. SECURITY final fue una sesión independiente de revisión estática; no repitió las ejecuciones funcionales previas. No se atribuye aprobación del lint web.
+
+Estado TASK-006A: **PARCIAL**. Controles independientes y tres negativas ejecutados; lint web y check integral satisfactorio bloqueados por soporte TS7. Requiere una tarea autorizada que resuelva esa compatibilidad, sin downgrade implícito. No hubo commits, push, despliegues ni inicio de otra TASK.
+
+## TASK-006A.1 — resolver ESLint/TypeScript web — 2026-09-23
+
+Estado inicial: TASK-006A PARCIAL, ESLint web9.39.5 terminaba2 por throw explícito en configuración con TS7.0.2. Fallo reproducido antes de editar. No se observó warning real del parser en ese estado porque no llegó a cargarse. El rango oficial de typescript-eslint/parser8.70.1 excluye TS7 y admite TS6.0.3; metadata y docs actuales consultadas. Los archivos ya estaban staged al iniciar; no se modificó el índice, se hicieron commits ni se enviaron cambios.
+
+Se probó de forma reversible y después se adoptó TS6.0.3 exacto en web. Archivos modificados: apps/web/package.json, apps/web/eslint.config.mjs, pnpm-lock.yaml, docs/TECH_DECISIONS.md y docs/PROJECT_STATE.md. Nuevas dependencias de desarrollo web eslint-config-next16.3.6 y eslint-config-prettier10.1.8. Configuración Next/Core Web Vitals/TypeScript recomendada más separación Prettier; sin desactivar controles para obtener éxito. Next/React/Node intactos. Manifiesto y configuración TS móvil, UI, tsconfig web, raíz, workspace, AGENTS y Gitleaks intactos. Detalles y fuentes en TECH_DECISIONS§13.
+
+| Validación | Evidencia real |
+| --- | --- |
+| Candidato web lint/typecheck/build | Tres códigos0; sin warning de versión TypeScript no soportada; build Next16.3.6 con TS6.0.3. |
+| Mobile lint y typecheck | Ambos0; no exports ni Doctor porque no cambió móvil. |
+| pnpm check | Código0, completa formato → lint móvil/web → tipos web/móvil → audit:deps. |
+| Auditoría workspace | Bruta1 por1MODERATE UUID residual; HIGH0/CRITICAL0/LOW0/info0. Umbral HIGH termina0 y muestra MODERATE. |
+| Gitleaks | Oficial8.30.1 dir/redact100/config existente, código0; sin detecciones adicionales a las excepciones documentadas. |
+| Peers y frozen | Peers0; dos frozen0, hash igual tres veces2E5D7F235F4CCAE899331E7A02289C3A4C4069877208C0FBEAEF2E5F9C4C5C20. |
+| Negativa ESLint web | Const temporal no utilizada en config, @typescript-eslint/no-unused-vars, exit1 por max-warnings0; restauración exacta SHA1390208D454193B3174DA9409F4F8E28A59568EBC92D6A53FF1A325825918D40; lint posterior0. |
+| Runtime | /200, /api/v1/health200, ruta inexistente404. Servidor de prueba cerrado mediante Ctrl+C y liberación del puerto comprobada. |
+
+Por petición expresa del usuario se deja después una nueva instancia local de Next start en http://127.0.0.1:3000, con proceso oculto y logs/PID en TEMP/smartretail-task006a1. No existe login ni cuentas; no hay credenciales que entregar. No se añadió autenticación fuera de alcance.
+
+Evidencia en TEMP/smartretail-task006a1: copias previas para ensayo reversible, metadata oficial, logs del candidato, negativa/hash, auditoría, Gitleaks y frozen hashes. Códigos reales documentados también en salidas de herramientas; representación NativeCommandError de stderr en PowerShell no significó fallo real de las tres pruebas candidatas. No se atribuye una causa no demostrada a la demora inicial de lint.
+
+Revisiones independientes finales completadas el 2026-09-24, sin hallazgos nuevos. QA ejecutó lint web0, lint móvil0 y git diff --check0; lint móvil requirió salir del sandbox por EPERM, sin cambio de código. Contrastó versiones, alcance, controles, importer móvil, negativa y hashes. SECURITY ejecutó lint web0 y Gitleaks0, inspeccionó configuración efectiva y confirmó controles estrictos intactos y ausencia de supresión. Ambos contrastaron evidencia previa; no repitieron build/typecheck/check integral/frozen/auditoría/HTTP. Los códigos finales del candidato están en las salidas Developer de la sesión, no dentro de sus archivos log. Riesgo residual UUID1MODERATE y límites del scanner se conservan.
+
+Continuación 2026-09-24: los subagentes anteriores no estuvieron disponibles tras el límite de uso; se iniciaron nuevas sesiones independientes QA y SECURITY para completar el cierre. Hashes de lock y configuración web coinciden con la evidencia del día anterior; manifiestos raíz/móvil, tsconfig web y workspace comparados con respaldo, sin cambios. Servidor original PID29796 seguía activo: página SmartRetail y health responden200. Un intento de iniciar otra instancia obtuvo EADDRINUSE; no se detuvo el proceso existente y se corrigió el archivo PID temporal para señalar29796. Este incidente no implica fallo del runtime ni cambio de código.
+
+Cierre 2026-09-24: **TASK-006A.1 COMPLETADA**. Al resolverse el bloqueo web y aprobarse los catorce criterios, **TASK-006A queda también COMPLETADA**; su estado PARCIAL anterior se conserva como historia. Servidor local disponible por petición del usuario. Sin TASK-006B, commits, push ni despliegues.
+
+## TASK-006B — Vitest y primera suite automatizada — 2026-09-24
+
+Estado inicial comprobado antes de editar: Node24.13.1/pnpm11.27.1/TS6.0.3, Git main/0commits/sin remotos; check0, auditoría1MODERATE UUID y0LOW/HIGH/CRITICAL. Servidor anterior preservado; ninguna prueba requiere HTTP. Baseline con hashes de archivos reales guardado fuera del repositorio para distinguir cambios actuales de tareas previas staged/no staged.
+
+Archivos nuevos: vitest.config.mts y apps/web/app/api/v1/health/route.test.ts. Modificados exclusivamente: package.json raíz, pnpm-lock.yaml, TECH_DECISIONS y PROJECT_STATE. Única dependencia directa añadida: Vitest5.0.1 exacto raíz; Vite8.3.0 se resuelve como peer automático, no directo. Metadata oficial y compatibilidad en TECH§14. Handler, UI, mobile, manifiestos de apps, tsconfig, ESLint, Prettier, Gitleaks y documentos protegidos intactos.
+
+Configuración mínima Node sin globals, sin watch en test, includes TS explícitos y exclusiones de artefactos/defaults. test ejecuta vitest run; check añade tests después de typecheck y antes de auditoría. format:check incluye config raíz. Primera suite importa GET real: status200, JSON content-type, parseo JSON válido y cuerpo exactamente {status:'ok'}, rechazando cualquier campo adicional. Cuerpo unknown; sin mocks, snapshots, any o supresiones. Test incluido por tsconfig web existente; typecheck sigue estricto.
+
+| Validación | Resultado |
+| --- | --- |
+| pnpm test | 0; un archivo, una suite, un caso pasado. |
+| pnpm check | 0; recorre formato, lint móvil/web, typecheck web/móvil, test y audit:deps. |
+| Negativa Vitest | Expectativa status503 temporal: exit1 por recibido200. Restauración exacta, nuevo test0; SHA antes/después B4FB37B15AD8DF420FBFE2EEE5578EC9E527FD2867063B553514837F016A444A. |
+| Descubrimiento real | vitest list devuelve sólo route.test.ts y su caso. |
+| Aislamiento | Misma config sobre fixture TEMP de10archivos: sólo1legítimo, excluye9candidatos en node_modules/.next/dist/android/.expo/build/out/coverage/.vitest/generated. No se ejecutaron esos fixtures. |
+| Auditoría antes/después | LOW0/MODERATE1/HIGH0/CRITICAL0; UUID residual conocido, sin nuevos HIGH/CRITICAL. Auditoría bruta1, umbralHIGH0. |
+| Gitleaks | Binario oficial8.30.1, dir/redact100/config existente:0; sin coincidencias adicionales tras excepciones vigentes. |
+| Peers/frozen | Peers0, dos frozen0; tres hashes idénticos0541243B17DDAD26EE04E51BD71650B71737B4CB11E72D08B1D474F4ABBFF1A9. |
+
+Evidencia TEMP/smartretail-task006b: baseline.json, manifiesto/lock iniciales, metadataVitest/Vite, audit-before/after.json, negative.json, discovery.json, isolation.json y fixtures de descubrimiento, frozen-hashes.txt y gitleaks.json. Ejecuciones/códigos también en herramientas de sesión. Instalación ignore-scripts, sin force ni excepción de antigüedad en esta tarea. Sin cambios globales. El error auxiliar por doble --json al guardar listado se corrigió, y la ejecución correcta dejó evidencia válida.
+
+Límites: handler directo, no routing HTTP/E2E/nativo; sin cobertura, sin servicios externos ni lógica comercial. No se repitió build/export/Doctor porque no hay cambios de runtime ni móvil; typecheck/lint cubren ambas apps. Las exclusiones existentes Gitleaks y el riesgo MODERATE UUID permanecen documentados, no constituyen certificación global.
+
+Revisiones independientes TASK-006B completadas, sin hallazgos pendientes. QA ejecutó test0 (1/1), typecheck web sin emisión/incremental0, formato0, aislamiento0 (1 de10 candidatos) y git diff --check0; contrastó check integral, negativa/restauración, auditorías, Gitleaks y frozen sin atribuirse esas ejecuciones. SECURITY inspeccionó dependencias/config/scripts/lock/evidencias y ejecutó Gitleaks0; contrastó las auditorías guardadas y demás resultados, sin repetirlos. Ambos verificaron seis archivos en alcance (cuatro modificados y dos nuevos) y26archivos previos idénticos al baseline. Relectura documental final aprobada por ambos. No certifican seguridad global.
+
+Cierre TASK-006B: **COMPLETADA**. Test y check completos finales0 tras restauración; todos los criterios obligatorios satisfechos, con riesgo residual UUID y límites de alcance declarados. Sin commits, push, despliegues ni inicio de TASK-007.
+
+## TASK-007A — fundaciones Money/contratos/UUID — 2026-09-24
+
+Inicial: Node24.13.1/pnpm11.27.1, main/0commits/sin remotos, check0; audit1MODERATE UUID y0LOW/HIGH/CRITICAL. Paquetes nuevos ausentes, baseline confirmado antes de editar. Se preservaron servidor local, apps y cambios Git anteriores.
+
+Creados16archivos: domain (package.json, tsconfig.json, tsconfig.tests.json, eslint.config.mjs, src/index.ts, src/money.ts, tests/money.test.ts); contracts (mismos de configuración, src/index.ts, src/money.ts, src/identifiers.ts y tests/money.test.ts/tests/identifiers.test.ts). Modificados package.json raíz, pnpm-lock.yaml y los dos documentos de estado/decisiones. Sin cambios de apps, archivos protegidos, configs anteriores o Gitleaks. Vitest existente descubre las suites sin modificarlo.
+
+Domain privado sin runtime deps, Money readonly congelado/MXN/bigint y cinco funciones puras: money, addMoney, subtractMoney, compareMoney (-1/0/1) e isZeroMoney. Acepta negativos, rechaza tipos incorrectos en runtime, conserva exactitud más allá del rango seguro number. Contracts privado con Zod4.6.5 exacto únicamente: MoneySchema estricto/canónico/string y MoneyDto derivado; UuidSchema mediante z.uuid(). Límite técnico128caracteres incluyendo signo, aborto antes del regex; no límite comercial ni conversión entre paquetes. Export único por paquete, sin helpers internos públicos. Justificación, fuentes y límites en TECH§15.
+
+Typechecks estrictos TS6.0.3 para fuentes/tests, sin any ni supresiones/skipLibCheck. Incompatibilidades iniciales de declaraciones del runner y Zod se resolvieron con configuración de tipos explícita: domain source ES2022 puro, tests con DOM; contracts incluye DOM por URL de Zod. Sin dependencia DOM runtime. Tablas negativas usan unknown envuelto para probar arrays realmente y cumplir overloads de Vitest. No se modificaron apps para resolver estos problemas.
+
+Lint comparte las versiones ya instaladas declaradas ahora en raíz; paquetes tienen flat configs propias. Restricciones de imports fuente bloquean paquetes ajenos y navegación fuera de src, con única excepción Zod para contracts. Se verificaron rechazos por stdin (sin crear archivos) para imports cruzados/relativos/Node/Next/Expo y dynamic import. Root lint/typecheck incluyen los cuatro paquetes; formato incluye fuentes/config/tests nuevos; test/check conservan todos los gates.
+
+| Validación real | Resultado |
+| --- | --- |
+| Domain test/typecheck/lint individuales | 0 cada uno;22casos Money. |
+| Contracts test/typecheck/lint individuales | 0 cada uno;49Money +14UUID. |
+| Health individual | 0;1caso existente intacto. |
+| pnpm test y pnpm check | 0 ambos;86tests/4archivos, check llega a auditoría después de lint/tipos/tests de todo el workspace. |
+| Negativa temporal Number | Aceptación deliberadamente esperada para minorUnits100 falló1 porque el schema devuelve false; restaurado63/63 contratos0. Hash antes/después0038A45168C22D7B238D07BABE57ED8FEA9291EEFA067AF68A9B4E42FF28B7FF. |
+| Fronteras ESLint | exit1 de ambos probes; reglas activas identifican imports prohibidos. Fuentes actuales inspeccionadas sin acoplamiento. |
+| Auditoría completa posterior | LOW0/MODERATE1/HIGH0/CRITICAL0;827entradas. UUID residual previo, sin advisory nuevo. |
+| Gitleaks | Oficial8.30.1, config intacta/redact100:0 sin detecciones adicionales. |
+| Peers y frozen | Peers0, dos frozen0; tres hashes idénticos232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. |
+
+Evidencia TEMP/smartretail-task007a: baseline.json, package/lock previos, metadataZod, audit-before/after.json, boundaries.json, negative-number.json, frozen-hashes.txt y gitleaks.json; códigos/salidas de herramientas en sesión. No se atribuyen tiempos de rendimiento a la prueba de string largo. El límite evita trabajo canónico/conversión desmedidos después de recibir un string, no su asignación previa ni el tamaño total de futuras peticiones.
+
+No hay Quantity/entidades comerciales/DB/Auth/conversores; las reglas de precios y cantidades quedan fuera. No se repiten builds/exports de apps porque sus fuentes/manifiestos permanecen intactos, pero sí lint/typecheck/health. Pruebas concurrentes/transaccionales no aplican a operaciones puras sin estado. Riesgo residual UUID y límites del scanner continúan.
+
+QA independiente completada sin hallazgos funcionales: ejecutó test86/86, lint/typecheck de ambos paquetes0, git diff --check0 y2.229 comprobaciones adicionales de enteros/cadenas/Unicode/UUID/operaciones exactas, incluyendo entradas de diez millones de caracteres. Contrastó negativa/restauración, frozen, auditorías y Gitleaks sin atribuirse su ejecución. SECURITY independiente completada sin bloqueos: ejecutó pruebas adversariales de coerción/cadenas largas/claves especiales y Gitleaks0; inspeccionó dependencias/imports/lock y contrastó auditorías/frozen sin repetirlos. Observación informativa sobre propiedades heredadas/no enumerables de objetos JS ajenos al contrato JSON incorporada en TECH§15; no requirió cambio de código. Ambos releen documentación final y confirman precisión, con límites de revisión explícitos. Ninguno certifica seguridad global.
+
+Cierre TASK-007A: **COMPLETADA**. Validación final tras restauración: test86/86 y check integral0, auditoría final LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks0. QA/SECURITY aprobados dentro del alcance. No hubo commits, push, despliegues ni inicio de TASK-007B.
+
+## TASK-007B — Quantity exacta y unidades — 2026-09-24
+
+Línea base confirmada antes de editar: Node24.13.1, pnpm11.27.1, TS6.0.3, Vitest5.0.1 y Zod4.6.5; Git main/0commits/sin remotos. test86/86 y check integral0; auditoría LOW0/MODERATE1/HIGH0/CRITICAL0. Hashes iniciales fuera del repositorio distinguen esta tarea de cambios anteriores sin commit.
+
+Creados ocho archivos: domain/src/unit.ts, domain/src/quantity.ts, domain/tests/quantity.test.ts; contracts/src/unit.ts, contracts/src/quantity.ts, contracts/src/canonical-integer.ts, contracts/tests/unit.test.ts y contracts/tests/quantity.test.ts. Modificados cinco: los dos src/index.ts, contracts/src/money.ts y los dos documentos TECH_DECISIONS/PROJECT_STATE. Todos los paths de paquetes están bajo packages/. Apps, manifiestos, configs, tests previos y documentos protegidos intactos; sin dependencias nuevas.
+
+Quantity readonly/congelado usa bigint en milésimas, siete unidades (piece/kg/g/l/ml/m/cm), negativos y fracciones de piece. API de creación, suma, resta, comparación y zero; las tres operaciones binarias rechazan diferencias de unidad con IncompatibleQuantityUnitError. Domain permanece puro y sin dependencias runtime. Contracts expone enum y objeto estricto con milliUnits string canónico, DTOs derivados, sin coerción ni conversión a bigint. Límite128 incluyendo signo, aborto antes de regex. Helper interno compartido con Money sin cambios de sus reglas; los paquetes no se importan entre sí. Decisiones y límites en TECH§16.
+
+| Validación ejecutada | Resultado |
+| --- | --- |
+| Lint/typecheck individuales domain y contracts | 0 cada uno, fuentes y tests estrictos. |
+| Tests nuevos | 159:84domain Quantity,22UnitCodeSchema,53QuantitySchema. |
+| Regresiones | 86tests anteriores intactos:22Money domain,49Money contracts,14UUID y1health. |
+| pnpm test | 0;245tests/7archivos. Domain individual106/106 después de restauración. |
+| pnpm check | 0; formato, lint/tipos de ambas apps y paquetes,245tests y umbral de auditoría. |
+| Negativa reversible | Reemplazo temporal de quantity("kg",1500n) por1501n en expectativa de suma y operando de resta:2fallos/exit1. Restauración exacta de bytes, suite0; SHA antes/después959D7ADC26A9C58F3E38EE89F9F1C641ABE7D21E9B99DD465D6CA06AEFE96164. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; UUID residual conocido, sin dependencia/advisory nuevo. Auditoría bruta1, umbralHIGH0. |
+| Gitleaks | Binario8.30.1, configuración existente, redact100:exit0 sin detecciones adicionales tras exclusiones existentes. |
+| Lockfile | Idéntico al inicial:232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. Sin instalación ni edición del lock. |
+
+Casos límite cubiertos:42pares ordenados de unidades incompatibles en tres operaciones, cero entre unidades distintas, bigint mayor que el rango seguro de number,100n+200n=300n, inmutabilidad, números JS rechazados, enteros no canónicos, Unicode/whitespace/newlines, campos adicionales incluidos __proto__/constructor, límite positivo/negativo128 y strings de un millón de caracteres. No se atribuye al límite una medición de rendimiento ni protección del transporte HTTP inexistente.
+
+Evidencia en TEMP/smartretail-task007b: baseline.json, audit-before.json, audit-final.json, negative.log/json, check-final.log, scope.json y gitleaks.json; códigos de ejecución en herramientas de la sesión. Revisión de alcance por hashes y git diff --check0. QA y SECURITY independientes completadas; resultados y cierre a continuación.
+
+Riesgos/pendientes: UUID MODERATE heredado, límites del scanner y de objetos JS arbitrarios descritos en TECH§15–16. Reglas comerciales y conversiones de unidades quedan fuera. No hay Product/Inventory/Sale, UI, servicios externos o cambios de autenticación. Sin commits, push, despliegue ni TASK-007C.
+QA independiente (Carver): sin hallazgos pendientes. Ejecutó los86tests anteriores0 y30.157 comprobaciones adversariales0 mediante TEMP/qa-independent.mjs: aritmética hasta magnitudes ±10^140, inmutabilidad, todos los pares de unidades, tipos/coerciones hostiles,3.000strings contra un oráculo independiente, límites128/129, diez millones de caracteres, claves adicionales, JSON, equivalencia Money/Quantity y exports. Inspeccionó check/auditoría/Gitleaks y negativa sin repetir esas ejecuciones. Observación BAJA: scope.json omitía PROJECT_STATE por haberse capturado antes de editarlo; regenerado y revalidado8creados/5modificados. Documentación revisada sin discrepancias pendientes.
+
+SECURITY independiente (Dalton): sin hallazgos nuevos bloqueantes. Ejecutó31.007 comprobaciones adversariales con fuentes reales y Zod instalado: inputs hasta diez millones de caracteres, aborto previo al regex comprobado, cero conversiones BigInt, coerción y claves adicionales rechazadas, sin contaminación de prototipos. Inspeccionó imports, dependencias, baseline, lock, restauración y evidencias audit/Gitleaks/check del ejecutor principal; no reejecutó esos comandos. Confirmó la observación informativa documentada sobre campos heredados/no enumerables/símbolos en objetos JS ajenos a JSON, y el MODERATE heredado UUID. Evidencia propia security-probes.cjs/json y security-review.json en TEMP/smartretail-task007b. Sin correcciones de código requeridas ni certificación global.
+
+Cierre TASK-007B: **COMPLETADA**.159tests agregados y245totales aprobados; test/check0, negativa demostrada y restaurada, auditoría sin HIGH/CRITICAL, Gitleaks0, lock intacto, revisiones independientes completadas. Apps y archivos fuera del alcance intactos. Sin commits, push, despliegue ni inicio de TASK-007C.
+## TASK-007C — Product core — inicio 2026-09-24, continuación 2026-09-28
+
+Línea base confirmada antes de editar:245tests/7archivos y pnpm check0; auditoría LOW0/MODERATE1/HIGH0/CRITICAL0, Gitleaks0. Node24.13.1/pnpm11.27.1, main sin commits ni remotos. Baseline de hashes guardado en TEMP/smartretail-task007c antes de cambios.
+
+Creados seis archivos: packages/domain/src/product-fields.ts, src/product.ts y tests/product.test.ts; los mismos tres paths relativos en packages/contracts. Modificados cuatro: ambos src/index.ts, docs/TECH_DECISIONS.md y docs/PROJECT_STATE.md. Apps, primitivas y tests anteriores, manifiestos, configuraciones, documentos protegidos y lockfile intactos frente al baseline.
+
+Product inmutable tiene ProductId/ProductName/Sku/Barcode nominales, UnitCode, dos Money/MXN y status active/inactive. La factory revalida campos, rechaza precios negativos, permite cero/venta con pérdida y congela copias propias de Money. Barcode ausente permitido, presente exige valor válido; null/undefined/vacío rechazados. ProductSchema estricto reutiliza Money/UnitCode/Uuid existentes, DTO derivado y exactOptional para barcode. Sin coerción, generación UUID, normalización, inventario, tenancy o persistencia. Las reglas Unicode, UUID, longitudes y límites están documentadas en TECH§17. Unicidad real de SKU/barcode por empresa queda para application/persistencia.
+
+Validación anterior a la interrupción: lint/typecheck individuales de ambos paquetes0; pnpm test y check0 con597tests/9archivos. Nuevos352:137domain +215contracts; los245anteriores intactos. Negativa temporal: expectativa errónea del mensaje SKU produjo exit1; restauración exacta de bytes y domain243/243 exit0, SHA antes/después F6F4BF6D2F8B6FC962D278330850E8B189C0C367D37DA587EC6591CA0F0CC8BC. Casos cubren bordes de longitud, Unicode/emoji/controles/confusables, tipos JS, ausencia vs undefined, precios enormes/cero/negativos/pérdida, claves JSON adicionales Product/Money y congelación profunda de precios.
+
+Corrección durante implementación: el fixture inicial usó Object.assign para __proto__, que no crea esa clave propia; se sustituyó por propiedad computada y roundtrip JSON para probar la entrada contractual real. No fue necesario relajar el schema. Se alineó el patrón UUID de dominio con el comportamiento existente de Zod para Max. No se alteraron reglas de Money ni Quantity.
+
+QA/SECURITY iniciales no finalizaron por límite de uso; no se les atribuye revisión. Al continuar, se iniciaron nuevas revisiones independientes y se repitieron validaciones. Los ejecutables temporales anteriores habían desaparecido: pnpm11.27.1 se recuperó mediante npm pack de esa versión exacta fuera del workspace, sin instalación de dependencias; Gitleaks8.30.1 se extrajo del archivo previo tras verificar SHA-256 contra metadata oficial guardada (D29144DEFF3A68AA93CED33DDDF84B7FDC26070ADD4AA0F4513094C8332AFC4E). Sin cambios globales ni lock nuevo.
+
+Evidencia TEMP/smartretail-task007c: baseline.json, check-before.log, audit-before.json, gitleaks-before.json, negative.log/json, check-final.log y evidencias de continuación. Revisiones independientes y resultados finales completados; cierre registrado al final de esta sección. Sin commits, push, despliegue ni inicio de otra TASK.
+| Validación de continuación (2026-09-28) | Resultado |
+| --- | --- |
+| pnpm test | exit0;597tests/9archivos, incluidos245previos. |
+| pnpm check | exit0; formato, lint, tipos, tests y audit:deps completos; check-resumed.log. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; UUID transitivo conocido. Bruta exit1 por MODERATE; umbralHIGH exit0. |
+| Gitleaks |8.30.1/config intacta/redact100; exit0, gitleaks-final.json vacío, sin detecciones adicionales tras exclusiones existentes. |
+| Lockfile | SHA-256 original232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135, byte-idéntico. Sin reinstalación del workspace. |
+| Alcance/Git | scope.json actualizado:6creados/4modificados; apps/primitivas/configs/manifiestos intactos. git diff --check0; main/0commits/sin remotos. |
+| Restauración negativa | Hash actual del test coincide con before/after de negative.json; no queda mutación deliberada. |
+
+Pendientes de producto fuera de alcance: unicidad por empresa, persistencia, autorización, límites HTTP y presentación segura; el contrato no sanitiza HTML ni objetos arbitrarios con getters/proxies. UUID MODERATE y exclusiones vigentes del scanner permanecen documentados. Ningún resultado acredita seguridad general del producto.
+SECURITY independiente (Russell), completada el2026-09-28 sin hallazgos nuevos bloqueantes:266.662comprobaciones adversariales propias0fallos y suite597/597 exit0 con --no-cache; git diff --check0. Probó alfabetos BMP exhaustivos para SKU/barcode, Unicode/controles, tipos, claves JSON especiales, precios, exactOptional y congelación. Strings hasta diez millones de caracteres rechazados sin alcanzar RegExp.test tras los guards de longitud instrumentados. Inspeccionó dependencias/imports/lock/baseline y contrastó check/audit/Gitleaks y negativa sin atribuirse su ejecución. Observaciones: MODERATE UUID heredado e informativa sobre propiedades heredadas/no enumerables ajenas al contrato JSON, ya documentadas; ninguna corrección nueva requerida. Informe y sondas en TEMP/smartretail-task007c/security-review.md, security-independent.cjs/json y security-suite.log. No certifica seguridad global.
+QA independiente (Plato), completada el2026-09-28 sin hallazgos accionables:1.332casos adversariales propios,597/597tests y typecheck de ambos paquetes, todos exit0. Revisó invariantes directas, campos/Unicode, barcode exactOptional, precios/inmutabilidad anidada, independencia y ausencia de inventario/tenancy. Contrastó documentación, alcance por hashes, lock intacto y negativa/restauración; sin ediciones del repositorio. Informe y evidencia TEMP/smartretail-task007c/qa-independent/review.txt. No quedan pendientes QA ni correcciones nuevas de código requeridas por revisores.
+
+Cierre TASK-007C: **COMPLETADA**. Product core y contratos implementados dentro del alcance;352tests nuevos y597totales pasan. Test/check0, auditoría sin HIGH/CRITICAL, Gitleaks0, lock byte-idéntico y prueba negativa restaurada. QA y SECURITY realmente ejecutados en sesiones independientes después de la interrupción inicial. Permanece el MODERATE UUID y los límites explícitos de validación. Sin commits, push, despliegues ni comienzo de otra TASK.
+## TASK-007D — Edición segura y ciclo de vida de Product — 2026-09-28
+
+Línea base ejecutada antes de editar:597tests/9archivos, pnpm check0, auditoría LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks0. Se conserva Node24.13.1/pnpm11.27.1, main sin commits ni remotos. Baseline de hashes guardado fuera del repo en TEMP/smartretail-task007d.
+
+Creados packages/domain/src/product-operations.ts y packages/domain/tests/product-operations.test.ts. Modificados únicamente packages/domain/src/index.ts, TECH_DECISIONS y PROJECT_STATE. Contracts, apps, archivos protegidos, primitivas previas, tests previos, manifiestos/configs y lock sin cambios. Sin dependencias nuevas.
+
+Nueve operaciones puras explícitas para nombre, SKU, añadir/cambiar/quitar barcode, unidad, costo/precio y activación/desactivación. Reutilizan factories/errores existentes, validan también el Product original completo y preservan identidad/campos no objetivo. Resultado nuevo y congelado siempre, incluidos casos sin cambio de valor. La idempotencia elegida es por valor; justificación y límite respecto a objetos JS fabricados en TECH§18. Barcode retirado significa propiedad ausente. Cambiar unidad no convierte datos ni precios; costos/precios no negativos, cero y pérdida permitidos.
+
+Pruebas nuevas161; total758/10archivos, con597anteriores intactos. Cubren nueve comandos/campos no objetivo/identidad,49combinaciones de unidades, límites Unicode/ASCII, controles/zero-width, tipos runtime, Product malformado incluso en campo reemplazado, Money negativo/falsificado, independencia de inputs mutables y no-op por valor con objeto nuevo. Lint y typecheck domain individuales0. Test raíz0; domain404/404 después de restauración.
+
+Prueba negativa real: se sustituyó temporalmente la validación createProduct del nuevo salePrice por Object.freeze del objeto combinado; permitió inputs inválidos y la suite falló exit1. Restauración exacta de bytes y domain404/404 exit0. SHA antes/después1F77BC59134A98D9A6E90D3838197CCEED95230E811CBAC221776F6E1EA56486, negative.json/log fuera del repo. No queda la mutación introducida.
+
+Evidencia TEMP/smartretail-task007d: baseline.json, check-before.log, audit-before.json, gitleaks-before.json, negative.json/log y validaciones finales. QA y SECURITY independientes completadas; resultados y cierre a continuación. Sin commits, push, despliegues ni comienzo de otra TASK.
+| Validación final | Resultado |
+| --- | --- |
+| pnpm test / pnpm check | exit0 ambos;758tests/10archivos, formato/lint/tipos/tests/audit completos. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; residual UUID sin cambio. Bruta1, umbralHIGH0. |
+| Gitleaks |8.30.1, config intacta/redact100; exit0, reporte vacío tras exclusiones existentes. |
+| Lockfile | Byte-idéntico:232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. Sin instalaciones. |
+| Alcance | scope.json:2creados/3modificados; contratos/apps/archivos protegidos intactos. git diff --check0. |
+| Git | main, sin commits ni remotos; sin push/despliegues. |
+
+Riesgos/pendientes: UUID MODERATE heredado, límites del scanner y objetos JS deliberadamente hostiles. Unicidad por empresa y restricciones al cambiar unidad con movimientos reales pertenecen a application/persistencia futuras; no se implementan en esta tarea. No hay autenticación, controles de autorización ni seguridad global acreditados por estas funciones puras.
+QA independiente (Mill):758/758tests exit0 y12.556comprobaciones adversariales propias sin fallos. Contrastó nueve comandos en todas las unidades/estados/presencia de barcode, identidad/campos ajenos, inputs malformados, Unicode, Money hasta10^200 e independencia de referencias mutables. Verificó hashes, negativa y documentación; política siempre-nuevo permitida y coherente. Inspeccionó check/audit/scanner sin atribuirse su ejecución. Sin hallazgos accionables ni correcciones requeridas. Informe/sondas TEMP/smartretail-task007d/qa-independent/review.txt.
+
+SECURITY independiente (Nash):132.520comprobaciones propias sin fallos, suite758/758 exit0, auditoría propia LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks propio exit0/reporte vacío. Revisó runtime, negativos, inputs falsificados, Unicode, mutabilidad, imports/dependencias/lock, restauración y documentación. Sin nuevos hallazgos o bloqueos. Permanece UUID7.0.3 MODERATE y el límite declarado de getters/proxies hostiles; ninguna certificación global. Evidencia TEMP/smartretail-task007d/security-review.md, security-independent.cjs/json, security-suite.log, security-audit.json y security-gitleaks.json/log. Ningún revisor modificó el repositorio.
+
+Cierre TASK-007D: **COMPLETADA**. Nueve operaciones con invariantes, identidad e inmutabilidad verificadas;161tests nuevos y758totales aprobados, test/check0, negativa real/restauración exacta, auditoría sin HIGH/CRITICAL, Gitleaks0 y lock intacto. Revisiones QA/SECURITY realmente ejecutadas sin pendientes. Sin cambios de contracts/apps ni commits, push, despliegues o comienzo de otra TASK.
+## TASK-008A — InventoryLocation y StockBalance — 2026-09-28
+
+Línea base confirmada antes de editar:758tests/10archivos, pnpm check0, audit LOW0/MODERATE1/HIGH0/CRITICAL0, Gitleaks0 y Git main sin commits/remotos. Hashes iniciales en TEMP/smartretail-task008a distinguen cambios actuales de tareas anteriores.
+
+Creados seis archivos: packages/domain/src/inventory-location.ts, src/stock-balance.ts, tests/inventory.test.ts; los tres paths equivalentes en packages/contracts. Modificados cuatro: ambos src/index.ts y docs/TECH_DECISIONS.md/PROJECT_STATE.md. Apps, modelos/tests anteriores, configs, manifiestos y lock intactos; sin dependencias nuevas.
+
+InventoryLocation tiene ID/Code/Name nominales y active/inactive, factory pura que revalida y congela. Code1–32ASCII cerrado; Name1–100puntos Unicode con política reutilizada de ProductName; UUID reutiliza ProductId con marca distinta. StockBalance revalida ProductId/LocationId/Quantity y congela copia independiente de Quantity. Permite cero/negativos sin conversiones, sin comprobar una unidad de Product que no recibe. Contracts estrictos reutilizan schemas de IDs/Quantity, DTOs derivados y milliUnits string, sin coerción. TECH§19 documenta decisiones y límites.
+
+Se agregaron291tests:116domain y175contracts; total1049/12archivos,758previos intactos. Casos incluyen negativos/cero, cantidades exactas grandes/todas las unidades, nominalidad IDs, límites de código/nombre, Unicode/emoji/homoglyphs/controles/zero-width, tipos incorrectos, entradas JSON con __proto__/constructor, claves adicionales anidadas, inmutabilidad ante referencias mutables y ausencia de mutadores/ediciones/movimientos públicos. Lint/typecheck individuales de ambos paquetes0.
+
+Correcciones de tests iniciales: expectativa de claves ordenadas y uso de "invalid" como supuesto nombre inválido; reemplazado por vacío. No se alteraron reglas para obtener verde. La negativa deliberada posterior cambió temporalmente el regex de código para permitir minúsculas: suite exit1; restauración exacta de bytes y domain520/520 exit0. SHA antes/después0F751DC87FDB59618BD4399F8263810A79E6F8E43EC8193F4CDC58F38B3784E7. Evidencia negative.json/log; no queda regresión temporal.
+
+Tras continuar la sesión, herramientas temporales previas ya no existían: se recuperó pnpm11.27.1 mediante npm pack exacto fuera del workspace; Gitleaks8.30.1 desde el archivo previo verificado contra digest de metadata oficial guardada. Sin instalación del workspace ni cambio de lock/globales.
+
+Evidencia TEMP/smartretail-task008a: baseline.json, check-before.log, audit-before.json, gitleaks-before.json, negative.json/log y resultados finales. QA y SECURITY independientes completadas; resultados y cierre a continuación. No se implementa TASK-008B, movimientos, historial, persistencia, tenancy ni API. Sin commits, push o despliegues.
+| Validación final | Resultado |
+| --- | --- |
+| pnpm test / pnpm check | exit0 ambos;1049tests/12archivos, formato/lint/tipos/tests/audit completos. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; UUID residual previo. Bruta1, umbralHIGH0. |
+| Gitleaks |8.30.1, configuración intacta/redact100; exit0 y reporte vacío tras exclusiones existentes. |
+| Lockfile | Byte-idéntico:232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. |
+| Alcance/Git | scope.json:6creados/4modificados; apps/archivos protegidos intactos; git diff --check0; main/0commits/sin remotos. |
+
+Pendientes fuera de alcance: política operativa que impida generar negativos, coherencia Product.unit/StockBalance.quantity.unit, unicidad/existencia por empresa y autorización requerirán application/persistencia y movimientos futuros. El saldo actual sólo representa datos, no autoriza ajustes ni modifica balances persistentes. Riesgo UUID MODERATE y limitaciones del scanner/objetos JS hostiles siguen documentados; no se declara seguridad global.
+QA independiente (Einstein):66.237comprobaciones adversariales propias sin fallos y suite1049/1049 en12archivos exit0. Revisó ubicación/saldo, nominalidad, límites, Quantity, negativos/cero, inmutabilidad, contratos, hashes y ausencia de mutadores/movimientos/tenancy. Documentación coherente. Inspeccionó check/audit/scanner/negativa sin atribuirse esas ejecuciones. Sin hallazgos accionables ni cambios de código requeridos. Informe/sondas TEMP/smartretail-task008a/qa-independent/review.txt.
+
+SECURITY independiente (Popper):262.719comprobaciones adversariales propias, suite1049/1049, auditoría propia LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks propio exit0/reporte vacío. Contrastó docs/check/negativa/restauración/hashes y confirmó ausencia de API de mutación/movimientos. Sin hallazgos nuevos bloqueantes. Observaciones: UUID7.0.3 MODERATE heredado e informativa sobre getters/proxies que pueden ejecutar código o propagar excepciones, límite ya documentado. Mantener datos JSON inertes en futuras fronteras; no hay seguridad global certificada. Informe/evidencia TEMP/smartretail-task008a/security-review.md. Ambos revisores trabajaron sin modificar el repositorio.
+
+Cierre TASK-008A: **COMPLETADA**. InventoryLocation/StockBalance y contratos implementados;291tests nuevos y1049totales pasan, test/check0, auditoría sin HIGH/CRITICAL, Gitleaks0, lock byte-idéntico y negativa restaurada con SHA exacto. QA y SECURITY realmente ejecutados, sin correcciones pendientes. Apps/archivos protegidos intactos. Sin commits, push, despliegues ni comienzo de TASK-008B.
+## TASK-008B — InventoryMovement y aplicación sobre StockBalance — 2026-09-28
+
+Línea base confirmada antes de editar:1049tests/12archivos, pnpm check0, auditoría LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks0. Baseline de hashes TEMP/smartretail-task008b; Node24.13.1/pnpm11.27.1, main sin commits/remotos.
+
+Creados cuatro archivos: packages/domain/src/inventory-movement.ts y tests/inventory-movement.test.ts; equivalentes en packages/contracts. Modificados cinco: índices públicos de ambos paquetes, packages/domain/tests/inventory.test.ts, TECH_DECISIONS y PROJECT_STATE. El test anterior sólo deja de prohibir los nuevos movimientos autorizados; mantiene mutadores directos/edición de ubicaciones prohibidos. No se eliminaron casos previos. Apps, modelos anteriores, configuraciones, manifiestos y lock intactos.
+
+InventoryMovementId nominal; receipt/issue con magnitud>0, adjustment con delta!=0 y reason Unicode1–200. Factories revalidan, copian Quantity y congelan. applyInventoryMovement valida saldo operativo, movimiento, target y unidades; usa Quantity exacta, rechaza saldos iniciales/finales negativos y admite final0. Nuevos errores específicos sin valores sensibles. Contracts strict con discriminated union, schemas reutilizados y refinements de signo sin BigInt parsing. TECH§20 detalla límites y decisiones.
+
+No hay deduplicación: test explícito aplica dos veces el mismo receipt con el mismo ID y obtiene10→11→12. Idempotencia/exactly-once queda para unicidad de movementId y persistencia transaccional futura; no se afirma implementada. StockBalance conserva sólo productId/locationId/quantity, sin historial ni IDs. No se crean mutadores directos, transferencias, actores, timestamps, ventas/compras, tenancy, API o persistencia.
+
+Tests nuevos336:139domain y197contracts; total1385/14archivos con1049previos. Cubren signos, precisión, negativos previos/resultantes, finalcero,42pares incompatibles de unidades en tres variantes, mismatch de cada ID/ambos, motivos Unicode/controles/límites, inputs falsificados, strictness de variantes/anidados, ausencia de rutas alternativas e inmutabilidad. Un fixture inicial usó "bad" como supuesto reason inválido; se sustituyó por vacío, sin cambiar regla porque "bad" es texto válido. Lint/typecheck individuales de ambos paquetes0.
+
+Prueba negativa real: omitir temporalmente el guard del saldo final negativo hizo fallar la suite exit1. Se restauraron bytes exactos y domain659/659 exit0; SHA antes/despuésD744F081C1CC01D3F2BF9E6435A9C80762D656EB4A97C0ECA2DB3EC0C5255F50. Evidencia negative.json/log en TEMP/smartretail-task008b; no queda omisión deliberada.
+
+Evidencia: baseline.json, check-before.log, audit-before.json, gitleaks-before.json, negative.json/log y verificaciones finales en TEMP/smartretail-task008b. QA y SECURITY independientes completadas tras continuación; resultados y cierre a continuación. Sin commits, push, despliegues ni inicio de otra TASK.
+Continuación tras límite de uso: las primeras sesiones QA/SECURITY se interrumpieron sin dictamen final y no se cuentan como revisiones aprobadas. Se iniciaron dos nuevas sesiones independientes. Se recuperaron ejecutables temporales eliminados: pnpm11.27.1 exacto mediante npm pack fuera del workspace y Gitleaks8.30.1 desde archivo previamente verificado contra digest oficial guardado. No se instalaron dependencias del proyecto ni se cambiaron políticas globales. Se repitió validación final con esas herramientas.
+
+| Validación final tras continuar | Resultado |
+| --- | --- |
+| pnpm test / pnpm check | exit0 ambos;1385tests/14archivos, formato/lint/tipos/tests/audit completos. check-resumed.log. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; UUID residual previo. Auditoría bruta1, umbralHIGH0. |
+| Gitleaks |8.30.1, configuración intacta/redact100; exit0 y reporte vacío tras exclusiones existentes. |
+| Lockfile | Byte-idéntico232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. |
+| Alcance/Git | scope.json:4creados/5modificados; apps/archivos protegidos intactos; git diff --check0; main/0commits/sin remotos. |
+| Restauración | Hash actual de inventory-movement.ts coincide con before/after de negative.json. |
+
+Riesgos/pendientes: UUID MODERATE heredado; futura autorización y coherencia con Product.unit; unicidad de movementId/deduplicación y concurrencia transaccional pendientes. No hay garantía exactly-once local ni reparación de saldo negativo preexistente. StockBalance estructural continúa representando datos; sólo applyInventoryMovement aplica efectos operativos dentro de esta API. No es un sandbox contra código JS hostil ni certificación de seguridad global.
+QA independiente de continuación (Kuhn):1385tests/14archivos y487casos adversariales propios exit0. Verificó variantes/signos, destino, unidades, saldo inicial/final negativo, reason Unicode/límites, entradas parciales/falsificadas, strictness e inmutabilidad. Confirmó doble aplicación del mismo ID y ausencia de deduplicación/exactly-once local. Contrastó hashes, restauración y documentos; inspeccionó check/audit/scanner sin atribuirse esas ejecuciones. Sin hallazgos accionables ni bloqueos QA; sin cambios del repositorio. Informe TEMP/smartretail-task008b/qa-independent/review-resumed.md.
+SECURITY independiente de continuación (Schrodinger):156.694comprobaciones adversariales propias sin fallos, suite1385/1385 exit0, auditoría propia LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks8.30.1 propio exit0. Verificó límites antes de regex, cero conversiones contractuales BigInt, signos, negativos, mismatch de IDs/unidades, Unicode, strictness e inmutabilidad. Hashes coincidentes; baseline/check/negativa inspeccionados sin atribuirse ejecución. Sin hallazgos nuevos bloqueantes. Observaciones: MODERATE UUID7.0.3 heredado e informativa sobre getters/proxies, ya documentadas. Doble aplicación del mismo ID confirmada, sin exactly-once; stockBalance conserva representación estructural. Informe TEMP/smartretail-task008b/security-resumed-review.md y sondas security-resumed-probes.cjs/json. Sin ediciones del repositorio ni certificación global.
+
+Cierre TASK-008B: **COMPLETADA**.336tests nuevos y1385totales pasan; test/check0, negativa real restaurada con SHA exacto, auditoría sin HIGH/CRITICAL, Gitleaks0, lock intacto y revisiones independientes realmente finalizadas. No quedan hallazgos accionables pendientes dentro del alcance. Receipt/issue/adjustment y aplicación exacta validan target/unidad y rechazan saldo operativo negativo. No existe deduplicación persistente ni garantía exactly-once. Sin commits, push, despliegues ni comienzo de otra TASK.
+## TASK-008C — Transferencias entre ubicaciones — 2026-09-28
+
+Línea base confirmada antes de editar:1385tests/14archivos, pnpm check0, auditoría LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks0; main sin commits/remotos. Node24.13.1/pnpm11.27.1. Hashes baseline fuera del repo en TEMP/smartretail-task008c.
+
+Creados cuatro archivos: packages/domain/src/inventory-transfer.ts y tests/inventory-transfer.test.ts; equivalentes en contracts. Modificados seis: ambos src/index.ts, domain/src/inventory-movement.ts (preflight interno reutilizable), domain/tests/inventory-movement.test.ts (retira prohibición obsoleta de APIs de transferencia), TECH_DECISIONS y PROJECT_STATE. Apps, otros modelos/tests, configs, manifiestos y lock intactos; sin dependencias nuevas ni instalaciones.
+
+InventoryTransferId nominal y transferencia congelada con IDs propios/de ambos movimientos, producto, origen/destino distintos y Quantity>0. Se rechazan issueMovementId/receiptMovementId iguales entre sí y sourceLocationId/destinationLocationId iguales entre sí, incluso con diferencias de case, sin normalizar valores guardados. No se exige desigualdad cruzada entre transferId y los IDs de movimiento. Deriva issue/origen y receipt/destino mediante factories existentes. applyInventoryTransfer hace preflight de ambas relaciones y delega efectos a applyInventoryMovement; devuelve dos nuevos saldos congelados o lanza error. Saldos iniciales negativos/stock insuficiente/mismatch se rechazan; cero final es válido. TECH§21 detalla invariantes y orden de validación.
+
+Atomicidad sólo observable en función pura, sin transacción durable/concurrencia/rollback persistente. Test explícito10/0→8/2→6/4 al repetir mismo transferId/movementIds: no hay deduplicación ni exactly-once. StockBalance no recibe historial ni metadata. Contrato strict/DTO derivado reutiliza schemas, sin coerción/BigInt parsing ni nuevo tipo de movimiento.
+
+Tests nuevos166:102domain y64contracts. Total1551/16archivos, incluyendo1385casos anteriores. Cubren IDs nominales/falsificados/reutilizados, unidades/fracciones/cantidades grandes, derivación correcta, insuficiencia, saldos negativos de ambos lados, origen/destino intercambiados,42pares de unidades incompatibles a ambos lados, preservación de entradas, resultado no parcial, doble aplicación, claves extra JSON/prototype-like y límite128. Lint/typecheck individuales de ambos paquetes0.
+
+Prueba negativa real: omitir temporalmente el guard sourceLocationId!=destinationLocationId hizo fallar la suite exit1; restauración exacta de bytes, domain761/761 exit0. SHA antes/después4A03CDD8A051D388BDA740C70EC54A6A55326784E20C65C4C6A6E5F492343FD6. Evidencia negative.json/log en TEMP/smartretail-task008c. No queda regresión deliberada.
+
+Evidencia TEMP/smartretail-task008c: baseline.json, check-before.log, audit-before.json, gitleaks-before.json, negative.json/log y resultados finales. QA y SECURITY independientes completadas tras continuación; dictámenes y cierre a continuación. Sin commits, push, despliegues ni comienzo de otra TASK.
+| Validación final | Resultado |
+| --- | --- |
+| pnpm test / pnpm check | exit0 ambos;1551tests/16archivos, formato/lint/tipos/tests/audit completos. |
+| Auditoría completa | LOW0/MODERATE1/HIGH0/CRITICAL0; residual UUID conocido. Bruta1, umbralHIGH0. |
+| Gitleaks |8.30.1/config intacta/redact100; exit0 y reporte vacío tras exclusiones existentes. |
+| Lockfile | Byte-idéntico232CA42D3588CD8F5112F560FEFDD6D3D9FDDE65C25E01A7826CC8DFB86BF135. |
+| Alcance/Git | scope.json:4creados/6modificados; apps/archivos protegidos intactos; git diff --check0; main/0commits/sin remotos. |
+
+Pendientes fuera de alcance: transacción durable de ambos movimientos/saldos, deduplicación por IDs, concurrencia, permisos/empresa y persistencia. Se conservan riesgo UUID MODERATE y límites de objetos JS hostiles/scanner. La función pura no garantiza exactly-once ni atomicidad entre procesos y no repara balances negativos. No se certifica seguridad global.
+
+Continuación tras límite de uso: se retomaron las dos sesiones independientes, cuya interrupción no se contó como aprobación. Se recuperaron pnpm11.27.1 exacto mediante npm pack fuera del workspace y Gitleaks8.30.1 desde el archivo previo cotejado contra su digest oficial guardado. No se instalaron dependencias del proyecto ni se modificaron configuraciones globales.
+
+QA independiente (Laplace) completada:568sondas adversariales propias ejecutadas nuevamente, cero fallos; suite propia previa1551/1551 exit0. Revisó seis campos UUID, controles Unicode reales/NUL/CR/LF/zero-width/homoglyphs,343combinaciones de unidades, productos/ubicaciones incompatibles, negativos/insuficiencia, datos incompletos/falsificados, derivación, inmutabilidad, atomicidad observable y doble aplicación. Contratos rechazan extras __proto__/constructor, tipos incorrectos y strings enormes; prototipos extraños no contaminan Object.prototype. Sin hallazgos accionables ni correcciones requeridas. Inspeccionó evidencia de check/audit/scanner/negativa/hashes sin atribuirse esas ejecuciones. Informe TEMP/smartretail-task008c/qa-review.md y qa-probes.cjs/json. Repositorio sin ediciones del revisor; límites de datos JS ejecutables y ausencia de garantías durables expresamente conservados.
+
+SECURITY independiente (Ohm) completada:2612casos adversariales propios ejecutados nuevamente, exit0. Incluye414transferencias falsificadas,343combinaciones de unidades,1680combinaciones de signos/stock/conservación, confusión origen/destino, aliasing, prototipos y contratos/límites. Instrumentación contractual verificó cero llamadas a BigInt. Suite propia previa1551/1551, auditoría propia LOW0/MODERATE1/HIGH0/CRITICAL0 y Gitleaks propio exit0. No atribuye a SECURITY el check, la negativa ni los gates refrescados por DEVELOPER. Sin defectos nuevos bloqueantes ni correcciones de código. Observaciones: MODERATE uuid7.0.3 heredado; informativa sobre prototipos/getters/proxies y datos inertes; precisión editorial aplicada arriba para especificar qué pares de IDs deben ser distintos, sin añadir desigualdad entre transferId y child IDs. Informe TEMP/smartretail-task008c/security-independent/review.md y probes.cjs/json. Sin ediciones del repositorio por el revisor ni certificación de seguridad global.
+
+Validación refrescada tras continuar: pnpm test y pnpm check exit0,1551tests/16archivos; check-resumed.log incluye formato/lint/tipos/tests/audit. audit-resumed.json LOW0/MODERATE1/HIGH0/CRITICAL0 (bruta1, umbralHIGH0); gitleaks-resumed.json vacío, scanner8.30.1 exit0 con configuración intacta. Lock y SHA de restauración nuevamente coincidentes. scope.json confirma4creados/6modificados, apps/archivos protegidos intactos; git diff --check0, main/0commits/sin remotos.
+
+Cierre TASK-008C: **COMPLETADA**.166tests nuevos y1551totales aprobados; negativa real detectada/restaurada con SHA exacto, test/check0, auditoría sin HIGH/CRITICAL, scanner0, lock byte-idéntico y ambos dictámenes independientes finalizados. Transferencia deriva issue/receipt y retorna ambos saldos o error sin mutación observable. Atomicidad sólo de función pura; no hay deduplicación, garantía exactly-once ni transacción durable. Sin commits, push, despliegues o comienzo de otra TASK.
+
+## TASK-009 — Application core de inventario y reconciliación física — 2026-09-28
+
+Inicio:1551tests/check0 recién verificados en TASK-008C; Node24.13.1/pnpm11.27.1, main/0commits/sin remotos. Sin repetir gates de línea base ni reconstruir documentación histórica. Evidencia TEMP/smartretail-task009.
+
+Creado packages/application (9archivos: manifiesto/configs, ports.ts/inventory.ts/index.ts y tests/fake). Runtime depende sólo de domain; TS6.0.3 existente. Root lint/typecheck incluyen application; formato/Vitest sin cambios. Instalación offline/ignore-scripts añadió únicamente importer application al lock (workspace domain + TS), sin nuevas versiones externas. Hash final E1F898E0BF1F65BB97CB11559CCEC47F3E52119BC3A57721DEC08E5C154DAF3F. Modificados sólo package.json raíz, lock y este documento; apps/domain/contracts/TECH_DECISIONS intactos según hashes.
+
+receiveInventory/issueInventory/adjustInventory/transferInventory revalidan/snapshot antes de await y delegan reglas a domain. reconcileInventory calcula delta con Quantity: no-change sin escritura o adjusted mediante adjustment y applyInventoryMovement; contado negativo/targets/unidades inválidos fallan. No inventa saldos ausentes ni repara negativos operativos. Sin setStock ni repositorios productivos.
+
+Puertos: InventoryUnitOfWork.run con todos los targets e InventoryTransaction.readBalance/saveBalance/appendMovement/appendTransfer. PostgreSQL deberá implementar locks ordenados, unicidad UUID y transacción conjunta ledger/saldos/transferencia, con rollback antes de resolver errores. El fake sólo modela staging secuencial; no acredita concurrencia, atomicidad durable o exactly-once. Duplicados rechazados por adaptador sin replay; no-change no reserva ID: reintentarlo después de otros movimientos puede crear adjustment. Política durable de reintentos, Auth/empresa y auditoría de actor pendientes.
+
+Validación final:39tests nuevos/1590totales en17archivos; pnpm test0 y pnpm check0 (formato/lint/tipos/tests/audit). Auditoría adicional por nuevo importer: LOW0/MODERATE1/HIGH0/CRITICAL0, uuid heredado; bruta1/umbralHIGH0. Gitleaks8.30.1 una sola vez al final, exit0/reporte vacío, configuración intacta. git diff --check0. Sin frozen installs redundantes.
+
+QA independiente (Boyle):39/39tests ejecutados, revisión enfocada sin hallazgos accionables. SECURITY independiente (Wegener):39/39 y4sondas puntuales, sin defectos nuevos bloqueantes; confirmó límites de no-change/reintentos y dependencia de DB para atomicidad/unicidad. Sin fuzzing masivo ni cambios de revisores; no se atribuyen gates globales/scanner a sus sesiones. Informes qa-independent-review.md y security-independent/review.md en TEMP. No se certifica seguridad global.
+
+Estado **COMPLETADA**. Sin correcciones pendientes dentro del alcance; sin commits, push, despliegues ni otra TASK.
+
+## TASK-010 — PostgreSQL, RLS e idempotencia durable — 2026-09-29
+
+Inicio:1590tests/check0 de TASK-009; Node24.13.1/pnpm11.27.1. Sin PostgreSQL nativo; Docker existente estaba detenido. Se inició sin instalar servicios/configurar sistema y se usó una DB temporal PostgreSQL18.6 en loopback, credenciales efímeras fuera del repo. Imagen fijada sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722. Sin acceso a producción u otras bases.
+
+Nuevo packages/database: pg8.23.0 exacto, types/pg8.23.1, Node24.13.6/TS6.0.3; migración001 y adapter de application. Seis tablas con UUID/FKs compuestas, BIGINT, constraints/unicidad SKU y barcode por tenant, ledger/transfer IDs globales. RLS+FORCE en todas; app sin superuser/owner/BYPASSRLS ni edición directa de saldos. SQL parametrizado, contexto tenant local confiable, locks ordenados y trigger de ledger para cambiar saldo. Transferencia valida hijos al commit. Contexto UUID no es autorización; Auth sigue pendiente. Detalles/fuentes oficiales en TECH§22.
+
+Application agrega consultas opcionales de replay antes del cálculo: mismo ID/contenido devuelve resultado original persistido, distinto contenido falla. BIGINT fuera de64bits falla explícitamente. No exactly-once distribuido; conteos no-change no reservan ID. Scope contrastado con hashes:10archivos nuevos y7modificados (database, application, scripts raíz/lock y dos docs); apps/domain/contracts intactos.
+
+Validación real final:25integraciones nuevas,1615tests/18archivos, pnpm test0 y pnpm check0 con PostgreSQL configurado y sin skips DB. Incluye issues/retries/transferencias concurrentes, RLS/cross-tenant, unicidad, rollback después del débito, mapping exacto y replay con stock actual insuficiente. Frozen install único0; SHA antes/después/actual AE68455B48DCDC36B262E0E891FDE0E5798BA6D3432A2BA49564800D86EAB7C0. Auditoría explícita LOW0/MODERATE1/HIGH0/CRITICAL0; uuid heredado. Gitleaks8.30.1 exit0/reporte vacío, allowlists intactas. Evidencia TEMP/smartretail-task010 (gates.json/logs, integration.log, audit-final.json, frozen.json, scope.json). test:integration exige configuración; sin ella root test/check omiten DB y no acreditan estas garantías.
+
+Correcciones: FOR UPDATE requirió función de bloqueo limitada, conservando prohibición UPDATE para app; migración reaplicada y probada en DB desechable. Quitada variable sin uso. SECURITY cerró BAJO de título del test overflow (es rechazo previo, no rollback posterior). QA cerró P3: SKU/barcode duplicados ahora DatabaseUniquenessConflictError; sólo constraints de identidad ledger/transfer se traducen a InventoryIdempotencyConflictError. Tests/check repetidos tras la corrección y verdes.
+
+QA independiente (Peirce): inspección enfocada/evidencia de gates, guard sin configuración exit1 y10casos propios simulados de clasificación/rollback/liberación, todos aprobados. SECURITY independiente (Maxwell):8consultas READ ONLY verificaron roles/ACL/FORCE/definers, guard sin configuración y2sondas SQL negativas reales: ledger negativo/balance_after falso rechazados con rollback; transferencia con hijos incompatibles rechazada al COMMIT y revertida. Ambos revisaron correcciones y no mantienen hallazgos abiertos. Sin fuzzing masivo; no se atribuye la suite global del implementador a revisores. Informes independientes en TEMP. No certificación global ni pruebas de Auth inexistente.
+
+Estado **COMPLETADA**. Persistencia/RLS/atomicidad/idempotencia de esta DB implementadas y ejecutadas realmente. Pendientes futuros: autorización de contexto/empresa, actor y auditoría de negocio, política durable de comandos sin movimiento y despliegue/migraciones operacionales. Sin commits, push, Auth, API, UI, despliegue ni otra TASK.
+
+Limpieza: detenido/eliminado únicamente el contenedor temporal de esta TASK (--rm); retirados sus dos archivos de credenciales efímeras. Otros contenedores/servicios no modificados. Para repetir integración se necesita otra DB desechable y nueva configuración.
+
+## TASK-011 — Tenancy, membresías y autorización — 2026-09-29
+
+Inicio:1615tests/check0 de TASK-010, Node24.13.1/pnpm11.27.1, main sin commits/remotos. PostgreSQL18.6 temporal propio en loopback, imagen ya fijada y credenciales efímeras fuera del repo; otras bases intactas. Sin dependencias nuevas, installs ni regeneración de lock. Evidencia TEMP/smartretail-task011.
+
+Migración002: tenant_memberships con tenant/user únicos, owner/admin/inventory_clerk y active/inactive; matriz global role_permissions (10/10/6). Clerk sólo lectura/receive/issue/transfer. App normal no escribe membresías/matriz, tampoco si tiene members.manage; ese permiso no implementa bootstrap. UserId es sub UUID externo, sin email ni FK auth.users.
+
+Application define AuthenticatedContext y Permission; UoW exige permiso explícito en la misma transacción antes del callback. Database configura user+tenant locales y consulta PostgreSQL sin cache/roles de DTO/claims. Los cinco casos exigen receive/issue/adjust/transfer y reconcile adjust, incluso no-change/replay; productos/ubicaciones exigen write. RLS+FORCE en siete tablas por tenant: restricción tenant+miembro activo más políticas por acción, también para SQL directo. Helpers nuevos INVOKER con search_path fijo/EXECUTE mínimo y sin recursión; definers anteriores conservan FORCE. TECH§23 documenta decisión y frontera de confianza.
+
+29tests nuevos:54integraciones reales aprobadas y1644tests/18archivos en pnpm test. Incluyen falta/inactividad/revocación de membresía, cambio sólo tenant, matriz, GUC ausentes/inválidos, SQL directo, autoescalación y rollback por escritura posterior no autorizada. QA detectó BAJO: default inventory.read en tipo concreto permitía omitir permiso. Corregido: argumento obligatorio sin default y negativa omisión/undefined antes de callback, revalidada por QA. No se demostró bypass RLS.
+
+QA independiente (Kierkegaard):16comprobaciones propias READ ONLY y3sondas PostgreSQL de corrección; hallazgo cerrado, sin pendientes. SECURITY independiente (Pasteur):catálogo/roles/FORCE, contextos, limpieza GUC y4negativas SQL reales (adjustment clerk, edición de membresía/matriz owner, INSERT cross-tenant) rechazadas42501; inactive comprobado en transacción administrativa revertida, sin cambios persistentes. Sin fuzzing masivo ni modificaciones de revisores. Suites/gates del implementador no se atribuyen a QA/SECURITY. Informes en qa-independent/review.md y security-independent/review.md de TEMP.
+
+Límite: quien controle ambos GUC mediante credenciales backend puede asumir una identidad existente; GUC/UUID no autentican. Futuro API deberá verificar identidad externa antes de construir contexto y nunca aceptar userId/role del cliente como autoridad. No Auth/login/SDK/API/UI ni certificación global. Scope2creados/8modificados en application/database y dos docs; apps/domain/contracts/configs intactos. Lock byte-idéntico AE68455B48DCDC36B262E0E891FDE0E5798BA6D3432A2BA49564800D86EAB7C0. Sin commits/push/deploy ni otra TASK.
+
+Cierre: **COMPLETADA**. Integración PostgreSQL, pnpm test y pnpm check exit0;54DB/1644totales tras corrección. Auditoría incluida en check:único MODERATE uuid conocido, sin HIGH/CRITICAL; no auditoría adicional al no cambiar dependencias. Gitleaks8.30.1 ejecutado una sola vez al final, exit0/reporte vacío/allowlists intactas. git diff --check0. Detenido/eliminado sólo contenedor temporal de TASK011 y retirados archivos de credenciales efímeras; para repetir integración se necesita nueva DB desechable/configuración. Apps intactas y lock sin cambios. QA/SECURITY finalizadas sin hallazgos abiertos.
+
+## TASK-012 — Supabase Auth, API y web de Productos — 2026-10-01
+
+Inicio: TASK-011 con 1644 tests/check0 documentados; main sin commits/remotos, Node24.13.1/pnpm11.27.1. Sin configuración real Supabase. Se consultaron npm y la [guía oficial SSR](https://supabase.com/docs/guides/auth/server-side/creating-a-client): supabase-js2.117.2 y ssr0.12.7 exactos en web. Incompatibilidad upstream WebAuthn/DOM de TS6.0.3 corregida mediante pnpm patch: PublicKeyCredentialFuture omite el toJSON nativo antes de declarar su variante, en fuente y ambos .d.ts. Sin cambios runtime del SDK ni skipLibCheck; patch/registro workspace/lock son reproducibles y deberán retirarse cuando upstream corrija los tipos.
+
+Implementado: clientes browser/server, proxy de renovación de cookies, identidad getClaims/sub verificado por cada página/API privada, /login y /products, tenants propios activos, listar/crear/PATCH explícito con operaciones existentes. Selección x-tenant-id nunca autoriza; PostgreSQL vuelve a consultar membresía/permisos dentro de la transacción con rol restringido, GUC locales y RLS. Migración003 amplía sólo enumeración propia y concede UPDATE exclusivamente a columnas editables bajo products.write. Edición con FOR UPDATE, conflictos409 y errores sanitizados; unidad referenciada por inventario no cambia. DTO/importe decimal se convierten con strings/bigint, nunca floats. Logs de mutaciones con actor/tenant/operación/fecha/correlación, sin payload; no constituye auditoría durable de negocio.
+
+CSRF: POST/PATCH requieren Origin exacto frente a protocolo de Request + Host HTTP; no se confía en X-Forwarded-Host y se rechaza Fetch Metadata cross-site/same-site. Esto corrige la normalización de Next a hostname interno observada en navegador. JSON estricto, cuerpo limitado a16KiB incluso sin Content-Length, respuestas privadas no-store. Un futuro proxy de despliegue debe preservar Host/protocolo públicos y validar su configuración. .env.example contiene sólo placeholders; DATABASE_URL debe pertenecer a un login miembro de smartretail_app, nunca postgres/owner. Aplicar 001→002→003 administrativamente y provisionar usuario Auth/membresía fuera de esta TASK; no se creó proyecto ni credencial real.
+
+Pruebas: 41 nuevas (31 API/Auth/dinero y10 PostgreSQL), más suite previa. PostgreSQL18.6 en contenedor temporal propio, loopback e imagen ya fijada; otras bases intactas. Smoke real de navegador con Playwright ya disponible, sin instalar runner: proveedor Auth simulado local con JWT RS256/JWKS efímeros, SDK getClaims real y DB real; login, empresas, listado, creación, edición/inactivación, MXN exacto, aislamiento visual, guard de recarga, viewport375px, logout y401 aprobados. Se retiró BOM de CSS que impedía aplicar :root. Esto NO es login real contra Supabase. **Auth integrado pero validación real con proyecto Supabase pendiente**.
+
+QA independiente (Schrodinger): 29 tests de frontera y sonda de UI detectaron MEDIO QA-01, recarga antigua reemplazaba producto recién guardado. Corregido bloqueando recarga/cambio de empresa mientras hay editor y evitando iniciar edición durante carga; cinco escenarios y control negativo independientes cerraron el hallazgo. SECURITY independiente (Socrates): inspección y29 tests, más4 sondas con SDK real (JWT válido/alterado/expirado/alg:none); revisión CSRF final detectó BAJO por puertos por defecto e INFO por autoridad con comas: corregidos mediante gramática de Host y normalización URL;36 sondas y31 tests cerraron ambos. Sin afirmación de seguridad general ni pruebas cloud. Evidencia y reportes en TEMP/smartretail-task012; ninguna suite del implementador atribuida a revisores.
+
+Validación final: pnpm check exit0,1685 tests/19 archivos incluidos64 PostgreSQL reales, sin skips DB; formato/lint/typecheck de todo el workspace y audit incluidos. Build exit0. Primer check se detuvo por tres warnings Next de window.location.assign, corregidos mediante router.replace/refresh. Tras build+dev aparecieron declaraciones globales duplicadas: se excluye sólo .next/dev/types, preservando los tipos canónicos .next/types regenerados por next typegen. QA ejecutó el programa TS real:0 diagnósticos, validator/cache-life/routes/root-params presentes, skipLibCheck false. Auditoría tras nuevas dependencias: LOW0/MODERATE1(uuid heredado)/HIGH0/CRITICAL0. Sin Inventory UI, delete, signup, recuperación, commits, push, despliegue ni siguiente TASK.
+
+Gitleaks8.30.1 ejecutado una vez sobre el working directory (326MB): exit1, cuatro alertas generic-api-key exclusivamente en .next/dev/cache/.rscinfo, .next/dev/server/server-reference-manifest.json y las dos preview keys de .next/dev/prerender-manifest.json. SECURITY confirmó por campos y procedencia Next que son claves internas de desarrollo, gitignored, falsos positivos respecto a credenciales de aplicación;0 credenciales de aplicación identificadas entre estos hallazgos, no certificación global. No se modificó .gitleaks.toml ni se ocultó el exit1. El borrado de caché/archivos temporales fue rechazado por revisión automática («blocked by policy»); se conservaron. No se volvió a ejecutar el scanner para obtener verde.
+
+Frozen install único exit0, SHA256 antes/después idéntico:4F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261. Scope final:25 archivos creados/13 modificados en apps/web, Product contracts/application/database, migración003, patch SDK/workspace/lock y este documento. AGENTS raíz, mobile, domain y guardrails raíz intactos. git diff --check0. Contenedor efímero TASK012 detenido/eliminado; procesos web/Auth de prueba detenidos. Configuración/credenciales efímeras permanecen en TEMP por bloqueo automático de borrado, pero su DB ya no existe; otras bases no se modificaron. Para repetir integración se requiere otra DB temporal.
+
+Estado: **COMPLETADA en implementación local**, QA/SECURITY sin hallazgos abiertos tras correcciones. Cloud Auth y configuración operacional de proxy/proyecto/membresías siguen pendientes; auditoría de negocio durable sigue fuera de esta TASK. No afirmar login real Supabase ni Gitleaks exit0. Sin commits, push, despliegue ni otra TASK.
+
+## TASK-012A — Gitleaks limpio y reproducible — 2026-10-01
+Inicio: Gitleaks8.30.1 exit1, cuatro alertas en apps/web/.next/dev/cache/.rscinfo:1, server/server-reference-manifest.json:4 y prerender-manifest.json:8–9; todas generadas e ignoradas por Git. .gitleaks.toml sustituye excepciones por valor por una única exclusión anclada a apps/web/.next/; reglas predeterminadas intactas, sin patrones genéricos de claves.
+Validación: gitleaks dir . --config .gitleaks.toml --redact --no-banner exit0; token ficticio temporal en comentario de .gitignore detectado por github-pat exit1; restauración exacta de bytes/SHA y nuevo escaneo exit0. No dependió de borrar caché. Evidencia en TEMP/smartretail-task012a.
+pnpm check exit0: formato/lint/typecheck,1621 tests aprobados y64 PostgreSQL omitidos por falta de DB temporal; audit conserva1 MODERATE uuid, sin HIGH/CRITICAL. Apps/lógica/dependencias/lock intactos; sólo .gitleaks.toml y este documento modificados, sin commits/push/despliegue.
+QA (Nietzsche):26 comprobaciones de rutas, evidencia negativa y hash de restauración; SECURITY (Copernicus):20 comprobaciones, reglas y control negativo. Sin hallazgos accionables; revisión limitada a alcance del scanner, no certificación global. Estado COMPLETADA; no siguiente TASK.
+
+## TASK-013 — Inventario web end-to-end — 2026-10-01
+
+Inicio: TASK-012A cerrada, sin UI/API de inventario; Node24.13.1/pnpm11.27.1, main sin commits/remotos. Se agregan /inventory protegido y GET/POST /api/v1/locations, GET /api/v1/inventory y POST receive/issue/adjustment/count/transfer. Consulta con nombres/SKU/unidad y cantidades exactas, incluidos ceros sin escribir saldos; operaciones reutilizan application/domain y transacciones PostgreSQL con identidad verificada, permisos, FORCE RLS, schemas strict y same-origin. Sin setStock, floats ni dependencias nuevas.
+
+Idempotencia: la UI genera UUID una vez y conserva el payload completo durante envío/reintento incierto; deshabilita edición/navegación y consulta nuevamente ambos balances tras confirmación. La migración004 añade reservas compartidas de tipo/ID y recibos de conteo, incluidos «Sin cambios» sin movimiento; colisiones concurrentes o entre tipos devuelven409. El backfill transaccional del owner restaura FORCE RLS y conserva los IDs del ledger como su tipo original: ajustes anteriores no se reinterpretan como conteos. El comando pendiente vive en la página; recarga/cierre no recuperan ese buffer y la UI lo advierte.
+
+Validación final:106 pruebas focales aprobadas (31 API/conversión,75 PostgreSQL18.6 real);42 nuevas en total. pnpm check exit0:1727 tests/20 archivos, sin skips, formato/lint/typecheck workspace y auditoría incluidos. Build web exit0; Gitleaks8.30.1 exit0/0 hallazgos. Auditoría:LOW0/MODERATE1(uuid heredado)/HIGH0/CRITICAL0. Lockfile sin cambios, SHA256 4F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261. Primer check falló por import relativo del fixture en test web, corregido y verificado; primeras integraciones requirieron ajustar estado inactive y número de tablas RLS esperado.
+
+Browser Chromium local PASS: redirección invitado, login fixture RS256 verificado, ubicación, recepción/salida/ajuste, conteos mayor/menor/igual, insuficiencia sin cambio y transferencia con ambos saldos refrescados; vista375px sin overflow externo. Respuesta de recepción perdida después de commit: retry mismo payload/ID, una sola recepción y enlaces bloqueados. Auth simulado, no Auth cloud. QA Wegener cerró navegación pendiente y estados vacíos engañosos;31 tests/lint y TypeScript0 diagnósticos propios, sondas de UI. SECURITY Dalton cerró dos colisiones de identidad entre conteos/movimientos;101 tests y8 sondas SQL simuladas propios, revisión RLS/CSRF/permisos/IDOR y transferencia acotada, sin certificación general.
+
+Estado COMPLETADA localmente. Scope: apps/web, contratos y application/database de inventario, migración004 y este documento; domain/mobile/guardrails/dependencias intactos. Pendientes: Auth cloud/configuración operacional y recuperación de comandos tras cerrar la página; sin promesas sobre conteos históricos sin recibo. Sin commits, push, despliegue ni otra TASK.
+
+## TASK-014 — Preparación cloud; autenticación externa pendiente — 2026-10-01
+
+Inicio: TASK-013 local cerrada; sin proyecto cloud/URL verificados. Supabase/Vercel dashboards redirigen a login; SupabaseCLI2.119.0 no dispone de sesión autenticada; VercelCLI62.1.0 informó Logged out tras timeout de worker y no hay auth files/tokens observados. CLI instaladas sólo en TEMP; cero recursos cloud creados, pagos/add-ons/AI activados o credenciales permanentes inventadas. Login solicitado al usuario; «continua» no equivale a sesión autenticada.
+
+Preparación: Pool compartido/max1, TLS con validación de certificado y formato Transaction Pooler6543/custom smartretail_api.<ref> obligatorio en producción; overrides inseguros rechazados, errores sanitizados y timeout/GUC SET LOCAL dentro de cada transacción. Migración005 crea smartretail_api NOLOGIN sin SUPERUSER/BYPASSRLS/CREATEROLE/CREATEDB, miembro de smartretail_app. La001 concede SET explícito al ejecutor owner con INHERIT FALSE para administradores CREATEROLE PostgreSQL16+. Config Supabase y staging externo 001–005 byte-idéntico/hash verificado; wx sin sobrescribir destinos, links/hardlinks/directorios enlazados rechazados. Vercel Root Directory propuesto apps/web, Node24, npx pnpm11.27.1/frozen/build workspace; variables y host reales aún no configurados. Procedimiento sin secretos en DEPLOYMENT.md.
+
+Validación: una ronda pnpm check exit0,1740 tests/21 archivos,77 PostgreSQL sin skips, formato/lint/typecheck y audit incluidos; build web exit0, Gitleaks8.30.1 exit0/0 hallazgos. Frozen install11.27.1 exit0; lock SHA256 intacto 4F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261. Auditoría1 MODERATE uuid heredado, LOW/HIGH/CRITICAL0, sin dependencias nuevas del workspace. Tras corregir el SET del administrador y staging se ejecutaron sólo pruebas focales:001–005 aplicadas por administrador local NOSUPERUSER/NOBYPASSRLS/CREATEROLE y77 integraciones nuevamente aprobadas; no se repitió la suite completa. Smoke de build production en loopback:health200/login200/4 APIs privadas401 y marcadores DB ausentes de JS cliente; no prueba Auth cloud ni variables reales.
+
+QA Mill:11 tests propios, cuatro negativas de staging y ocho sondas finales; SECURITY McClintock:34 sondas TLS/parser/config y nueve finales. Ambos identificaron el seguimiento de enlaces en staging y cerraron el hallazgo con creación exclusiva/no sobrescritura; sin hallazgos locales abiertos, no certificación cloud. Se corrigió además el permiso SET con reproducción SQL real. Ningún revisor atribuyó smoke remoto o migraciones cloud.
+
+Estado PARCIAL: bloqueo único de arranque externo, login autorizado en Supabase y Vercel. Pendientes dependientes: verificar recursos gratuitos dedicados, link/ref/dry-run/push, LOGIN/password administrativo del runtime, custom role/TLS en pooler real, Auth/tenant/bootstrap, variables/URL/redirects, deploy y smoke remoto completo. URL pública:ninguna; Supabase utilizado:ninguno; migraciones cloud:ninguna; owner permanente:ninguno; datos SMOKE cloud:ningunos. Procesos/DB/credenciales locales efímeros de prueba se retiran; evidencia y CLI permanecen en TEMP. Sin commit/push, remoto GitHub, despliegue ni otra TASK.
+
+## TASK-014B — Supabase y Vercel reales; smoke remoto completado — 2026-10-01
+
+Inicio: preparación TASK-014 terminada; sesiones CLI Supabase/Vercel confirmadas. Proyecto dedicado SmartRetail `kffmliytjcbbsfefbupc` creado en organización Free/us-east-1, sin pagos ni add-ons. Staging001–005 byte-idéntico; dry-run revisado y push aplicado. Verificación cloud: cinco versiones,62 constraints,26 permisos y nueve tablas empresariales ENABLE/FORCE RLS. Runtime `smartretail_api` LOGIN, sin SUPERUSER/BYPASSRLS/CREATEDB/CREATEROLE ni owner; no puede escribir memberships. Adapter real conecta mediante Transaction Pooler6543/TLS validado, con GUC transaccionales restaurados. SSL enforcement cloud aplicado; startup plaintext rechazado sin enviar contraseña y reconexión TLS aprobada.
+
+Vercel Hobby `smartretail`, Root Directory apps/web/archivos workspace incluidos/Node24.x. Producción: https://smartretail-sepia.vercel.app. Tres variables encrypted Production, sin clave administrativa Auth: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY y DATABASE_URL server-only. Frozen install pnpm11.27.1 y build remoto aprobados. Auth real/getClaims y login/cookies Chromium aprobados; signup desactivado, Site URL y redirects exactos del dominio público configurados.
+
+Smoke remoto PASS: health200/login200/cuatro APIs privadas401; producto SMOKE creado/listado/editado y dos ubicaciones. Receive10, issue2, count7, transfer3: saldos4/3 verificados por servidor/UI y ledger de cinco movimientos únicos. Tenant ajeno403 pese a headers de identidad/owner forjados; userId/role extra400; conflicto SQL409 sanitizado;11 assets JS y3 HTML sin URL/password reales de DB. RLS directo del runtime niega lectura con identidad ajena y escritura42501 en tenant sin membership. No se repitió la batería local completa:12 tests focales Vitest, lint/typecheck web y formato aprobados; antecedente TASK-014 pnpm check exit0/1740 tests. Gitleaks exit0/0 hallazgos y lockfile SHA256 intacto 4F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261.
+
+Correcciones necesarias: CA pública oficial Supabase fijada sólo para pooler con verificación de hostname/cadena; expira26-04-2031. Primer build remoto falló por script no revisado de unrs-resolver1.12.2: se bloquea específicamente mediante allowBuilds false, conservando guardrails. Gitleaks confundió el diagnóstico de autenticación histórico y una versión CLI con una clave; se reescribió esa oración, sin modificar scanner ni excepciones. Archivos de esta continuación: database-config.ts, su test, nuevo supabase-root-certificate.ts, pnpm-workspace.yaml, DEPLOYMENT y PROJECT_STATE; sin dependencias nuevas ni cambios comerciales/migraciones adicionales.
+
+QA Galileo: HTTP público propio,12 casos y10 sondas en memoria, cotejo CA y reconciliación del ledger; PASS sin hallazgos funcionales abiertos. SECURITY Avicenna: revisión independiente TLS/parser/CA/roles/RLS/Auth/variables/negativas/limpieza/scanner; sin hallazgos bloqueantes abiertos. Ambas revisiones distinguen ejecución propia de evidencia autenticada aportada y no certifican el producto completo. Se cerraron documentación desactualizada y captura inicial de LOGIN previa a su habilitación.
+
+Limpieza comprobada: usuario Auth temporal eliminado; membership inactive y sesión anterior403; tenant ajeno vacío eliminado. Permanecen tenant `16ff89ad-6922-44eb-9dcb-cdfb04abbe22`, producto `15d53a68-b509-4582-83ae-858dbf9f819d` / SKU SMOKE-MUQ3F25Z, dos ubicaciones detalladas en DEPLOYMENT, balances4000/3000 milliUnits, cinco movimientos, cinco reservas de comandos, un conteo y una transferencia. Ledger intacto, grants administrativos transitorios revocados. Pendiente operacional: proporcionar usuario real y bootstrap de propietario permanente; no hay credenciales SMOKE reutilizables. La política del entorno bloqueó la eliminación de ocho archivos de credenciales temporales cifrados con DPAPI, fuera del repositorio; quedan pendientes de limpieza local sin exponer sus valores. Estado TASK-014/TASK-014B COMPLETADA; sin commit/push ni otra TASK.
+
+## TASK-014C — Propietario permanente y tenant principal — 2026-10-02
+
+Inicio: TASK-014B desplegada; un único usuario Auth permanente confirmado, creado manualmente y sin membership. El tenant anterior contiene fixtures/ledger SMOKE y sólo dispone de columna UUID. Se crea principal vacío designado SmartRetail `e541734e-6c66-4b23-95e8-f25895630f45`; usuario `48cf0e6d-e063-4cbd-9b87-ea8f619e8464` vinculado exclusivamente mediante owner/active. Bootstrap por administrador postgres dentro de transacción; permisos INSERT temporales revocados antes del COMMIT. Auditoría de evidencia: operación de creación del principal/activación owner, verificada2026-10-02T16:36:12.050Z, correlación `2a66f552-19e9-43c7-97b7-305ea9246a4c`. Sin modificar matriz26 permisos, schema, RLS ni privilegios runtime.
+
+Smoke focal https://smartretail-sepia.vercel.app PASS: Auth real de un solo uso/getClaims/cookies SSR, tenant visible, /products y /inventory, producto UI creado201/listado y lectura de inventario200. Auth administrativo generó un magic link sin enviar email ni pedir/exponer credenciales; cliente público verificó OTP. No cambió contraseña y se revocó sólo la sesión de prueba. Formulario con contraseña del usuario sin probar; se solicitó comprobación manual sin compartirla. Adapter normal smartretail_api confirma una única membership, diez permisos owner, escritura de productos/lectura de inventario y denegación del tenant SMOKE. APIs de tres recursos en tenant SMOKE403 pese a headers owner/identidad forjados; UUID arbitrario403.
+
+Limpieza: sólo producto OWNER-TEST creado por esta TASK eliminado mediante DELETE condicionado a ausencia de balances/movimientos/conteos/transferencias y FKs activas; grant DELETE temporal revocado. Principal queda vacío; usuario permanente y membership active conservados. Ledger SMOKE mantiene cinco movimientos y balances3000/4000; nueve tablas siguen FORCE RLS, runtime no tiene SUPERUSER/BYPASSRLS/owner ni INSERT memberships. Verificación SQL final confirma grants administrativos revocados y matriz de permisos intacta.
+
+QA Galileo y SECURITY Avicenna: revisiones independientes favorables, sin hallazgos bloqueantes; ejecución propia focal/documental distinguida del smoke autenticado/SQL aportado. Únicos archivos del repositorio modificados: PROJECT_STATE y DEPLOYMENT; sin cambios de código/dependencias, suite completa ni redeploy. Gitleaks exit0/0 hallazgos. Estado funcional TASK-014C COMPLETADA, con límite explícito de no probar la contraseña; sin POS, nueva funcionalidad, commit ni push.
+
+## TASK-015 — Núcleo de ventas y carrito POS — 2026-10-02
+
+Inicio: TASK-014C cerrada; se implementan SaleId/SaleDraft/SaleLine/completed, snapshots inmutables, cantidades positivas, agregación por ProductId, cambio/eliminación explícita y HALF-UP bigint por línea. Application delega al domain; contracts strict sin coerción comprueban unidades, duplicados y totales, con límites técnicos de 128 caracteres por entero y 1000 líneas por transporte. Sin stock, DB, cobros, API ni UI; completed no significa cobrada/persistida.
+
+Validación: 49 pruebas nuevas; pnpm test y la fase test de check pasan1790/1790 en24 archivos, incluyendo77 pruebas PostgreSQL sobre fixture local desechable. Formato/lint/typecheck PASS. Corregida incompatibilidad TS2345 en composición de schemas de estado; check repetido por ese defecto, no auditoría independiente. Check final exit1 por HIGH preexistente node-forge1.4.0 transitivo ExpoCLI, sin parche publicado (GHSA-86w9-cpqp-85rv), además del MODERATE uuid conocido; no se oculta ni cambia el gate. Auditoría:0 LOW,1 MODERATE,1 HIGH,0 CRITICAL.
+
+QA Galileo:46 escenarios iniciales,30 sondas focales posteriores y comprobación TypeScript propia PASS. SECURITY Avicenna:35 comprobaciones iniciales y28 tras el ajuste de schemas PASS, sin bypass en inputs JSON ordinarios. INFO: getters JS hostiles no están aislados; resultados bigint exactos pueden superar el límite DTO y se rechazan al transportar. Revisores independientes, sólo lectura, sin certificación del sistema completo. HALF-UP documentado en TECH_DECISIONS; apps/database/lockfile y dependencias conservados. Estado PARCIAL: pnpm check no está verde por el advisory ajeno al cambio; resolver Expo/node-forge queda fuera de esta TASK. Sin producción, commit/push ni TASK-016.
+
+## TASK-015A — Advisory HIGH node-forge y gate acotado — 2026-10-02
+
+Inicio: TASK-015 funcional, check exit1 por GHSA-86w9-cpqp-85rv / CVE-2026-85393. pnpm why confirma node-forge1.4.0 vía mobile → expo57.0.24 → @expo/cli57.0.26 → node-forge y vía CLI → @expo/code-signing-certificates0.0.6 → node-forge. Web/application/database no lo introducen. npm oficial latest1.4.0 y advisory sin versión parcheada: https://github.com/advisories/GHSA-86w9-cpqp-85rv; sin actualización, fork ni override.
+
+Reachability: forge está instalado y ejecutable en tooling. CLI iOS Security usa certificateFromPem para identidad; certificados usa verify RSA PKCS#1 v1.5, CSR y firma/verificación de manifests. Esas rutas sí serían alcanzables al activar signing/EAS, ausentes en la configuración actual sin updates/EAS/config dinámica. Exports nuevos con maps: Android574/iOS576 fuentes, sin forge/certificados/API vulnerable; sólo helper Metro de CLI sin forge. Sus nombres de bundle coinciden con exports existentes, pero los bytes HBC difieren al añadir sourcemaps: no se afirma identidad byte a byte. Web:20 NFT/3825 entradas sin la cadena; nueve scripts públicos de producción sin forge. Vercel inspect confirma deployment productivo READY,41 outputs sin rutas forge; no se descargó directamente el contenido interno del servidor remoto.
+
+SECURITY Avicenna acepta temporalmente este único HIGH para los artefactos/configuración examinados; no afirma inalcanzabilidad global ni remediación. scripts/audit-deps.mjs exige npmID1240912/GHSA exacto/módulo1.4.0/HIGH/dos cadenas exactas/sin parche; fija versiones, SHA256 de app.json y lockfile, y ausencia de app.config dinámica. JSON/metadata inconsistentes, cambios de árbol/config y otros HIGH/CRITICAL bloquean. El audit bruto sigue reportando1 HIGH y1 MODERATE; salida explícita «1 HIGH accepted risk: GHSA-86w9-cpqp-85rv», sin retirar vulnerabilidades. Responsable: mantenedores SmartRetail; revisión/vencimiento2026-11-02T00:00:00Z, comprobado al invocar gate sin jobs. Retirar excepción al publicarse release oficial corregida compatible; cambio de lock/config/alcance requiere nueva revisión.
+
+QA Galileo:10 tests propios,39 sondas iniciales y9 simulaciones del proceso PASS; hash de lock cambiado/ausente rechazado. SECURITY:revisión independiente de reachability,10 sondas del parser y4 del pin de lock PASS; corregido comentario demasiado amplio sobre inalcanzabilidad. pnpm check exit0: formato/lint/typecheck,1790 tests incluyendo77 PostgreSQL locales y10 tests del gate PASS; HIGH/CRITICAL ficticios terminan exit1 y MODERATE sigue visible. Gitleaks exit0, cero hallazgos. Sin suite separada, cambios de dependencias/lock/apps/DB, producción, commit/push ni TASK-016. TASK-015A COMPLETADA; TASK-015 COMPLETADA CON RIESGO RESIDUAL DOCUMENTADO.
+
+## TASK-016 — Venta transaccional, pagos y POS — 2026-10-02
+
+Inicio: TASK-015/015A cerradas, 1790 tests y gate con riesgo HIGH acotado. Cambios exclusivamente en domain/contracts/application/database/web y documentación: pagos exactos cash/card/mixto, checkout autoritativo, snapshots inmutables, migración006, API POST/GET sales y /pos. Una transacción persiste venta/líneas/pagos/issues; SaleId y movement IDs estables permiten replay sin nuevo descuento. Owner/admin reciben sales.read/create; inventory_clerk no. Owner permanente sin cambios.
+
+Validación local:40 tests nuevos, PG real97/97 (concurrencia/retry/rollback/RLS), pnpm check exit0 con1830 tests/28 archivos y10 tests del gate, build exit0 y Gitleaks exit0/0 hallazgos. Lock SHA256 permanece4F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261; sin dependencias nuevas. Auditoría0LOW/1MODERATE/1HIGH aceptado/0CRITICAL; excepción TASK-015A intacta. Check/build repetidos únicamente tras correcciones QA.
+
+Cloud: dry-run sólo006 y push exit0; migraciones001–006,12 tablas empresariales FORCE RLS,9 policies/27 constraints de ventas y4 constraints triggers diferidos comprobados. Runtime smartretail_api conserva TLS verificado, sin super/BYPASSRLS/owner ni escritura memberships. Vercel deployment dpl_BUeiWRSddhYVcg6D6LpDA8D64mzj READY: https://smartretail-sepia.vercel.app/pos. Smoke remoto PASS:cash/card/mixto, respuesta201 perdida→recarga→retry200 mismo ID/desglose, snapshots101 tras precio202, payload distinto409, tenant ajeno/headers forjados403, identidad extra400, anónimo401 y pendiente corrupto bloqueado/conservado. Adapter cloud confirma3 ventas/3 líneas/4 pagos/3 issues; stock5000→2000 sin duplicación. Se conservan producto/ubicación SMOKE-POS-MURBL600 y ledger; nueve scripts públicos revisados sin DATABASE_URL y layout390px sin overflow.
+
+QA Galileo y SECURITY Avicenna, revisiones independientes readonly: corregidos HALF_UP SQL mediante div y recuperación del pago/bloqueo de pendientes inciertos; revisiones focales favorables sin bloqueos. Evidencia Auth:usuario owner existente, OTP público/getClaims/cookies reales mediante enlace de un solo uso administrativo; sin contraseña ni modificación owner, revocada sólo sesión de smoke. Login habitual con contraseña pendiente de confirmación manual solicitada: implementación/deployment y smoke técnico terminados; TASK-016 PARCIAL hasta verificar ese paso explícito. Recuperación sessionStorage limitada a la misma pestaña; no cola durable. Sin caja/gateway/tickets/devoluciones, commit/push ni TASK-017.
+
+## TASK-017 — Caja, turnos, cierre, historial y ticket — 2026-10-02
+
+Inicio: POS transaccional de TASK-016 desplegado,1830 tests; su comprobación manual de contraseña permanece independiente. Nuevos modelos/contratos/casos de uso de caja, adapter PostgreSQL, migración007, API y rutas /cash,/sales,/sales/:id; POS exige shiftId abierto del lado servidor. Efectivo derivado de fondo+pagos cash+ingresos−retiros; tarjeta no incrementa efectivo. Cierre guarda esperado/contado/diferencia sin ajustes automáticos. Bloqueo compartido del turno, índice único por ubicación, ledger inmutable y constraints diferidos protegen estados, concurrencia, rango BIGINT y snapshot final. Ventas históricas conservan shiftIdNULL y replay autorizado; nuevas ventas no lo permiten.
+
+Validación final:55 tests nuevos; pnpm check exit0 con1885/32 archivos (123 PostgreSQL reales), más10 tests del gate. Build local/remoto exit0; Gitleaks exit0/0 hallazgos. Sin nuevas dependencias ni cambios de lock/gate: SHA2564F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261. Auditoría0LOW/1MODERATE/1HIGH aceptado/0CRITICAL, excepción TASK-015A intacta. Controles repetidos únicamente por fallos lint/TS, correcciones QA/SECURITY y dos defectos UI encontrados en el smoke; no suite test separada ni fuzzing.
+
+Cloud: dry-run sólo007 y push exit0; siete migraciones,14 tablas empresariales FORCE RLS,17 constraints de caja,3 triggers diferidos e índice un turno abierto comprobados. Cash permisos únicamente owner/admin; runtime conserva TLS, sin super/BYPASSRLS/owner/UPDATE caja/DELETE ledger ni INSERT memberships. Cuatro ventas anteriores y membership permanente intactas. Deployment final dpl_B5MWkzMwGRd3phqq8reFjb7oNmZU READY en https://smartretail-sepia.vercel.app. Smoke owner mediante Auth real OTP/getClaims, sin contraseña: apertura1000, ingreso300, retiro100, ventas cash/card/mixto1250 cada una; efectivo de ventas1750, esperado2950, contado2900, diferencia−50. Adapter cloud confirma3 ventas/2 movimientos/3 issues, stock2000 y ledger preservado. Cierre UI, historial, ticket y CSS print PASS; turno cerrado rechaza nueva venta/movimiento/segundo cierre409, replay200, tenant ajeno403, anónimos401. Layout390px sin overflow; nueve scripts públicos revisados sin DATABASE_URL.
+
+QA Galileo y SECURITY Avicenna independientes readonly: cerrados hallazgos de hijos de venta tras cierre en misma transacción, overflow acumulado, manejo22003, pérdida de pendiente403, recuperación visible y casing UUID. Smoke detectó selección idéntica que limpiaba turno y render de diferencias negativas; corregidos y revisados. Fixtures SMOKE-CASH-MURHWL2J conservados con turno cerrado, producto/ubicación, ventas y ledger; no eliminación histórica ni otro tenant. Historial limitado a últimas50 ventas; recuperación de comandos en sessionStorage de la misma pestaña; card sigue siendo registro sin gateway y el ticket no es fiscal. Estado TASK-017 COMPLETADA. Sin devoluciones, CFDI/PDF, commit/push ni nueva TASK.
+
+
+## TASK-018 -- Barcode y ventas suspendidas -- 2026-10-02
+
+Inicio: TASK-017 desplegada,1885 tests; owner permanente y runtime restringido existentes. Cambios en application/contracts/database/web: lookup exacto por tenant con products.read, campo Enter local sin listeners globales ni permisos de dispositivo; piece suma1000 y seis unidades fraccionarias exigen cantidad. Migración008 crea suspended_sales/lines con constraints/FKs/índices/RLS/FORCE; cantidades y unidad de referencia, sin precio/pago/reserva. Owner/admin comparten suspendidas de su empresa; clerk sin sales. Recuperación reconstruye precio actual; producto inactive/unidad cambiada bloquean conservando el registro. Cancelación conserva historial; checkout bloquea suspensión antes del turno y completa su estado en la misma transacción, con UNIQUE y replay por SaleId. IDs de suspensión incierta se conservan en sessionStorage de la pestaña; transporte16KiB y recuperación64KiB, sin credenciales.
+
+Validación:40 tests nuevos; focal163/163 y pnpm check final exit0 con1925/35 archivos, incluidos145 PostgreSQL reales, más10 tests del gate. Build local/remoto exit0; Gitleaks final exit0/0 hallazgos. Sin dependencias nuevas ni cambios de lock/gate: SHA2564F6E45ECC32BB547CA1F2171C2A39B6C21E63203D0AA2FE67DD194DDB1931261. Auditoría0LOW/1MODERATE/1HIGH aceptado/0CRITICAL; excepción TASK-015A intacta, vence2026-11-02. QA Galileo y SECURITY Avicenna independientes readonly: cerrados checkout permitido con suspensión incierta, límites desalineados, BigInt sobre input inválido y FOR SHARE de locations incompatible con runtime. Revisiones focales favorables; cuatro sondas QA del ajuste de lista completada. Check/build/redeploy repetidos por ese defecto UI; primer smoke se retomó con los mismos fixtures tras corregir un locator ambiguo del harness.
+
+Cloud: dry-run sólo008, push exit0;8 migraciones y16 tablas empresariales FORCE RLS; rol sin super/BYPASSRLS ni UPDATE/DELETE suspendidas, TLS verificado. Deployment final dpl_9DtvAU6FdzSnaVqJrwMgCNmvf6cD READY en https://smartretail-sepia.vercel.app/pos. Smoke owner real mediante OTP/getClaims PASS: Enter repetido2000, barcode inexistente conserva carrito, suspensión201 con respuesta perdida/recarga/retry200 mismo ID y checkout bloqueado, precio1250→1500 al recuperar; cobro3000 y replay200/otra venta409 sin duplicar stock. Kg pide cantidad125 antes de agregar; suspensión cancelada no aparece pendiente. Parche final retira completada de la lista visible; segundo cobro1500 confirmado. Adapter cloud confirma2 ventas/2 issues/1 receipt, stock10000→7000, dos suspendidas completed y una cancelled; turno SMOKE cerrado esperado/contado4500,diferencia0. Siete ventas anteriores y membership owner intactas. Health/login200, APIs nuevas anónimas401, tenant ajeno403, identidad extra/qty inválida400;10 scripts públicos revisados sin DATABASE_URL y layout390px sin overflow.
+
+Fixtures conservados: SKU SMOKE-SCAN-MURJM1HC / producto52ec098b-e2ff-4862-a52d-e9fe0df83238, producto kg d9e90a1c-d9c9-4a8a-a54f-484e2c0eaa13, ubicación3d6b353f-fddf-475a-bd6f-ebf85ac47e6c y turno93f4ec95-a021-45e1-b855-a0e7daef8507 cerrado; ledger e historial no eliminados. Listado limitado a50 pendientes recientes; unidad cambiada requiere revisar/cancelar y reconstruir explícitamente, no reinterpretación silenciosa. Estado PARCIAL exclusivamente por el paso explícito de login owner habitual con contraseña: confirmación manual solicitada y aún no recibida; OTP no acredita ese paso y no se solicitó ni leyó password. Implementación, deployment y smoke técnico terminados. Sin cámara/devoluciones/CFDI, commit/push ni otra TASK.

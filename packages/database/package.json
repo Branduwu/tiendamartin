@@ -1,0 +1,26 @@
+{
+  "name": "@smartretail/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
+    "test": "vitest run --root ../.. packages/database/tests",
+    "test:integration": "node -e \"if(!process.env.SMARTRETAIL_PG_TEST_CONFIG)throw new Error('Disposable PostgreSQL test configuration required')\" && vitest run --root ../.. packages/database/tests/inventory.integration.test.ts"
+  },
+  "dependencies": {
+    "@smartretail/application": "workspace:*",
+    "@smartretail/domain": "workspace:*",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "@types/pg": "8.23.1",
+    "typescript": "6.0.3"
+  }
+}

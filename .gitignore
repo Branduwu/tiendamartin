@@ -1,0 +1,47 @@
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.npm/
+.cache/
+
+# Local secrets; only reviewed, secret-free examples may be tracked
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.npmrc.local
+
+# Local service/editor state
+.vercel/
+.expo/
+.supabase/
+supabase/.temp/
+supabase/.branches/
+.idea/
+.vscode/*.local.json
+.DS_Store
+Thumbs.db
+
+# Build and validation artifacts
+.next/
+out/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*~
+tmp/
+temp/

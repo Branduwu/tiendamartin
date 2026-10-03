@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+strictPeerDependencies: true
+engineStrict: true
+allowBuilds:
+  unrs-resolver@1.12.2: false
+patchedDependencies:
+  "@supabase/auth-js@2.117.2": patches/@supabase__auth-js@2.117.2.patch

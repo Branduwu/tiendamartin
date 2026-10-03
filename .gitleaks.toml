@@ -1,0 +1,10 @@
+title = "SmartRetail: default rules excluding generated Next output"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Only generated apps/web/.next output, already excluded by .gitignore"
+# Anchored to this application's build directory, including its dev/cache output.
+# Source, examples, configuration and other working-tree files remain scanned.
+paths = ['''^apps[/\\]web[/\\]\.next[/\\]''']
