@@ -18,7 +18,7 @@ Sistema de gestion para tiendas con catalogo, inventario multiubicacion, punto d
 - Historial de ventas y ticket imprimible
 - Lookup y escaneo por barcode
 - Ventas suspendidas
-- **Devoluciones: en desarrollo (TASK-019)**
+- Devoluciones parciales/totales y reembolsos contables (TASK-019)
 
 ## Arquitectura
 

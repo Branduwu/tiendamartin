@@ -28,7 +28,7 @@ Este resumen reconstruye la evolucion real a partir de `PROJECT_STATE.md`, `TECH
 | TASK-016 | 🚀 Produccion | Checkout transaccional, pagos cash/card/mixto, ventas y POS. |
 | TASK-017 | 🚀 Produccion | Caja, turnos, cierres, historial y ticket imprimible. |
 | TASK-018 | 🚀 Produccion | Barcode, lookup, ventas suspendidas y recuperacion idempotente. El login habitual con email/password fue verificado posteriormente mediante logout real y acceso a Productos, Inventario y POS. |
-| TASK-019 | 🚧 WIP | Devoluciones: existen piezas locales relacionadas, pero la tarea quedo incompleta y no se declara terminada. |
+| TASK-019 | 🚀 Produccion | Devoluciones parciales/totales transaccionales, reembolsos contables cash/card, receipts y audit durable; migraciones009-011 y smoke productivo PASS. |
 
 ## Arquitectura en produccion
 
