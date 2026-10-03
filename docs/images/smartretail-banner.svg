@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" role="img" aria-labelledby="title desc">
+  <title id="title">SmartRetail</title>
+  <desc id="desc">Abstract storefront, inventory blocks and point of sale terminal.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#102a43"/>
+      <stop offset="1" stop-color="#1f7a8c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4d35e"/>
+      <stop offset="1" stop-color="#ee964b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="420" rx="28" fill="url(#bg)"/>
+  <path d="M0 334h1600v86H0z" fill="#0b1f33" opacity=".38"/>
+  <g fill="none" stroke="#d9f0f2" stroke-width="10" stroke-linejoin="round">
+    <path d="M1030 270V148l115-67 115 67v122"/>
+    <path d="M1010 147h270l-24 47h-222z" fill="url(#accent)" stroke="#f8f3dc"/>
+    <path d="M1090 270v-75h110v75M1060 270h170"/>
+    <path d="M1305 270V122h155v148"/>
+    <path d="M1330 157h105M1330 196h105M1330 235h64"/>
+  </g>
+  <g fill="url(#accent)">
+    <rect x="120" y="112" width="76" height="76" rx="12"/>
+    <rect x="214" y="112" width="76" height="76" rx="12" opacity=".82"/>
+    <rect x="308" y="112" width="76" height="76" rx="12" opacity=".64"/>
+    <rect x="120" y="206" width="76" height="76" rx="12" opacity=".82"/>
+    <rect x="214" y="206" width="170" height="76" rx="12" opacity=".42"/>
+  </g>
+  <text x="120" y="350" fill="#ffffff" font-family="Georgia, serif" font-size="92" font-weight="700">SmartRetail</text>
+  <text x="126" y="388" fill="#d9f0f2" font-family="Arial, sans-serif" font-size="24" letter-spacing="2">INVENTARIO · POS · CAJA</text>
+</svg>
