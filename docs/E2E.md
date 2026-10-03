@@ -36,3 +36,5 @@ Producción UX02: smoke remoto read-only de 28 vistas más ocho focales POS/logi
 
 e2e/purchasing.spec.ts revisa suppliers list, purchases list, detalle y formulario de recepción en desktop/mobile-small, sin escrituras. Requiere E2E_EMAIL/E2E_PASSWORD y, para detalle/formulario, E2E_PURCHASE_ID/E2E_TENANT_ID de una orden ordered/partially_received; omite explícitamente sin esas variables. Traces/vídeo permanecen desactivados.
 La ejecución privada autorizada usa OTP real sin contraseña, no persiste sesiones y comprueba ocho vistas con axe, creación UI y recepción parcial/total, respuesta perdida/recarga/replay y controles negativos. Evidencia fuera de Git; no equivale a probar password login.
+
+Cierre TASK-020: browser OTP real8 vistas locales +8 productivas PASS, axe0/overflow0/render0; cuatro PNG locales revisadas por QA Nash. Script password focal8SKIP explícitos. Smoke productivo creó fixtures SMOKE y dos recepciones, conservados con ledger; replay tras respuesta perdida validado contra servidor. Deployment dpl_HMLQsoZEveK1Sc7AYAa9U7wiD7NP READY; ejecuciones cloud realizadas por DEVELOPER.
