@@ -80,7 +80,7 @@ export default function PosPanel({ userId }: { userId: string }) {
   const scannerRef = useRef<HTMLInputElement>(null);
   const scanQuantityRef = useRef<HTMLInputElement>(null);
   const [tenants, setTenants] = useState<
-      { tenantId: string; permissions: string[] }[]
+      { tenantId: string; permissions: string[]; displayName?: string }[]
     >([]),
     [tenant, setTenant] = useState("");
   const [products, setProducts] = useState<ProductDto[]>([]),
@@ -104,12 +104,15 @@ export default function PosPanel({ userId }: { userId: string }) {
     sending || pending !== null || pendingSuspend !== null || recoveryBlocked;
   useEffect(() => {
     const controller = new AbortController();
-    api<{ tenants: { tenantId: string; permissions: string[] }[] }>(
-      "/api/v1/tenants",
-      {
-        signal: controller.signal,
-      },
-    )
+    api<{
+      tenants: {
+        tenantId: string;
+        permissions: string[];
+        displayName?: string;
+      }[];
+    }>("/api/v1/tenants", {
+      signal: controller.signal,
+    })
       .then((data) => {
         if (controller.signal.aborted) return;
         data.tenants = data.tenants.filter((t) =>
@@ -651,12 +654,22 @@ export default function PosPanel({ userId }: { userId: string }) {
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
-        <AppNavigation current="/pos" />
+        <AppNavigation
+          current="/pos"
+          permissions={
+            tenants.find((t) => t.tenantId === tenant)?.permissions ?? []
+          }
+        />
       </header>
       <main className="workspace">
         <div className="heading">
           <div>
             <h1>Punto de venta</h1>
+            <p className="company-context">
+              Cajero actual:{" "}
+              {tenants.find((t) => t.tenantId === tenant)?.displayName ??
+                "Cajero registrado"}
+            </p>
             <p className="muted">
               Selecciona productos, revisa el pago y confirma la venta.
             </p>

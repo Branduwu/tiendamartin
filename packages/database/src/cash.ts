@@ -21,10 +21,12 @@ interface ShiftRow {
   tenant_id: string;
   location_id: string;
   opened_by: string;
+  opened_by_name?: string | null;
   opened_at: Date;
   opening_cash: string;
   status: "open" | "closed";
   closed_by: string | null;
+  closed_by_name?: string | null;
   closed_at: Date | null;
   counted_cash: string | null;
   expected_cash: string | null;
@@ -57,6 +59,7 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
     );
     const row = r.rows[0];
     if (!row) throw new CashStateConflictError();
+    await this.requireLocation(client, row.location_id);
     const openingCash = money(integer(row.opening_cash)),
       salesCash = money(integer(row.sales_cash)),
       cashIn = money(integer(row.cash_in)),
@@ -70,6 +73,9 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
       tenantId: row.tenant_id,
       locationId: row.location_id,
       openedBy: row.opened_by,
+      ...(row.opened_by_name == null
+        ? {}
+        : { openedByName: row.opened_by_name }),
       openedAt: row.opened_at.toISOString(),
       openingCash,
       status: row.status,
@@ -78,6 +84,9 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
       cashOut,
       expectedCash: expected,
       closedBy: row.closed_by,
+      ...(row.closed_by_name == null
+        ? {}
+        : { closedByName: row.closed_by_name }),
       closedAt: row.closed_at?.toISOString() ?? null,
       countedCash:
         row.counted_cash === null ? null : money(integer(row.counted_cash)),
@@ -104,6 +113,7 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
   }
   currentShift(locationId: string) {
     return this.cashOperation("cash.read", async (c) => {
+      await this.requireLocation(c, inventoryLocationId(locationId));
       const r = await c.query<{ id: string }>(
         "SELECT id FROM retail.cash_register_shifts WHERE tenant_id=$1 AND location_id=$2 ORDER BY (status='open') DESC,opened_at DESC,id DESC LIMIT 1",
         [this.tenant, inventoryLocationId(locationId)],
@@ -118,6 +128,7 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
       locationId: inventoryLocationId(input.locationId).toLowerCase(),
     };
     return this.cashOperation("cash.open", async (c) => {
+      await this.requireLocation(c, input.locationId);
       await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         `smartretail.cash.open/${productId(input.id)}`,
       ]);
@@ -154,6 +165,7 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
       shiftId: productId(input.shiftId).toLowerCase(),
     };
     return this.cashOperation("cash.move", async (c) => {
+      await this.shift(c, input.shiftId);
       await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
         `smartretail.cash.move/${productId(input.id)}`,
       ]);
@@ -201,6 +213,7 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
   closeShift(id: string, counted: ReturnType<typeof money>) {
     id = productId(id).toLowerCase();
     return this.cashOperation("cash.close", async (c) => {
+      await this.shift(c, id);
       await c.query("SELECT retail.close_cash_shift($1,$2)", [
         productId(id),
         bigintParameter(counted.minorUnits),

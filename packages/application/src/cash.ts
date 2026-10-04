@@ -12,6 +12,7 @@ export type CashRegisterShift = Readonly<{
   tenantId: string;
   locationId: string;
   openedBy: string;
+  openedByName?: string;
   openedAt: string;
   openingCash: Money;
   status: "open" | "closed";
@@ -20,6 +21,7 @@ export type CashRegisterShift = Readonly<{
   cashOut: Money;
   expectedCash: Money;
   closedBy: string | null;
+  closedByName?: string;
   closedAt: string | null;
   countedCash: Money | null;
   difference: Money | null;

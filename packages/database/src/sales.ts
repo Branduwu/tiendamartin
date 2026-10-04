@@ -45,6 +45,8 @@ interface SaleRow {
   location_id: string;
   total_minor_units: string;
   created_by: string;
+  created_by_name?: string | null;
+  location_name?: string | null;
   created_at: Date;
   command_payload: string;
 }
@@ -112,6 +114,10 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
       tenantId: row.tenant_id,
       locationId: row.location_id,
       createdBy: row.created_by,
+      ...(row.created_by_name == null
+        ? {}
+        : { createdByName: row.created_by_name }),
+      ...(row.location_name == null ? {} : { locationName: row.location_name }),
       createdAt: row.created_at.toISOString(),
     });
     return Object.freeze({ payload: row.command_payload, recorded });
@@ -196,6 +202,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           },
           lockOpenShift: async (location, shiftId) => {
             assertActive();
+            await this.requireLocation(client, location);
             if (!shiftId) throw new CashStateConflictError();
             try {
               await client.query("SELECT retail.lock_cash_shift($1)", [
@@ -222,6 +229,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           },
           readLocation: async (id) => {
             assertActive();
+            await this.requireLocation(client, id);
             const result = await client.query<LocationRow>(
               "SELECT * FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2",
               [this.tenant, id],

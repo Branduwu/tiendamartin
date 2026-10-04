@@ -23,6 +23,9 @@ type Pending = {
 const mxn = formatCashMxn;
 export default function CashPanel({ userId }: { userId: string }) {
   const key = `smartretail.pending-cash.${userId}`;
+  const [memberships, setMemberships] = useState<
+    { tenantId: string; permissions: string[]; displayName?: string }[]
+  >([]);
   const [tenants, setTenants] = useState<string[]>([]),
     [tenant, setTenant] = useState(""),
     [locations, setLocations] = useState<InventoryLocationDto[]>([]),
@@ -65,6 +68,7 @@ export default function CashPanel({ userId }: { userId: string }) {
           )
           .map((t: { tenantId: string }) => t.tenantId);
         if (controller.signal.aborted) return;
+        setMemberships(b.tenants);
         setTenants(allowed);
         let selected = allowed[0] ?? "";
         try {
@@ -144,6 +148,13 @@ export default function CashPanel({ userId }: { userId: string }) {
         if (!r.ok) throw new Error(b.error);
         if (c.signal.aborted) return;
         setLocations(b.locations);
+        if (
+          !b.locations.some((v: InventoryLocationDto) => v.status === "active")
+        ) {
+          setLoading(false);
+          setShift(null);
+          setLocation("");
+        }
         setLocation(
           (old) =>
             old ||
@@ -153,7 +164,13 @@ export default function CashPanel({ userId }: { userId: string }) {
         );
       })
       .catch((e) => {
-        if (!c.signal.aborted) setError(e.message);
+        if (!c.signal.aborted) {
+          setError(e.message);
+          setLoading(false);
+          setShift(null);
+          setLocations([]);
+          setLocation("");
+        }
       });
     return () => c.abort();
   }, [tenant]);
@@ -269,10 +286,20 @@ export default function CashPanel({ userId }: { userId: string }) {
     <>
       <header className="topbar no-print">
         <strong>SmartRetail</strong>
-        <AppNavigation current="/cash" />
+        <AppNavigation
+          current="/cash"
+          permissions={
+            memberships.find((t) => t.tenantId === tenant)?.permissions ?? []
+          }
+        />
       </header>
       <main className="workspace">
         <h1>Caja</h1>
+        <p className="company-context">
+          Cajero actual:{" "}
+          {memberships.find((t) => t.tenantId === tenant)?.displayName ??
+            "Cajero registrado"}
+        </p>
         <p className="muted">
           Abre el turno, registra ingresos y retiros, y compara el efectivo al
           cerrar.
@@ -302,6 +329,8 @@ export default function CashPanel({ userId }: { userId: string }) {
                     if (e.target.value === tenant) return;
                     setTenant(e.target.value);
                     setLocation("");
+                    setLocations([]);
+                    setLoading(true);
                     setShift(null);
                   }}
                 >
@@ -366,6 +395,22 @@ export default function CashPanel({ userId }: { userId: string }) {
                         <summary>Referencia del turno</summary>
                         <p className="sale-id">{shift.id}</p>
                       </details>
+                      <p>
+                        Abierto por:{" "}
+                        {"openedByName" in shift &&
+                        typeof shift.openedByName === "string"
+                          ? shift.openedByName
+                          : "Cajero registrado"}
+                      </p>
+                      {shift.status === "closed" && (
+                        <p>
+                          Cerrado por:{" "}
+                          {"closedByName" in shift &&
+                          typeof shift.closedByName === "string"
+                            ? shift.closedByName
+                            : "Cajero registrado"}
+                        </p>
+                      )}
                       <dl className="cash-summary">
                         {[
                           ["Fondo inicial", shift.openingCash],

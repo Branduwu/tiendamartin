@@ -56,6 +56,7 @@ import {
 } from "@smartretail/application";
 import {
   PostgresInventory,
+  PostgresMembers,
   PostgresInventoryMinimum,
   PostgresPurchasing,
   PostgresCustomers,
@@ -373,6 +374,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.member_locations') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/016_cashier_locations.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -409,7 +423,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -432,6 +446,10 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           }),
         );
     }
+    await admin.query(
+      "INSERT INTO retail.member_locations(tenant_id,user_id,location_id) VALUES($1,$2,$3),($1,$2,$4)",
+      [tenantA, clerkUser, source, destination],
+    );
     await new PostgresCash(apiPool, {
       tenantId: tenantA,
       userId: ownerUser,
@@ -2039,10 +2057,10 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       );
       expect(stored.rowCount).toBe(1);
     });
-    it("filters stock and returns missing/foreign location as not found", async () => {
+    it("filters stock and denies missing or foreign location", async () => {
       expect(await db.listStock(source)).toHaveLength(1);
       await expect(db.listStock(randomUUID())).rejects.toThrow(
-        "StockBalance not found",
+        "Permission denied",
       );
       const id = inventoryLocationId(randomUUID());
       await other.createLocation(
@@ -2053,10 +2071,10 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           status: "active",
         }),
       );
-      await expect(db.listStock(id)).rejects.toThrow("StockBalance not found");
+      await expect(db.listStock(id)).rejects.toThrow("Permission denied");
       await expect(
         receiveInventory(db, { ...receipt(), locationId: id }),
-      ).rejects.toThrow("StockBalance not found");
+      ).rejects.toThrow("Permission denied");
       expect(await stock()).toBe(10000n);
     });
     it("revalidates membership for location/stock reads and location creation", async () => {
@@ -2314,7 +2332,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(30);
+    expect(tables.rows).toHaveLength(32);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -3085,7 +3103,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       ).toThrow();
       await expect(
         admin.query(
-          "INSERT INTO retail.tenant_memberships VALUES ($1,$2,'cashier','active')",
+          "INSERT INTO retail.tenant_memberships VALUES ($1,$2,'unsupported_role','active')",
           [tenantA, outsiderUser],
         ),
       ).rejects.toThrow();
@@ -4861,6 +4879,461 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           tenantId: tenantA,
         }).inspect(),
       ).toMatchObject({ ro: "on", isolation: "repeatable read" });
+    });
+  });
+
+  describe("TASK025 cashier assignments", () => {
+    const ctx = { tenantId: tenantA, userId: outsiderUser };
+    const cashierDb = () => new PostgresInventory(apiPool, ctx);
+    const cashierCash = () => new PostgresCash(apiPool, ctx);
+    const members = () =>
+      new PostgresMembers(pool, { tenantId: tenantA, userId: ownerUser });
+    const update = (
+      extra: Partial<{
+        role: "cashier" | "admin" | "inventory_clerk";
+        status: "active" | "inactive";
+        locationIds: string[];
+      }> = {},
+    ) =>
+      members().updateMember(outsiderUser, {
+        displayName: "Cajero prueba",
+        role: "cashier",
+        status: "active",
+        locationIds: [source],
+        ...extra,
+      });
+    const checkout = (locationId = source): SaleCheckoutInput => {
+      const draft = addSaleProduct(
+        createSaleDraft(randomUUID()),
+        fixtureProduct(),
+        quantity("piece", 1000n),
+      );
+      return {
+        draft,
+        locationId,
+        shiftId,
+        payments: [{ method: "card", amount: draft.total }],
+        movements: [{ productId: product, movementId: randomUUID() }],
+      };
+    };
+    const sell = (input = checkout()) =>
+      completeSaleTransaction(new PostgresSales(apiPool, ctx), input);
+    beforeEach(async () => {
+      await admin.query(
+        "INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status,display_name) VALUES($1,$2,'cashier','active','Cajero prueba')",
+        [tenantA, outsiderUser],
+      );
+      await admin.query(
+        "INSERT INTO retail.member_locations VALUES($1,$2,$3)",
+        [tenantA, outsiderUser, source],
+      );
+    });
+    it("has precisely the cashier matrix without manual inventory or administration writes", async () => {
+      const permissions = (
+        await listTenantMemberships(apiPool, outsiderUser)
+      )[0]!.permissions;
+      expect([...permissions].sort()).toEqual(
+        [
+          "products.read",
+          "customers.read",
+          "customers.write",
+          "sales.read",
+          "sales.create",
+          "cash.read",
+          "cash.open",
+          "cash.move",
+          "cash.close",
+          "locations.read",
+          "inventory.read",
+        ].sort(),
+      );
+      for (const p of [
+        "reports.read",
+        "sales.return",
+        "products.write",
+        "members.manage",
+        "inventory.issue",
+        "inventory.adjust",
+        "suppliers.write",
+        "purchases.write",
+      ] as Permission[])
+        await expect(cashierDb().authorize(p)).rejects.toBeInstanceOf(
+          PermissionDeniedError,
+        );
+    });
+    it("returns actual assigned locations during tenant discovery", async () => {
+      expect(
+        (await listTenantMemberships(apiPool, outsiderUser))[0],
+      ).toMatchObject({
+        role: "cashier",
+        displayName: "Cajero prueba",
+        userId: outsiderUser,
+        locationIds: [source],
+        allLocations: false,
+      });
+    });
+    it("lists only the assigned location and its stock", async () => {
+      expect((await cashierDb().listLocations()).map((l) => l.id)).toEqual([
+        source,
+      ]);
+      expect(
+        (await cashierDb().listStock()).every(
+          (s) => s.balance.locationId === source,
+        ),
+      ).toBe(true);
+    });
+    it("owner and admin retain all locations", async () => {
+      expect(await db.listLocations()).toHaveLength(2);
+      expect(
+        await new PostgresInventory(apiPool, {
+          tenantId: tenantA,
+          userId: adminUser,
+        }).listLocations(),
+      ).toHaveLength(2);
+    });
+    it("denies foreign requested stock and manual inventory issue", async () => {
+      await expect(cashierDb().listStock(destination)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(issueInventory(cashierDb(), issue())).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("denies foreign cash reads and opening", async () => {
+      await expect(
+        cashierCash().currentShift(destination),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        cashierCash().openShift({
+          id: randomUUID(),
+          locationId: destination,
+          openingCash: money(0n),
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("denies a sale with manipulated location", async () => {
+      await expect(sell(checkout(destination))).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      expect(await stock()).toBe(10000n);
+    });
+    it("inactive membership cannot read or sell", async () => {
+      await update({ status: "inactive" });
+      await expect(cashierDb().listLocations()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(sell()).rejects.toBeInstanceOf(PermissionDeniedError);
+      expect(await listTenantMemberships(apiPool, outsiderUser)).toEqual([]);
+    });
+    it("unassigned cashier has no locations and cannot open cash", async () => {
+      await update({ locationIds: [] });
+      expect(await cashierDb().listLocations()).toEqual([]);
+      await expect(
+        cashierCash().openShift({
+          id: randomUUID(),
+          locationId: source,
+          openingCash: money(0n),
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("management changes role and assignment atomically", async () => {
+      expect(
+        await update({ role: "inventory_clerk", locationIds: [destination] }),
+      ).toMatchObject({ role: "inventory_clerk", locationIds: [destination] });
+      expect((await cashierDb().listLocations()).map((l) => l.id)).toEqual([
+        destination,
+      ]);
+      await expect(
+        cashierDb().authorize("sales.create"),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("denies a management target in a different tenant", async () => {
+      const id = randomUUID();
+      await admin.query(
+        "INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'cashier','active')",
+        [tenantB, id],
+      );
+      await expect(
+        members().updateMember(id, {
+          role: "cashier",
+          status: "active",
+          displayName: "Otro",
+          locationIds: [source],
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("denies a location belonging only to another tenant", async () => {
+      const foreign = inventoryLocationId(randomUUID());
+      await other.createLocation(
+        createInventoryLocation({
+          id: foreign,
+          name: inventoryLocationName("Ajena"),
+          code: inventoryLocationCode("FOREIGN"),
+          status: "active",
+        }),
+      );
+      await expect(update({ locationIds: [foreign] })).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      expect((await cashierDb().listLocations()).map((l) => l.id)).toEqual([
+        source,
+      ]);
+    });
+    it("protects owner and self and denies owner elevation", async () => {
+      const body = {
+        role: "admin" as const,
+        status: "inactive" as const,
+        displayName: "Cambio",
+        locationIds: [],
+      };
+      await expect(
+        members().updateMember(ownerUser, body),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        new PostgresMembers(pool, {
+          tenantId: tenantA,
+          userId: adminUser,
+        }).updateMember(adminUser, body),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "SELECT retail.update_member($1,'owner','active','Owner',ARRAY[]::uuid[],$2)",
+            [outsiderUser, randomUUID()],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("runtime cannot directly edit memberships or assignments", async () => {
+      await expect(
+        sql(
+          tenantA,
+          (c) =>
+            c.query(
+              "UPDATE retail.tenant_memberships SET role='admin' WHERE user_id=$1",
+              [outsiderUser],
+            ),
+          outsiderUser,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(
+          tenantA,
+          (c) =>
+            c.query("INSERT INTO retail.member_locations VALUES($1,$2,$3)", [
+              tenantA,
+              outsiderUser,
+              destination,
+            ]),
+          outsiderUser,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("raw RLS hides foreign balances, movements and cash shifts", async () => {
+      const cash = await new PostgresCash(pool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).openShift({
+        id: randomUUID(),
+        locationId: destination,
+        openingCash: money(0n),
+      });
+      const result = await sql(
+        tenantA,
+        async (c) => ({
+          balances: (
+            await c.query(
+              "SELECT * FROM retail.stock_balances WHERE location_id=$1",
+              [destination],
+            )
+          ).rows,
+          cash: (
+            await c.query(
+              "SELECT * FROM retail.cash_register_shifts WHERE id=$1",
+              [cash.id],
+            )
+          ).rows,
+        }),
+        outsiderUser,
+      );
+      expect(result).toEqual({ balances: [], cash: [] });
+    });
+    it("raw unlinked issue is denied by RLS", async () => {
+      await expect(
+        sql(
+          tenantA,
+          (c) =>
+            c.query(
+              "INSERT INTO retail.inventory_movements(id,tenant_id,product_id,location_id,type,unit,amount,balance_after) VALUES($1,$2,$3,$4,'issue','piece',1000,9000)",
+              [randomUUID(), tenantA, product, source],
+            ),
+          outsiderUser,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      expect(await stock()).toBe(10000n);
+    });
+    it("sale-linked issue without complete sale rolls back the ledger", async () => {
+      await expect(
+        sql(
+          tenantA,
+          async (c) => {
+            const id = randomUUID();
+            await c.query(
+              "INSERT INTO retail.inventory_commands VALUES($1,$2,'issue')",
+              [id, tenantA],
+            );
+            await c.query(
+              "INSERT INTO retail.inventory_movements(id,tenant_id,product_id,location_id,type,unit,amount,balance_after,sale_id) VALUES($1,$2,$3,$4,'issue','piece',1000,9000,$5)",
+              [id, tenantA, product, source, randomUUID()],
+            );
+          },
+          outsiderUser,
+        ),
+      ).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+    });
+    it("cashier sale records actor and branch snapshots with exact stock", async () => {
+      const sale = (await sell()).recorded;
+      expect(sale).toMatchObject({
+        createdBy: outsiderUser,
+        createdByName: "Cajero prueba",
+        locationName: "Almac\u00e9n",
+        locationId: source,
+      });
+      expect(await stock()).toBe(9000n);
+    });
+    it("replays a sale exactly and denies retry after assignment revocation", async () => {
+      const input = checkout();
+      await sell(input);
+      expect((await sell(input)).replayed).toBe(true);
+      expect(await stock()).toBe(9000n);
+      await update({ locationIds: [destination] });
+      await expect(sell(input)).rejects.toBeInstanceOf(PermissionDeniedError);
+      expect(await stock()).toBe(9000n);
+    });
+    it("historical sale names survive inactive membership", async () => {
+      const sale = (await sell()).recorded;
+      await update({ status: "inactive" });
+      expect(
+        await new PostgresSales(pool, {
+          tenantId: tenantA,
+          userId: ownerUser,
+        }).readSale(sale.sale.id),
+      ).toMatchObject({
+        createdByName: "Cajero prueba",
+        createdBy: outsiderUser,
+      });
+    });
+    it("opening and closing a cashier shift keep operator names", async () => {
+      await new PostgresCash(pool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).closeShift(shiftId, money(0n));
+      const c = cashierCash();
+      const opened = await c.openShift({
+        id: randomUUID(),
+        locationId: source,
+        openingCash: money(0n),
+      });
+      expect(opened).toMatchObject({
+        openedBy: outsiderUser,
+        openedByName: "Cajero prueba",
+      });
+      expect(await c.closeShift(opened.id, money(0n))).toMatchObject({
+        closedBy: outsiderUser,
+        closedByName: "Cajero prueba",
+        openedByName: "Cajero prueba",
+      });
+    });
+    it("allows several assigned locations and revokes one without fallback", async () => {
+      await update({ locationIds: [source, destination] });
+      expect(await cashierDb().listLocations()).toHaveLength(2);
+      await update({ locationIds: [destination] });
+      expect((await cashierDb().listLocations()).map((l) => l.id)).toEqual([
+        destination,
+      ]);
+      await expect(cashierCash().currentShift(source)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("writes immutable membership audit with server actor and correlation", async () => {
+      const cid = randomUUID();
+      await new PostgresMembers(
+        pool,
+        { tenantId: tenantA, userId: ownerUser },
+        cid,
+      ).updateMember(outsiderUser, {
+        role: "cashier",
+        status: "inactive",
+        displayName: "Nombre privado",
+        locationIds: [source],
+      });
+      const audit = (
+        await admin.query(
+          "SELECT * FROM retail.membership_audit WHERE correlation_id=$1",
+          [cid],
+        )
+      ).rows[0];
+      expect(audit).toMatchObject({
+        actor_user_id: ownerUser,
+        user_id: outsiderUser,
+        action: "members.update",
+        correlation_id: cid,
+      });
+      expect(JSON.stringify(audit.metadata)).not.toContain("Nombre privado");
+      await expect(
+        admin.query(
+          "UPDATE retail.membership_audit SET action='members.update'",
+        ),
+      ).rejects.toThrow();
+    });
+    it("revocation waits for the authorized operation then blocks new operations", async () => {
+      let ready!: () => void, release!: () => void;
+      const started = new Promise<void>((r) => (ready = r)),
+        pending = new Promise<void>((r) => (release = r));
+      class Holding extends PostgresInventory {
+        hold() {
+          return this.transaction("sales.create", async () => {
+            ready();
+            await pending;
+          });
+        }
+      }
+      const held = new Holding(pool, ctx).hold();
+      await started;
+      const changed = update({ status: "inactive" });
+      try {
+        let blocked = false;
+        for (let i = 0; i < 40; i++) {
+          blocked = (
+            await admin.query(
+              "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT retail.update_member%') b",
+            )
+          ).rows[0].b;
+          if (blocked) break;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        expect(blocked).toBe(true);
+      } finally {
+        release();
+      }
+      await held;
+      await changed;
+      await expect(
+        cashierDb().authorize("sales.create"),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("rejects accidental membership in the privileged guard role", async () => {
+      await admin.query("GRANT smartretail_members_guard TO smartretail_api");
+      try {
+        await expect(cashierDb().listProducts()).rejects.toThrow(
+          "Unsafe database application role",
+        );
+      } finally {
+        await admin.query(
+          "REVOKE smartretail_members_guard FROM smartretail_api",
+        );
+      }
     });
   });
 });

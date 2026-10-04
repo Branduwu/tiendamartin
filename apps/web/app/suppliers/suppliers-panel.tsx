@@ -84,7 +84,11 @@ export default function SuppliersPanel() {
     <>
       <header className="topbar">
         <strong>SmartRetail</strong>
-        <AppNavigation current="/suppliers" blocked={saving} />
+        <AppNavigation
+          current="/suppliers"
+          blocked={saving}
+          permissions={company.permissions}
+        />
       </header>
       <main className="workspace">
         <div className="page-heading">

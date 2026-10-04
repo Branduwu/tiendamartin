@@ -114,7 +114,12 @@ export default function InventoryAlertsPanel({
         <Link className="brand" href="/inventory">
           SmartRetail
         </Link>
-        <AppNavigation current="/inventory" />
+        <AppNavigation
+          current="/inventory"
+          permissions={
+            tenants.find((t) => t.tenantId === tenantId)?.permissions ?? []
+          }
+        />
       </header>
       <main className="workspace stack">
         <div className="heading">

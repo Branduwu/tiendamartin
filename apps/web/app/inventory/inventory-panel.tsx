@@ -233,7 +233,11 @@ export default function InventoryPanel() {
             SmartRetail
           </Link>
         )}
-        <AppNavigation current="/inventory" blocked={!!(saving || pending)} />
+        <AppNavigation
+          current="/inventory"
+          blocked={!!(saving || pending)}
+          permissions={permissions}
+        />
         <button
           className="secondary"
           disabled={saving || pending !== undefined}

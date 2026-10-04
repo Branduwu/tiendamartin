@@ -76,7 +76,12 @@ export default function LabelsPanel({
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
-        <AppNavigation current="/labels" />
+        <AppNavigation
+          current="/labels"
+          permissions={
+            companies.find((c) => c.tenantId === tenantId)?.permissions ?? []
+          }
+        />
       </header>
       <main className="workspace">
         <div className="heading labels-controls">

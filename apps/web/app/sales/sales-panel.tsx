@@ -9,6 +9,9 @@ import type {
 } from "@smartretail/contracts";
 import { minorUnitsToDecimal } from "../../lib/money-input";
 export default function SalesPanel() {
+  const [memberships, setMemberships] = useState<
+    { tenantId: string; permissions: string[]; displayName?: string }[]
+  >([]);
   const [tenants, setTenants] = useState<string[]>([]),
     [tenant, setTenant] = useState(""),
     [sales, setSales] = useState<StoredSaleDto[]>([]),
@@ -28,6 +31,7 @@ export default function SalesPanel() {
             t.permissions.includes("sales.read"),
           )
           .map((t: { tenantId: string }) => t.tenantId);
+        setMemberships(b.tenants);
         setTenants(allowed);
         setTenant(allowed[0] ?? "");
         if (!allowed.length) setLoading(false);
@@ -73,7 +77,12 @@ export default function SalesPanel() {
     <>
       <header className="topbar">
         <strong>SmartRetail</strong>
-        <AppNavigation current="/sales" />
+        <AppNavigation
+          current="/sales"
+          permissions={
+            memberships.find((t) => t.tenantId === tenant)?.permissions ?? []
+          }
+        />
       </header>
       <main className="workspace">
         <h1>Historial de ventas</h1>
@@ -148,7 +157,10 @@ export default function SalesPanel() {
                     </td>
                     <td data-label="Ubicación">
                       {locations.find((l) => l.id === s.locationId)?.name ??
-                        s.locationId}
+                        ("locationName" in s &&
+                        typeof s.locationName === "string"
+                          ? s.locationName
+                          : "Ubicación registrada")}
                     </td>
                     <td className="amount price" data-label="Total MXN">
                       ${minorUnitsToDecimal(s.sale.total.minorUnits)}
@@ -162,7 +174,12 @@ export default function SalesPanel() {
                     </td>
                     <td data-label="Usuario">
                       <details className="reference">
-                        <summary>Ref. {s.createdBy.slice(0, 8)}</summary>
+                        <summary>
+                          {"createdByName" in s &&
+                          typeof s.createdByName === "string"
+                            ? s.createdByName
+                            : "Cajero registrado"}
+                        </summary>
                         <span className="sale-id">{s.createdBy}</span>
                       </details>
                     </td>

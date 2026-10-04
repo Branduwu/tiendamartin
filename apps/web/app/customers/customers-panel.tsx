@@ -220,7 +220,7 @@ export default function CustomersPanel({
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
-        <AppNavigation current="/customers" />
+        <AppNavigation current="/customers" permissions={company.permissions} />
       </header>
       <main className="workspace">
         <div className="heading">

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UuidSchema } from "./identifiers";
+import { MemberDisplayNameSchema } from "./members";
 import { MoneySchema } from "./money";
 const Nonnegative = MoneySchema.refine((v) => !v.minorUnits.startsWith("-"));
 export const OpenCashShiftSchema = z.strictObject({
@@ -32,6 +33,7 @@ export const CashShiftSchema = z.strictObject({
   tenantId: UuidSchema,
   locationId: UuidSchema,
   openedBy: UuidSchema,
+  openedByName: MemberDisplayNameSchema.exactOptional(),
   openedAt: z.iso.datetime(),
   openingCash: Nonnegative,
   status: z.enum(["open", "closed"]),
@@ -40,6 +42,7 @@ export const CashShiftSchema = z.strictObject({
   cashOut: Nonnegative,
   expectedCash: Nonnegative,
   closedBy: UuidSchema.nullable(),
+  closedByName: MemberDisplayNameSchema.exactOptional(),
   closedAt: z.iso.datetime().nullable(),
   countedCash: Nonnegative.nullable(),
   difference: MoneySchema.nullable(),

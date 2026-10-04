@@ -11,7 +11,11 @@ import type {
 import { browserAuth } from "../../lib/supabase/client";
 import { minorUnitsToDecimal } from "../../lib/money-input";
 import ProductForm from "./product-form";
-type Tenant = { tenantId: string; canWriteProducts: boolean };
+type Tenant = {
+  tenantId: string;
+  canWriteProducts: boolean;
+  permissions: string[];
+};
 async function api<T>(
   router: ReturnType<typeof useRouter>,
   path: string,
@@ -147,7 +151,12 @@ export default function ProductsPanel() {
         <a className="brand" href="/products">
           SmartRetail
         </a>
-        <AppNavigation current="/products" />
+        <AppNavigation
+          current="/products"
+          permissions={
+            tenants.find((t) => t.tenantId === tenantId)?.permissions ?? []
+          }
+        />
         <button
           className="secondary"
           disabled={saving || loggingOut}

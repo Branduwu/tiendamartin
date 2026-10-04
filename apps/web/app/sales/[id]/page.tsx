@@ -89,6 +89,13 @@ export default async function TicketPage({
       <h2>Ticket de venta</h2>
       <p className="badge active">Venta original</p>
       <p>Cliente: {recorded.customerName ?? "Público general"}</p>
+      <p>
+        Cajero:{" "}
+        {"createdByName" in recorded &&
+        typeof recorded.createdByName === "string"
+          ? recorded.createdByName
+          : "Cajero registrado"}
+      </p>
       <p className="sale-id">Venta: {recorded.sale.id}</p>
       <p>
         <time dateTime={recorded.createdAt}>
@@ -98,7 +105,10 @@ export default async function TicketPage({
       <p>
         Ubicación:{" "}
         {locations.find((l) => l.id === recorded.locationId)?.name ??
-          recorded.locationId}
+          ("locationName" in recorded &&
+          typeof recorded.locationName === "string"
+            ? recorded.locationName
+            : "Ubicación registrada")}
       </p>
       <p className="sale-id">
         Turno: {recorded.shiftId ?? "Venta anterior a caja"}

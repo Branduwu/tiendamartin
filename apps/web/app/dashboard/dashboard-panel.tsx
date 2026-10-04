@@ -184,7 +184,7 @@ export default function DashboardPanel() {
         <Link className="brand" href="/dashboard">
           SmartRetail
         </Link>
-        <AppNavigation current="/dashboard" />
+        <AppNavigation current="/dashboard" permissions={company.permissions} />
       </header>
       <main className="workspace stack">
         <div className="heading">

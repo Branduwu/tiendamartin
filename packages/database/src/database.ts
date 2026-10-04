@@ -114,6 +114,7 @@ export class PostgresInventory
       await client.query("SELECT set_config('app.user_id',$1,true)", [
         this.user,
       ]);
+      if (!readOnly) await client.query("SELECT retail.lock_membership()");
       await this.requirePermission(client, permission);
       const value = await work(client);
       await client.query("COMMIT");
@@ -124,6 +125,8 @@ export class PostgresInventory
       } catch {
         broken = true;
       }
+      if (error instanceof Error && "code" in error && error.code === "42501")
+        throw new PermissionDeniedError();
       if (error instanceof Error && "code" in error && error.code === "23505") {
         const constraint = "constraint" in error ? error.constraint : undefined;
         if (
@@ -150,6 +153,17 @@ export class PostgresInventory
     const result = await client.query<{ allowed: boolean }>(
       "SELECT retail.has_permission($1) AS allowed",
       [permission],
+    );
+    if (result.rows[0]?.allowed !== true) throw new PermissionDeniedError();
+  }
+
+  protected async requireLocation(
+    client: PoolClient,
+    id: string,
+  ): Promise<void> {
+    const result = await client.query<{ allowed: boolean }>(
+      "SELECT retail.has_location_access($1) AND EXISTS(SELECT 1 FROM retail.inventory_locations WHERE tenant_id=$2 AND id=$1) AS allowed",
+      [inventoryLocationId(id), this.tenant],
     );
     if (result.rows[0]?.allowed !== true) throw new PermissionDeniedError();
   }
@@ -282,6 +296,7 @@ export class PostgresInventory
         : inventoryLocationId(locationId).toLowerCase();
     return this.transaction("inventory.read", async (client) => {
       if (location) {
+        await this.requireLocation(client, location);
         const exists = await client.query(
           "SELECT 1 FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2",
           [this.tenant, location],
@@ -342,6 +357,8 @@ export class PostgresInventory
       ).entries(),
     ].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     return this.transaction(permission, async (client) => {
+      for (const [, target] of ordered)
+        await this.requireLocation(client, target.locationId);
       const balances = new Map<string, StockBalance>();
       const expected = new Map<string, StockBalance>();
       const pendingTransfers = new Map<string, readonly string[]>();

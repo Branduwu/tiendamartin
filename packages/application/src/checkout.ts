@@ -38,6 +38,8 @@ export type StoredSale = Readonly<{
   locationId: string;
   tenantId: string;
   createdBy: string;
+  createdByName?: string;
+  locationName?: string;
   createdAt: string;
 }>;
 export type SaleCheckoutResult = Readonly<{

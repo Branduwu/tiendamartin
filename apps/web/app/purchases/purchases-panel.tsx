@@ -426,7 +426,11 @@ export default function PurchasesPanel({
     <>
       <header className="topbar">
         <strong>SmartRetail</strong>
-        <AppNavigation current="/purchases" blocked={saving || !!pending} />
+        <AppNavigation
+          current="/purchases"
+          blocked={saving || !!pending}
+          permissions={company.permissions}
+        />
       </header>
       <main className="workspace">
         <div className="page-heading">

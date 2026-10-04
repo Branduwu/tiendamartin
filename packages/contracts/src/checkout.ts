@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { MoneySchema } from "./money";
+import { InventoryLocationNameSchema } from "./inventory-location";
 import { SaleDraftSchema, CompletedSaleSchema } from "./sale";
 import { UuidSchema } from "./identifiers";
+import { MemberDisplayNameSchema } from "./members";
 export const SalePaymentSchema = z.strictObject({
   method: z.enum(["cash", "card"]),
   amount: MoneySchema.refine(
@@ -31,6 +33,8 @@ export const StoredSaleSchema = z.strictObject({
   locationId: UuidSchema,
   tenantId: UuidSchema,
   createdBy: UuidSchema,
+  createdByName: MemberDisplayNameSchema.exactOptional(),
+  locationName: InventoryLocationNameSchema.exactOptional(),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type CheckoutDto = z.infer<typeof CheckoutSchema>;

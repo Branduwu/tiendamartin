@@ -19,3 +19,12 @@ export * from "./customers";
 export { PostgresReporting } from "./reporting";
 
 export { PostgresInventoryMinimum } from "./inventory-minimum";
+
+export {
+  PostgresMembers,
+  MemberNotFoundError,
+  MemberStateConflictError,
+  type Member,
+  type MemberRole,
+  type MemberUpdate,
+} from "./members";
