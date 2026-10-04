@@ -28,9 +28,12 @@ const bounds = `b AS (SELECT $2::date::timestamp AT TIME ZONE 'America/Mexico_Ci
 const salesSql = `WITH ${bounds},
  ss AS (SELECT s.*, (s.created_at AT TIME ZONE 'America/Mexico_City')::date AS day,
  coalesce((SELECT sum(p.amount_minor_units) FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method='cash'),0) AS cash,
- coalesce((SELECT sum(p.amount_minor_units) FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method='card'),0) AS card
+ coalesce((SELECT sum(p.amount_minor_units) FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method='card'),0) AS card,
+ coalesce((SELECT sum(l.discount_minor_units) FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id),0) AS discounts,
+ coalesce((SELECT sum(l.tax_amount_minor_units) FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id),0) AS tax
  FROM retail.sales s,b WHERE ${saleScope} AND ((s.created_at>=b.start AND s.created_at<b.finish) OR (s.created_at>=b.today AND s.created_at<b.tomorrow))),
- rr AS (SELECT r.*, (r.created_at AT TIME ZONE 'America/Mexico_City')::date AS day
+ rr AS (SELECT r.*, (r.created_at AT TIME ZONE 'America/Mexico_City')::date AS day,
+ coalesce((SELECT sum(l.refunded_tax_minor_units) FROM retail.sale_return_lines l WHERE l.tenant_id=r.tenant_id AND l.return_id=r.id),0) AS tax
  FROM retail.sale_returns r JOIN retail.sales s ON s.tenant_id=r.tenant_id AND s.id=r.sale_id CROSS JOIN b
  WHERE ${saleScope.replace("AND ($4::uuid IS NULL OR s.location_id=$4)", "")} AND ($4::uuid IS NULL OR r.location_id=$4)
  AND ((r.created_at>=b.start AND r.created_at<b.finish) OR (r.created_at>=b.today AND r.created_at<b.tomorrow))),
@@ -40,18 +43,22 @@ const salesSql = `WITH ${bounds},
  totals AS (SELECT key,
  coalesce(sum(total_minor_units),0) AS gross,count(s.id)::numeric AS count,coalesce(sum(cash),0) AS cash,coalesce(sum(card),0) AS card,
  count(DISTINCT customer_id)::text AS customers,count(s.id) FILTER(WHERE customer_id IS NOT NULL)::text AS associated,count(s.id) FILTER(WHERE customer_id IS NULL)::text AS general,
- (SELECT coalesce(sum(r.total_minor_units),0) FROM rr r WHERE r.day BETWEEN k.lo AND k.hi) AS refunds
+ (SELECT coalesce(sum(r.total_minor_units),0) FROM rr r WHERE r.day BETWEEN k.lo AND k.hi) AS refunds,
+ coalesce(sum(discounts),0) AS discounts,coalesce(sum(tax),0) AS tax,
+ (SELECT coalesce(sum(r.tax),0) FROM rr r WHERE r.day BETWEEN k.lo AND k.hi) AS refunded_tax
  FROM buckets k LEFT JOIN ss s ON s.day BETWEEN k.lo AND k.hi GROUP BY k.key,k.lo,k.hi)
  SELECT key,gross::text,count::text,CASE WHEN count=0 THEN '0' ELSE div(gross+div(count,2),count)::text END AS average,
- cash::text,card::text,refunds::text,(gross-refunds)::text AS net,customers,associated,general FROM totals ORDER BY key`;
+ cash::text,card::text,refunds::text,(gross-refunds)::text AS net,
+ (gross-tax+discounts)::text AS "baseGross",discounts::text,tax::text AS "taxCollected",refunded_tax::text AS "taxRefunded",
+ (gross-tax-refunds+refunded_tax)::text AS "netCommercial",customers,associated,general FROM totals ORDER BY key`;
 const stock = `stock AS (SELECT p.id,p.name,p.unit,p.status,coalesce(sum(b.milli_units),0) AS stock
  FROM retail.products p LEFT JOIN retail.stock_balances b ON b.tenant_id=p.tenant_id AND b.product_id=p.id AND ($4::uuid IS NULL OR b.location_id=$4)
  WHERE p.tenant_id=$1 AND ($5::uuid IS NULL OR p.id=$5) GROUP BY p.id,p.name,p.unit,p.status)`;
 const productsSql = `WITH ${bounds},${stock}, sold AS (
- SELECT l.product_id,sum(l.quantity_milli_units) AS quantity,sum(l.line_total_minor_units) AS revenue
+ SELECT l.product_id,sum(l.quantity_milli_units) AS quantity,sum(l.line_total_minor_units::numeric-l.tax_amount_minor_units::numeric) AS revenue
  FROM retail.sales s JOIN retail.sale_lines l ON l.tenant_id=s.tenant_id AND l.sale_id=s.id CROSS JOIN b
  WHERE ${saleScope} AND s.created_at>=b.start AND s.created_at<b.finish AND ($5::uuid IS NULL OR l.product_id=$5)
- GROUP BY l.product_id ORDER BY sum(l.line_total_minor_units) DESC,l.product_id LIMIT 20)
+ GROUP BY l.product_id ORDER BY sum(l.line_total_minor_units::numeric-l.tax_amount_minor_units::numeric) DESC,l.product_id LIMIT 20)
  SELECT p.id,p.name,p.unit,d.quantity::text,d.revenue::text,coalesce(st.stock,0)::text AS stock FROM sold d
  JOIN retail.products p ON p.tenant_id=$1 AND p.id=d.product_id LEFT JOIN stock st ON st.id=p.id ORDER BY d.revenue DESC,p.id`;
 // One persisted projection serves dashboard, alerts and purchase prefill.
@@ -272,6 +279,11 @@ export class PostgresReporting
           card: r.card,
           refunds: r.refunds,
           net: r.net,
+          baseGross: r.baseGross,
+          discounts: r.discounts,
+          taxCollected: r.taxCollected,
+          taxRefunded: r.taxRefunded,
+          netCommercial: r.netCommercial,
           customers: r.customers,
           associated: r.associated,
           general: r.general,

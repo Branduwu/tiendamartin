@@ -60,7 +60,8 @@ export function usePurchasingCompany(
     | "purchases.read"
     | "customers.read"
     | "reports.read"
-    | "promotions.read",
+    | "promotions.read"
+    | "taxes.manage",
   preferred?: string,
 ) {
   const [tenants, setTenants] = useState<PurchasingTenant[]>([]),

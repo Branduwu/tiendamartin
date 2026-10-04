@@ -1,3 +1,4 @@
+import { TaxExpectationsSchema } from "./taxes";
 import { z } from "zod";
 import { MoneySchema } from "./money";
 import { InventoryLocationNameSchema } from "./inventory-location";
@@ -22,6 +23,7 @@ export const CheckoutSchema = z.strictObject({
   locationId: UuidSchema,
   payments: PaymentsSchema,
   discounts: DiscountIntentSchema.exactOptional(),
+  taxes: TaxExpectationsSchema.exactOptional(),
   movements: z
     .array(z.strictObject({ productId: UuidSchema, movementId: UuidSchema }))
     .min(1)
@@ -44,6 +46,7 @@ export const SaleQuoteSchema = z.strictObject({
   draft: SaleDraftSchema,
   locationId: UuidSchema,
   discounts: DiscountIntentSchema.exactOptional(),
+  taxes: TaxExpectationsSchema.exactOptional(),
 });
 export type CheckoutDto = z.infer<typeof CheckoutSchema>;
 export type StoredSaleDto = z.infer<typeof StoredSaleSchema>;

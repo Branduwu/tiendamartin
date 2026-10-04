@@ -93,6 +93,7 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [draft, setDraft] = useState<SaleDraft | null>(null),
     [texts, setTexts] = useState<Record<string, string>>({});
   const [priceQuote, setPriceQuote] = useState<PosPriceQuote | null>(null);
+  const [quoteRevision, setQuoteRevision] = useState(0);
   function baseDto(value: SaleDraft): SaleDraftDto {
     return {
       ...value,
@@ -637,6 +638,7 @@ export default function PosPanel({ userId }: { userId: string }) {
           },
           locationId: location,
           discounts: currentQuote.discounts,
+          taxes: currentQuote.taxes,
           payments,
           movements: edited.lines.map((l) => ({
             productId: l.productId,
@@ -691,6 +693,8 @@ export default function PosPanel({ userId }: { userId: string }) {
     } catch (e) {
       if (e instanceof ApiError && [400, 404, 409].includes(e.status)) {
         setPending(null);
+        setPriceQuote(null);
+        setQuoteRevision((r) => r + 1);
         sessionStorage.removeItem(pendingKey);
       }
       if (e instanceof ApiError && e.status === 401) router.replace("/login");
@@ -1145,28 +1149,64 @@ export default function PosPanel({ userId }: { userId: string }) {
                   ))
                 )}
                 <dl className="pos-totals">
+                  {!pending && (
+                    <>
+                      <div>
+                        <dt>Subtotal</dt>
+                        <dd>
+                          {mxn((draft?.total.minorUnits ?? 0n).toString())}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Descuento</dt>
+                        <dd>
+                          {mxn(
+                            (
+                              currentQuote?.sale.lines.reduce(
+                                (sum, line) =>
+                                  sum +
+                                  BigInt(line.discount?.minorUnits ?? "0"),
+                                0n,
+                              ) ?? 0n
+                            ).toString(),
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Impuestos</dt>
+                        <dd>
+                          {mxn(
+                            (
+                              currentQuote?.sale.lines.reduce(
+                                (sum, line) =>
+                                  sum +
+                                  BigInt(line.tax?.amount.minorUnits ?? "0"),
+                                0n,
+                              ) ?? 0n
+                            ).toString(),
+                          )}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                   <div>
-                    <dt>Subtotal</dt>
-                    <dd>{mxn((draft?.total.minorUnits ?? 0n).toString())}</dd>
-                  </div>
-                  <div>
-                    <dt>Descuento</dt>
-                    <dd>
-                      {mxn(
-                        ((draft?.total.minorUnits ?? 0n) - total).toString(),
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Total</dt>
+                    <dt>{pending ? "Total pendiente original" : "Total"}</dt>
                     <dd>{mxn(total.toString())}</dd>
                   </div>
                 </dl>
+                {!pending &&
+                  currentQuote &&
+                  !currentQuote.sale.lines.some((l) => l.tax) && (
+                    <p className="muted">Sin impuesto configurado.</p>
+                  )}
                 {base && base.lines.length > 0 && (
                   <PosDiscounts
                     key={`${tenant}/${base.id}`}
                     tenantId={tenant}
                     disabled={locked}
+                    refreshRevision={quoteRevision}
+                    recovering={pending !== null}
+                    initialIntent={pending?.discounts}
                     locationId={location}
                     draft={base}
                     canDiscount={

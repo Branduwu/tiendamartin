@@ -19,7 +19,12 @@ export function reportingCsv(
             "Efectivo centavos MXN",
             "Tarjeta centavos MXN",
             "Devoluciones centavos MXN",
-            "Venta neta centavos MXN",
+            "Cobro neto con impuestos centavos MXN",
+            "Bruto comercial centavos MXN",
+            "Descuentos centavos MXN",
+            "Impuestos cobrados centavos MXN",
+            "Impuestos devueltos centavos MXN",
+            "Venta comercial neta sin impuestos centavos MXN",
           ],
           ...report.days.map((d) => [
             d.date,
@@ -30,6 +35,11 @@ export function reportingCsv(
             d.card,
             d.refunds,
             d.net,
+            d.baseGross,
+            d.discounts,
+            d.taxCollected,
+            d.taxRefunded,
+            d.netCommercial,
           ]),
         ]
       : [
@@ -37,7 +47,7 @@ export function reportingCsv(
             "Producto",
             "Unidad",
             "Cantidad milésimas",
-            "Ingresos centavos MXN",
+            "Ingresos sin impuestos centavos MXN",
             "Stock milésimas",
           ],
           ...report.products.map((p) => [

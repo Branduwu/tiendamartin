@@ -1,3 +1,4 @@
+import { taxRate, type TaxExpectation } from "@smartretail/domain";
 import {
   completeSale,
   createSaleDraft,
@@ -34,6 +35,7 @@ export type SaleCheckoutInput = Readonly<{
   payments: readonly SalePayment[];
   movements: readonly Readonly<{ productId: string; movementId: string }>[];
   discounts?: DiscountIntent;
+  taxes?: readonly TaxExpectation[];
 }>;
 export type StoredSale = Readonly<{
   shiftId: string | null;
@@ -63,6 +65,7 @@ export interface SaleTransaction {
   priceSale?(
     sale: CompletedSale,
     input: SaleCheckoutInput,
+    quote?: boolean,
   ): Promise<Readonly<{ sale: CompletedSale; details?: DiscountDetails }>>;
   lockSuspendedSale?(id: string, locationId: string): Promise<void>;
   validateCustomer?(id: string): Promise<void>;
@@ -94,7 +97,7 @@ export function saleCommand(input: SaleCheckoutInput) {
     throw new TypeError("Invalid checkout");
   const validated = completeSale(input.draft);
   const draft: SaleDraft = Object.freeze({ ...validated, status: "draft" });
-  if (draft.lines.some((l) => l.discount !== undefined))
+  if (draft.lines.some((l) => l.discount !== undefined || l.tax !== undefined))
     throw new TypeError("Client discounts belong to intent, not paid lines");
   const discounts =
     input.discounts === undefined
@@ -155,6 +158,21 @@ export function saleCommand(input: SaleCheckoutInput) {
     )
   )
     throw new TypeError("Invalid movement mapping");
+  const taxes = input.taxes
+    ?.map((t) =>
+      Object.freeze({
+        productId: productId(t.productId).toLowerCase(),
+        profileId: productId(t.profileId).toLowerCase(),
+        rate: taxRate(t.rate),
+      }),
+    )
+    .sort((a, b) => a.productId.localeCompare(b.productId));
+  if (
+    taxes &&
+    (new Set(taxes.map((t) => t.productId)).size !== taxes.length ||
+      taxes.some((t) => !draft.lines.some((l) => l.productId === t.productId)))
+  )
+    throw new TypeError("Invalid tax expectations");
   const snapshot = Object.freeze({
     ...(input.shiftId === undefined
       ? {}
@@ -167,6 +185,7 @@ export function saleCommand(input: SaleCheckoutInput) {
     payments,
     movements: Object.freeze(movements),
     ...(discounts === undefined ? {} : { discounts }),
+    ...(taxes === undefined ? {} : { taxes: Object.freeze(taxes) }),
   });
   const canonicalLines = [...draft.lines]
     .sort((a, b) => a.productId.localeCompare(b.productId))
@@ -196,6 +215,9 @@ export function saleCommand(input: SaleCheckoutInput) {
         amount: p.amount.minorUnits.toString(),
       })),
     movements,
+    ...(taxes === undefined
+      ? {}
+      : { taxes: taxes.map((t) => ({ ...t, rate: t.rate.toString() })) }),
     ...(discounts === undefined
       ? {}
       : {
@@ -255,9 +277,11 @@ export async function completeSaleTransaction(
     const lines = [...snapshot.draft.lines].sort((a, b) =>
       a.productId.localeCompare(b.productId),
     );
+    let requiresTaxPricing = false;
     for (const line of lines) {
       const product = await tx.readProduct(line.productId);
       if (!product) throw new ProductNotFoundError();
+      requiresTaxPricing ||= product.taxProfileId !== undefined;
       trusted = addSaleProduct(trusted, product, line.quantity);
       const rebuilt = trusted.lines.find((l) => l.productId === line.productId);
       if (
@@ -269,7 +293,12 @@ export async function completeSaleTransaction(
       )
         throw new SaleQuoteChangedError();
     }
-    if (snapshot.discounts !== undefined && !tx.priceSale)
+    if (
+      (snapshot.discounts !== undefined ||
+        snapshot.taxes !== undefined ||
+        requiresTaxPricing) &&
+      !tx.priceSale
+    )
       throw new TypeError("Discount-aware transaction required");
     const priced = tx.priceSale
       ? await tx.priceSale(completeSale(trusted), snapshot)

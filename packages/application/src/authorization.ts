@@ -9,6 +9,7 @@ export type Permission =
   | "sales.discount"
   | "promotions.read"
   | "promotions.write"
+  | "taxes.manage"
   | "inventory.minimum.write"
   | "reports.read"
   | "customers.read"

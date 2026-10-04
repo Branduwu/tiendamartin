@@ -1,3 +1,4 @@
+import { UuidSchema } from "./identifiers";
 import { z } from "zod";
 import { MoneySchema } from "./money";
 import { UnitCodeSchema } from "./unit";
@@ -20,6 +21,7 @@ export const ProductSchema = z.strictObject({
   name: ProductNameSchema,
   sku: SkuSchema,
   barcode: BarcodeSchema.exactOptional(),
+  taxProfileId: UuidSchema.exactOptional(),
   unit: UnitCodeSchema,
   purchaseCost: ProductPriceSchema,
   salePrice: ProductPriceSchema,
@@ -34,6 +36,7 @@ export const UpdateProductSchema = z
     name: ProductNameSchema.exactOptional(),
     sku: SkuSchema.exactOptional(),
     barcode: BarcodeSchema.nullable().exactOptional(),
+    taxProfileId: UuidSchema.nullable().exactOptional(),
     unit: UnitCodeSchema.exactOptional(),
     purchaseCost: ProductPriceSchema.exactOptional(),
     salePrice: ProductPriceSchema.exactOptional(),

@@ -18,6 +18,11 @@ export type SalesMetrics = Readonly<{
   card: string;
   refunds: string;
   net: string;
+  baseGross: string;
+  discounts: string;
+  taxCollected: string;
+  taxRefunded: string;
+  netCommercial: string;
   customers: string;
   associated: string;
   general: string;

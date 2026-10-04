@@ -18,6 +18,7 @@ export type Product = Readonly<{
   name: ProductName;
   sku: Sku;
   barcode?: Barcode;
+  taxProfileId?: string;
   unit: UnitCode;
   purchaseCost: Money;
   salePrice: Money;
@@ -53,6 +54,9 @@ export function createProduct(input: CreateProductInput): Product {
     name,
     sku: canonicalSku,
     ...("barcode" in input ? { barcode: barcode(input.barcode) } : {}),
+    ...(input.taxProfileId === undefined
+      ? {}
+      : { taxProfileId: productId(input.taxProfileId).toLowerCase() }),
     unit,
     purchaseCost: price(input.purchaseCost, "purchaseCost"),
     salePrice: price(input.salePrice, "salePrice"),

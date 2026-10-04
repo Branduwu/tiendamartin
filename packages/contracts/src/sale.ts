@@ -1,3 +1,4 @@
+import { TaxSnapshotSchema } from "./taxes";
 import { z } from "zod";
 import { UuidSchema } from "./identifiers";
 import {
@@ -26,22 +27,32 @@ const LineShapeSchema = z.strictObject({
   unitPrice: PriceSchema,
   lineTotal: PriceSchema,
   discount: PriceSchema.exactOptional(),
+  tax: TaxSnapshotSchema.exactOptional(),
 });
 export const SaleLineSchema = LineShapeSchema.refine(
-  (line) => line.unit === line.quantity.unit,
-  "Sale quantity unit mismatch",
-).refine(
-  (line) =>
-    BigInt(line.lineTotal.minorUnits) +
-      BigInt(line.discount?.minorUnits ?? "0") ===
-    (BigInt(line.unitPrice.minorUnits) * BigInt(line.quantity.milliUnits) +
-      500n) /
-      1000n,
-  {
-    message: "Inconsistent sale line total",
-    when: (payload) => LineShapeSchema.safeParse(payload.value).success,
-  },
-);
+  (l) =>
+    l.tax === undefined ||
+    BigInt(l.tax.base.minorUnits) ===
+      BigInt(l.lineTotal.minorUnits) - BigInt(l.tax.amount.minorUnits),
+  { when: (p) => LineShapeSchema.safeParse(p.value).success },
+)
+  .refine(
+    (line) => line.unit === line.quantity.unit,
+    "Sale quantity unit mismatch",
+  )
+  .refine(
+    (line) =>
+      BigInt(line.lineTotal.minorUnits) +
+        BigInt(line.discount?.minorUnits ?? "0") -
+        BigInt(line.tax?.amount.minorUnits ?? "0") ===
+      (BigInt(line.unitPrice.minorUnits) * BigInt(line.quantity.milliUnits) +
+        500n) /
+        1000n,
+    {
+      message: "Inconsistent sale line total",
+      when: (payload) => LineShapeSchema.safeParse(payload.value).success,
+    },
+  );
 
 // Technical transport bound, not a limit on the domain/business sale size.
 const LinesSchema = z

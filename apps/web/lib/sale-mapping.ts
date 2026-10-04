@@ -1,3 +1,14 @@
+import type { TaxSnapshot } from "@smartretail/domain";
+const taxDto = (t: TaxSnapshot) => ({
+  profileId: t.profileId,
+  name: t.name,
+  rate: t.rate.toString(),
+  base: { currency: "MXN" as const, minorUnits: t.base.minorUnits.toString() },
+  amount: {
+    currency: "MXN" as const,
+    minorUnits: t.amount.minorUnits.toString(),
+  },
+});
 import {
   saleId,
   productId,
@@ -31,6 +42,17 @@ export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
       quantity: quantity(l.quantity.unit, BigInt(l.quantity.milliUnits)),
       unitPrice: money(BigInt(l.unitPrice.minorUnits)),
       lineTotal: money(BigInt(l.lineTotal.minorUnits)),
+      ...(l.tax === undefined
+        ? {}
+        : {
+            tax: {
+              profileId: l.tax.profileId,
+              name: l.tax.name,
+              rate: BigInt(l.tax.rate),
+              base: money(BigInt(l.tax.base.minorUnits)),
+              amount: money(BigInt(l.tax.amount.minorUnits)),
+            },
+          }),
       ...(l.discount === undefined
         ? {}
         : { discount: money(BigInt(l.discount.minorUnits)) }),
@@ -44,6 +66,9 @@ export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
     draft,
     locationId: dto.locationId,
     movements: dto.movements,
+    ...(dto.taxes === undefined
+      ? {}
+      : { taxes: dto.taxes.map((t) => ({ ...t, rate: BigInt(t.rate) })) }),
     payments: dto.payments.map((p) => ({
       method: p.method,
       amount: money(BigInt(p.amount.minorUnits)),
@@ -104,6 +129,7 @@ export function storedSaleDto(recorded: StoredSale): StoredSaleDto {
           currency: "MXN",
           minorUnits: l.lineTotal.minorUnits.toString(),
         },
+        ...(l.tax === undefined ? {} : { tax: taxDto(l.tax) }),
         ...(l.discount === undefined
           ? {}
           : {
@@ -141,6 +167,7 @@ export function completedSaleDto(sale: CompletedSale): CompletedSaleDto {
         currency: "MXN",
         minorUnits: l.lineTotal.minorUnits.toString(),
       },
+      ...(l.tax === undefined ? {} : { tax: taxDto(l.tax) }),
       ...(l.discount === undefined
         ? {}
         : {

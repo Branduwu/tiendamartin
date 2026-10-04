@@ -76,6 +76,7 @@ import {
   listTenantMemberships,
   ProductStorageConflictError,
   PostgresPromotions,
+  PostgresTaxes,
 } from "../src/index";
 
 const configPath = process.env.SMARTRETAIL_PG_TEST_CONFIG;
@@ -408,6 +409,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.tax_profiles') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/018_taxes.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -444,7 +458,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2353,7 +2367,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(36);
+    expect(tables.rows).toHaveLength(37);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -5356,6 +5370,346 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "REVOKE smartretail_members_guard FROM smartretail_api",
         );
       }
+    });
+  });
+  describe("TASK027 configurable taxes", () => {
+    const taxes = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresTaxes(apiPool, { userId, tenantId });
+    const sales = () =>
+      new PostgresSales(apiPool, { userId: ownerUser, tenantId: tenantA });
+    const profileInput = (rate = "775") => ({
+      id: randomUUID(),
+      name: "SMOKE Tax",
+      rate,
+      active: true,
+    });
+    async function assign(rate = "775") {
+      const input = profileInput(rate);
+      await taxes().saveTaxProfile(input);
+      await updateProduct(db, product, { taxProfileId: input.id });
+      return input;
+    }
+    const command = (
+      paid = 2155n,
+      amount = 1000n,
+      discounts?: DiscountIntent,
+    ): SaleCheckoutInput => ({
+      draft: addSaleProduct(
+        createSaleDraft(randomUUID()),
+        fixtureProduct(),
+        quantity("piece", amount),
+      ),
+      locationId: source,
+      shiftId,
+      movements: [{ productId: product, movementId: randomUUID() }],
+      payments: paid ? [{ method: "card", amount: money(paid) }] : [],
+      ...(discounts ? { discounts } : {}),
+    });
+    const expected = (
+      input: SaleCheckoutInput,
+      p: { id: string; rate: string },
+    ) => ({
+      ...input,
+      taxes: [{ productId: product, profileId: p.id, rate: BigInt(p.rate) }],
+    });
+    const sell = (input: SaleCheckoutInput) =>
+      completeSaleTransaction(sales(), input);
+    it("creates updates and audits profiles and assignment with restricted runtime", async () => {
+      const p = await assign();
+      await taxes().saveTaxProfile({ ...p, name: "Changed" }, true);
+      expect((await taxes().listTaxProfiles())[0]?.name).toBe("Changed");
+      expect(
+        (
+          await admin.query(
+            "SELECT operation FROM retail.promotion_audit ORDER BY created_at",
+          )
+        ).rows.map((r) => r.operation),
+      ).toEqual(["taxes.create", "products.tax", "taxes.update"]);
+      await updateProduct(db, product, { name: productName("Ordinary edit") });
+      expect((await db.listProducts())[0]?.taxProfileId).toBe(p.id);
+    });
+    it("permits owner admin but denies clerk and inactive administration", async () => {
+      await taxes(adminUser).saveTaxProfile(profileInput());
+      await expect(
+        taxes(clerkUser).saveTaxProfile(profileInput()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, adminUser],
+      );
+      await expect(
+        taxes(adminUser).saveTaxProfile(profileInput()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("isolates profiles and rejects cross-tenant assignment", async () => {
+      const p = profileInput();
+      await taxes(ownerUser, tenantB).saveTaxProfile(p);
+      expect(await taxes().listTaxProfiles()).toEqual([]);
+      await expect(
+        updateProduct(db, product, { taxProfileId: p.id }),
+      ).rejects.toThrow();
+      await expect(taxes().saveTaxProfile(p, true)).rejects.toThrow();
+    });
+    it("preserves unassigned sales and stores tax version zero", async () => {
+      const result = await sell(command(2000n));
+      expect(result.recorded.sale.total.minorUnits).toBe(2000n);
+      expect(
+        (await admin.query("SELECT tax_version FROM retail.sales")).rows[0]
+          .tax_version,
+      ).toBe(0);
+    });
+    it("quotes current tax and persists exact exclusive snapshots", async () => {
+      const p = await assign(),
+        input = expected(command(), p);
+      expect((await sales().quoteSale(input)).sale.total.minorUnits).toBe(
+        2155n,
+      );
+      const result = await sell(input);
+      expect(result.recorded.sale.lines[0]?.tax?.amount.minorUnits).toBe(155n);
+      expect(await sales().readSale(input.draft.id)).toEqual(result.recorded);
+    });
+    it("applies promotion manual and coupon before taxes", async () => {
+      const p = await assign(),
+        promo = new PostgresPromotions(apiPool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        });
+      await promo.savePromotion({
+        id: randomUUID(),
+        name: "SMOKE Promo",
+        productId: product,
+        discount: { type: "percentage", value: "1000" },
+        active: true,
+      });
+      await promo.saveCoupon({
+        id: randomUUID(),
+        code: "SMOKE-TAX",
+        discount: { type: "percentage", value: "1000" },
+        active: true,
+      });
+      const result = await sell(
+        expected(
+          command(4713n, 3000n, {
+            sale: discount("percentage", 1000n),
+            couponCode: "SMOKE-TAX",
+          }),
+          p,
+        ),
+      );
+      expect(result.recorded.sale.lines[0]?.tax?.base.minorUnits).toBe(4374n);
+      expect(result.recorded.sale.lines[0]?.discount?.minorUnits).toBe(1626n);
+    });
+    it("rejects missing incomplete or fabricated expectations and rolls back stock", async () => {
+      const p = await assign();
+      for (const input of [
+        command(),
+        { ...command(), taxes: [] },
+        expected(command(), { ...p, rate: "776" }),
+        expected(command(), { ...p, id: randomUUID() }),
+      ])
+        await expect(sell(input)).rejects.toBeInstanceOf(SaleQuoteChangedError);
+      expect(await stock()).toBe(10000n);
+    });
+    it("detects changed rate even when rounded tax remains the same", async () => {
+      const p = await assign("0");
+      const input = expected(command(2000n), p);
+      await taxes().saveTaxProfile({ ...p, rate: "1" }, true);
+      await expect(sell(input)).rejects.toBeInstanceOf(SaleQuoteChangedError);
+    });
+    it("replays historical snapshots after rate edits deactivation and unassignment", async () => {
+      const p = await assign(),
+        input = expected(command(), p),
+        original = await sell(input);
+      await taxes().saveTaxProfile({ ...p, rate: "1234", active: false }, true);
+      await updateProduct(db, product, { taxProfileId: null });
+      expect(await sell(input)).toEqual({
+        recorded: original.recorded,
+        replayed: true,
+      });
+      expect(await stock()).toBe(9000n);
+    });
+    it("conflicts same SaleId with a different fiscal expectation", async () => {
+      const p = await assign(),
+        input = expected(command(), p);
+      await sell(input);
+      await expect(
+        sell(expected(input, { ...p, rate: "776" })),
+      ).rejects.toBeInstanceOf(SaleIdempotencyConflictError);
+    });
+    it("blocks newly assigned or inactive profiles at confirmation", async () => {
+      const input = { ...command(2000n), taxes: [] },
+        p = await assign();
+      await expect(sell(input)).rejects.toBeInstanceOf(SaleQuoteChangedError);
+      await taxes().saveTaxProfile({ ...p, active: false }, true);
+      await expect(sell(expected(command(), p))).rejects.toThrow();
+      await expect(
+        updateProduct(db, product, { taxProfileId: null }).then(() =>
+          updateProduct(db, product, { taxProfileId: p.id }),
+        ),
+      ).rejects.toThrow();
+    });
+    async function omittedTax(immediate: boolean) {
+      const input = command(2000n);
+      return sql(tenantA, async (c) => {
+        await c.query(
+          "INSERT INTO retail.sales(id,tenant_id,location_id,status,total_minor_units,created_by,command_payload,shift_id) VALUES($1,$2,$3,'completed',2000,$4,'{}',$5)",
+          [input.draft.id, tenantA, source, ownerUser, shiftId],
+        );
+        if (immediate)
+          await c.query(
+            "SET CONSTRAINTS retail.sale_tax_complete,retail.sale_line_tax_complete IMMEDIATE",
+          );
+        const m = input.movements[0]!.movementId;
+        await c.query(
+          "INSERT INTO retail.inventory_commands(id,tenant_id,kind) VALUES($1,$2,'issue')",
+          [m, tenantA],
+        );
+        await c.query(
+          "INSERT INTO retail.inventory_movements(id,tenant_id,product_id,location_id,type,unit,amount,balance_after,sale_id) VALUES($1,$2,$3,$4,'issue','piece',1000,9000,$5)",
+          [m, tenantA, product, source, input.draft.id],
+        );
+        await c.query(
+          "INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id) VALUES($1,$2,$3,0,'SKU-1','Producto','piece',1000,2000,2000,$4)",
+          [tenantA, input.draft.id, product, m],
+        );
+        await c.query(
+          "INSERT INTO retail.sale_payments(tenant_id,sale_id,method,amount_minor_units) VALUES($1,$2,'card',2000)",
+          [tenantA, input.draft.id],
+        );
+      });
+    }
+    it("SQL rejects tax omission disguised as a legacy sale", async () => {
+      await assign();
+      await expect(omittedTax(false)).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+    });
+    it("SQL rejects omission after tax constraints are immediate", async () => {
+      await assign("0");
+      await expect(omittedTax(true)).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+    });
+    it("refunds historical net and tax after profile changes and closes exactly", async () => {
+      const p = await assign(),
+        input = expected(
+          command(4713n, 3000n, { sale: discount("amount", 1626n) }),
+          p,
+        );
+      await sell(input);
+      await taxes().saveTaxProfile({ ...p, rate: "999", active: false }, true);
+      const r = new PostgresSaleReturns(apiPool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      });
+      const returnInput = (amount: bigint, paid: bigint): SaleReturnInput => ({
+        id: randomUUID(),
+        lines: [
+          {
+            saleLineId: product,
+            productId: product,
+            quantity: quantity("piece", amount),
+            movementId: randomUUID(),
+          },
+        ],
+        refunds: [{ method: "card", amount: money(paid) }],
+      });
+      const a = await r.returnSale(input.draft.id, returnInput(1000n, 1571n)),
+        b = await r.returnSale(input.draft.id, returnInput(2000n, 3142n));
+      expect(a.record.lines[0]?.refundedTax?.minorUnits).toBe(113n);
+      expect(b.record.lines[0]?.refundedTax?.minorUnits).toBe(226n);
+      expect(await stock()).toBe(10000n);
+    });
+    it("reports commercial values and taxes once despite split payments", async () => {
+      const p = await assign(),
+        input = expected(command(), p);
+      await sell({
+        ...input,
+        payments: [
+          { method: "cash", amount: money(1000n) },
+          { method: "card", amount: money(1155n) },
+        ],
+      });
+      const report = await new PostgresReporting(apiPool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).operationalReport(reportPeriod("today"));
+      expect(report.sales).toMatchObject({
+        gross: "2155",
+        baseGross: "2000",
+        taxCollected: "155",
+        taxRefunded: "0",
+        netCommercial: "2000",
+        discounts: "0",
+      });
+      expect(report.products[0]?.revenue).toBe("2000");
+    });
+    it("serializes a rate update and returns the committed current quote", async () => {
+      const p = await assign(),
+        c = await pool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query(
+          "SELECT set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true)",
+          [tenantA, ownerUser],
+        );
+        await c.query(
+          "UPDATE retail.tax_profiles SET rate=1000 WHERE tenant_id=$1 AND id=$2",
+          [tenantA, p.id],
+        );
+        const blocker = (
+          await c.query<{ pid: number }>("SELECT pg_backend_pid() pid")
+        ).rows[0]!.pid;
+        let settled = false;
+        const quote = sales()
+          .quoteSale(command())
+          .finally(() => {
+            settled = true;
+          });
+        const deadline = Date.now() + 5000;
+        let waiting = false;
+        while (!waiting && Date.now() < deadline) {
+          waiting = (
+            await admin.query<{ waiting: boolean }>(
+              "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE usename='smartretail_api' AND wait_event_type='Lock' AND $1::int=ANY(pg_blocking_pids(pid))) waiting",
+              [blocker],
+            )
+          ).rows[0]!.waiting;
+          if (!waiting) await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(waiting).toBe(true);
+        expect(settled).toBe(false);
+        await c.query("COMMIT");
+        expect((await quote).sale.total.minorUnits).toBe(2200n);
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+      }
+    });
+    it("rejects overflow and leaves sale stock and payment ledger untouched", async () => {
+      const p = await assign("1000000");
+      await updateProduct(db, product, {
+        salePrice: money(92233720368547758n),
+      });
+      const current = (await db.listProducts())[0]!;
+      const input = expected(
+        {
+          ...command(),
+          draft: addSaleProduct(
+            createSaleDraft(randomUUID()),
+            current,
+            quantity("piece", 1000n),
+          ),
+          payments: [
+            { method: "card", amount: money(92233720368547758n * 101n) },
+          ],
+        },
+        p,
+      );
+      await expect(sell(input)).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+      expect(
+        (await admin.query("SELECT count(*)::int n FROM retail.sales")).rows[0]
+          .n,
+      ).toBe(0);
     });
   });
   describe("TASK026 transactional discounts", () => {

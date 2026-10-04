@@ -29,6 +29,7 @@ export type ProductChanges = Readonly<{
   name?: string;
   sku?: string;
   barcode?: string | null;
+  taxProfileId?: string | null;
   unit?: UnitCode;
   purchaseCost?: Money;
   salePrice?: Money;
@@ -77,6 +78,12 @@ export function updateProduct(
         patch.status === "active"
           ? activateProduct(value)
           : deactivateProduct(value);
+    }
+    if (patch.taxProfileId !== undefined) {
+      const copy = { ...value };
+      if (patch.taxProfileId === null) delete copy.taxProfileId;
+      else copy.taxProfileId = productId(patch.taxProfileId).toLowerCase();
+      value = product(copy);
     }
     return value;
   });

@@ -227,6 +227,7 @@ export default function ProductsPanel() {
           <ProductForm
             key={editor?.id ?? "new"}
             product={editor}
+            tenantId={tenantId}
             busy={saving}
             onSave={save}
             onCancel={() => setEditor(undefined)}

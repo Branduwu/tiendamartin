@@ -61,6 +61,7 @@ export class PostgresSaleReturns
       unit: UnitCode;
       quantity_milli_units: string;
       refunded_minor_units: string;
+      refunded_tax_minor_units: string;
     }>(
       "SELECT * FROM retail.sale_return_lines WHERE tenant_id=$1 AND return_id=$2 ORDER BY product_id",
       [this.tenant, id],
@@ -90,6 +91,9 @@ export class PostgresSaleReturns
             productId: productId(l.product_id),
             quantity: quantity(l.unit, integer(l.quantity_milli_units)),
             refunded: money(integer(l.refunded_minor_units)),
+            ...(l.refunded_tax_minor_units !== "0"
+              ? { refundedTax: money(integer(l.refunded_tax_minor_units)) }
+              : {}),
           }),
         ),
       ),
@@ -242,7 +246,7 @@ export class PostgresSaleReturns
             0n,
           );
           await client.query(
-            "INSERT INTO retail.sale_return_lines(tenant_id,return_id,sale_id,product_id,unit,quantity_milli_units,returned_before,refunded_minor_units,movement_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+            "INSERT INTO retail.sale_return_lines(tenant_id,return_id,sale_id,product_id,unit,quantity_milli_units,returned_before,refunded_minor_units,movement_id,refunded_tax_minor_units) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
             [
               this.tenant,
               result.id,
@@ -253,6 +257,7 @@ export class PostgresSaleReturns
               bigintParameter(returnedBefore),
               bigintParameter(line.refunded.minorUnits),
               movementId,
+              bigintParameter(line.refundedTax?.minorUnits ?? 0n),
             ],
           );
         }

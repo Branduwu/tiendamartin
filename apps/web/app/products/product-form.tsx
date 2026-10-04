@@ -1,16 +1,18 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   CreateProductSchema,
   UnitCodeSchema,
   type ProductDto,
   type CreateProductDto,
   type UpdateProductDto,
+  type TaxProfileDto,
 } from "@smartretail/contracts";
 import {
   decimalToMinorUnits,
   minorUnitsToDecimal,
 } from "../../lib/money-input";
+import { purchasingApi } from "../components/purchasing-client";
 const unitLabels = {
   piece: "Pieza",
   kg: "Kilogramo",
@@ -22,24 +24,50 @@ const unitLabels = {
 };
 export default function ProductForm({
   product,
+  tenantId,
   busy,
   onSave,
   onCancel,
 }: {
   product: ProductDto | null;
+  tenantId: string;
   busy: boolean;
   onSave: (value: CreateProductDto | UpdateProductDto) => Promise<void>;
   onCancel: () => void;
 }) {
   const [error, setError] = useState("");
+  const [profiles, setProfiles] = useState<TaxProfileDto[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    purchasingApi<{ profiles: TaxProfileDto[] }>("/api/v1/taxes", tenantId, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setProfiles(data.profiles);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setError(
+            "No pudimos cargar los impuestos. Recarga antes de guardar.",
+          );
+      });
+    return () => controller.abort();
+  }, [tenantId]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !loaded) return;
     setError("");
     const form = new FormData(event.currentTarget);
     try {
       const raw = {
         name: String(form.get("name")),
+        ...(form.get("taxProfileId")
+          ? { taxProfileId: String(form.get("taxProfileId")) }
+          : {}),
         sku: String(form.get("sku")),
         ...(form.get("barcode")
           ? { barcode: String(form.get("barcode")) }
@@ -71,6 +99,8 @@ export default function ProductForm({
         }
         if (parsed.data.barcode !== product.barcode)
           patch.barcode = parsed.data.barcode ?? null;
+        if (parsed.data.taxProfileId !== product.taxProfileId)
+          patch.taxProfileId = parsed.data.taxProfileId ?? null;
         if (
           parsed.data.purchaseCost.minorUnits !==
           product.purchaseCost.minorUnits
@@ -92,7 +122,7 @@ export default function ProductForm({
     <section className="card" aria-labelledby="form-title">
       <h2 id="form-title">{product ? "Editar producto" : "Nuevo producto"}</h2>
       <form onSubmit={submit} className="stack">
-        <fieldset disabled={busy} className="form-grid">
+        <fieldset disabled={busy || !loaded} className="form-grid">
           <label>
             Nombre
             <input
@@ -158,6 +188,29 @@ export default function ProductForm({
             />
           </label>
           <label>
+            Impuesto
+            <select
+              name="taxProfileId"
+              aria-label="Impuesto"
+              defaultValue={product?.taxProfileId ?? ""}
+              key={loaded ? "loaded" : "loading"}
+            >
+              <option value="">Sin impuesto configurado</option>
+              {profiles
+                .filter((p) => p.active || p.id === product?.taxProfileId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {minorUnitsToDecimal(p.rate)}%
+                    {p.active ? "" : " (inactivo)"}
+                  </option>
+                ))}
+            </select>
+            <small>
+              Se añade después de descuentos. Un perfil inactivo bloquea nuevas
+              ventas.
+            </small>
+          </label>
+          <label>
             Estado
             <select name="status" defaultValue={product?.status ?? "active"}>
               <option value="active">Activo</option>
@@ -174,7 +227,7 @@ export default function ProductForm({
           </p>
         )}
         <div className="actions">
-          <button disabled={busy} type="submit">
+          <button disabled={busy || !loaded} type="submit">
             {busy ? "Guardando…" : "Guardar producto"}
           </button>
           <button

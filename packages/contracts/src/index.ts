@@ -85,3 +85,5 @@ export * from "./inventory-minimum";
 export * from "./members";
 export * from "./discounts";
 export { SaleQuoteSchema } from "./checkout";
+
+export * from "./taxes";

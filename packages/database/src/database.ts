@@ -8,6 +8,7 @@ import {
   inventoryMovementId,
   inventoryAdjustmentReason,
   createProduct,
+  TaxProfileUnavailableError,
   createInventoryLocation,
   createInventoryReceipt,
   createInventoryIssue,
@@ -58,6 +59,15 @@ export class DatabaseUniquenessConflictError extends Error {
   }
 }
 
+function unavailableTax(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "23503" &&
+    (error.message === "Tax profile unavailable" ||
+      ("constraint" in error && error.constraint === "product_tax_tenant"))
+  );
+}
 function key(target: StockTarget): string {
   return `${productId(target.productId).toLowerCase()}/${inventoryLocationId(target.locationId).toLowerCase()}`;
 }
@@ -180,8 +190,8 @@ export class PostgresInventory
     return this.transaction("products.write", async (client) => {
       const result = await client.query<ProductRow>(
         `INSERT INTO retail.products
-        (tenant_id,id,name,sku,barcode,unit,currency,purchase_cost,sale_price,status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        (tenant_id,id,name,sku,barcode,unit,currency,purchase_cost,sale_price,status,tax_profile_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [
           this.tenant,
           value.id,
@@ -193,11 +203,15 @@ export class PostgresInventory
           bigintParameter(value.purchaseCost.minorUnits),
           bigintParameter(value.salePrice.minorUnits),
           value.status,
+          value.taxProfileId ?? null,
         ],
       );
       const row = result.rows[0];
       if (!row) throw new Error("Missing inserted product");
       return productFromRow(row);
+    }).catch((error: unknown) => {
+      if (unavailableTax(error)) throw new TaxProfileUnavailableError();
+      throw error;
     });
   }
 
@@ -228,7 +242,7 @@ export class PostgresInventory
         if (value.id.toLowerCase() !== validId)
           throw new TypeError("Product identity cannot change");
         const result = await client.query<ProductRow>(
-          `UPDATE retail.products SET name=$3,sku=$4,barcode=$5,unit=$6,purchase_cost=$7,sale_price=$8,status=$9
+          `UPDATE retail.products SET name=$3,sku=$4,barcode=$5,unit=$6,purchase_cost=$7,sale_price=$8,status=$9,tax_profile_id=$10
           WHERE tenant_id=$1 AND id=$2 RETURNING *`,
           [
             this.tenant,
@@ -240,6 +254,7 @@ export class PostgresInventory
             bigintParameter(value.purchaseCost.minorUnits),
             bigintParameter(value.salePrice.minorUnits),
             value.status,
+            value.taxProfileId ?? null,
           ],
         );
         const updated = result.rows[0];
@@ -247,6 +262,7 @@ export class PostgresInventory
         return productFromRow(updated);
       });
     } catch (error) {
+      if (unavailableTax(error)) throw new TaxProfileUnavailableError();
       if (error instanceof Error && "code" in error && error.code === "23503")
         throw new ProductStorageConflictError();
       throw error;

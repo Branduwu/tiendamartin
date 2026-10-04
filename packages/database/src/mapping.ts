@@ -49,6 +49,7 @@ export function balanceFromRow(row: BalanceRow) {
   });
 }
 export interface ProductRow {
+  tax_profile_id?: string | null;
   id: string;
   name: string;
   sku: string;
@@ -69,6 +70,7 @@ export function productFromRow(row: ProductRow) {
     unit: row.unit,
     purchaseCost: money(integer(row.purchase_cost)),
     salePrice: money(integer(row.sale_price)),
+    ...(row.tax_profile_id == null ? {} : { taxProfileId: row.tax_profile_id }),
     status: row.status,
   });
 }

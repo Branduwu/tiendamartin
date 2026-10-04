@@ -4,6 +4,7 @@ import {
   ProductNotFoundError,
 } from "@smartretail/application";
 import { DatabaseUniquenessConflictError } from "@smartretail/database";
+import { TaxProfileUnavailableError } from "@smartretail/domain";
 import { productInput } from "./product-mapping";
 import { decimalToMinorUnits, minorUnitsToDecimal } from "./money-input";
 import {
@@ -81,6 +82,20 @@ beforeEach(() => {
   ]);
 });
 describe("API with controlled Auth boundary (not cloud E2E)", () => {
+  it("reports unavailable fiscal assignment on creation without SQL details", async () => {
+    mocks.create.mockRejectedValue(new TaxProfileUnavailableError());
+    const response = await POST(request("POST", { ...dto, taxProfileId: id }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("impuesto");
+  });
+  it("reports unavailable fiscal assignment on edit without a unit error", async () => {
+    mocks.edit.mockRejectedValue(new TaxProfileUnavailableError());
+    const response = await PATCH(request("PATCH", { taxProfileId: id }), {
+      params: Promise.resolve({ id }),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain("impuesto");
+  });
   it("absent session returns 401 before DB", async () => {
     mocks.claims.mockResolvedValue({ data: null, error: null });
     expect((await GET(request())).status).toBe(401);

@@ -26,16 +26,9 @@ export function changeProductBarcode(
 
 export function removeProductBarcode(product: Product): Product {
   const current = createProduct(product);
-  const { id, name, sku, unit, purchaseCost, salePrice, status } = current;
-  return createProduct({
-    id,
-    name,
-    sku,
-    unit,
-    purchaseCost,
-    salePrice,
-    status,
-  });
+  const copy = { ...current };
+  delete copy.barcode;
+  return createProduct(copy);
 }
 
 /** Changes configuration only; no conversion of prices, quantities or history. */

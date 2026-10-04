@@ -15,6 +15,7 @@ export type PosPriceQuote = {
   sale: CompletedSaleDto;
   details?: DiscountDetailsDto;
   discounts: DiscountIntentDto;
+  taxes: { productId: string; profileId: string; rate: string }[];
 };
 export default function PosDiscounts({
   tenantId,
@@ -22,6 +23,9 @@ export default function PosDiscounts({
   draft,
   canDiscount,
   disabled,
+  refreshRevision,
+  recovering,
+  initialIntent,
   onQuote,
 }: {
   tenantId: string;
@@ -29,9 +33,12 @@ export default function PosDiscounts({
   draft: SaleDraftDto;
   canDiscount: boolean;
   disabled: boolean;
+  refreshRevision: number;
+  recovering: boolean;
+  initialIntent?: DiscountIntentDto | undefined;
   onQuote: (value: PosPriceQuote | null) => void;
 }) {
-  const [intent, setIntent] = useState<DiscountIntentDto>({}),
+  const [intent, setIntent] = useState<DiscountIntentDto>(initialIntent ?? {}),
     [revision, setRevision] = useState(0),
     [scope, setScope] = useState("sale"),
     [type, setType] = useState<"amount" | "percentage">("percentage"),
@@ -57,7 +64,8 @@ export default function PosDiscounts({
   useEffect(() => {
     const controller = new AbortController();
     onQuote(null);
-    if (!locationId || !draft.lines.length) return () => controller.abort();
+    if (recovering || !locationId || !draft.lines.length)
+      return () => controller.abort();
     Promise.resolve().then(() => {
       if (!controller.signal.aborted) {
         setQuote(null);
@@ -105,11 +113,20 @@ export default function PosDiscounts({
     locationId,
     serializedIntent,
     revision,
+    refreshRevision,
+    recovering,
     onQuote,
     key,
     draft.lines.length,
   ]);
   const mxn = (s: string) => `$${minorUnitsToDecimal(s)} MXN`;
+  if (recovering)
+    return (
+      <p className="muted">
+        Comando pendiente: el total conserva los pagos originales. Confirma el
+        resultado para consultar su desglose histórico.
+      </p>
+    );
   return (
     <section aria-label="Descuentos y cupones" className="stack">
       <h3>Descuentos y cupones</h3>

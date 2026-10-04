@@ -25,12 +25,15 @@ export function returnedInput(dto: SaleReturnDto): StoredSaleReturn {
     ...dto,
     id: saleReturnId(dto.id),
     total: money(BigInt(dto.total.minorUnits)),
-    lines: dto.lines.map((l) => ({
+    lines: dto.lines.map(({ refundedTax, ...l }) => ({
       ...l,
       saleLineId: productId(l.saleLineId),
       productId: productId(l.productId),
       quantity: quantity(l.quantity.unit, BigInt(l.quantity.milliUnits)),
       refunded: money(BigInt(l.refunded.minorUnits)),
+      ...(refundedTax === undefined
+        ? {}
+        : { refundedTax: money(BigInt(refundedTax.minorUnits)) }),
     })),
     refunds: dto.refunds.map((p) => ({
       method: p.method,
@@ -46,13 +49,16 @@ export function returnedDto(record: StoredSaleReturn): SaleReturnDto {
   return {
     ...record,
     total: moneyDto(record.total),
-    lines: record.lines.map((l) => ({
+    lines: record.lines.map(({ refundedTax, ...l }) => ({
       ...l,
       quantity: {
         unit: l.quantity.unit,
         milliUnits: l.quantity.milliUnits.toString(),
       },
       refunded: moneyDto(l.refunded),
+      ...(refundedTax === undefined
+        ? {}
+        : { refundedTax: moneyDto(refundedTax) }),
     })),
     refunds: record.refunds.map((p) => ({
       method: p.method,

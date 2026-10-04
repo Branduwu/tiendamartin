@@ -24,6 +24,7 @@ import {
   IncompatibleQuantityUnitError,
   DiscountLimitError,
   DiscountUnavailableError,
+  TaxProfileUnavailableError,
 } from "@smartretail/domain";
 import { verifiedUserId } from "./auth";
 import { salesForUser } from "./database";
@@ -56,6 +57,17 @@ export async function handleSales(
       );
       return reply({
         sale: completedSaleDto(quoted.sale),
+        taxes: quoted.sale.lines.flatMap((l) =>
+          l.tax
+            ? [
+                {
+                  productId: l.productId,
+                  profileId: l.tax.profileId,
+                  rate: l.tax.rate.toString(),
+                },
+              ]
+            : [],
+        ),
         ...(quoted.details === undefined ? {} : { details: quoted.details }),
       });
     }
@@ -100,6 +112,14 @@ export async function handleSales(
       result.replayed ? 200 : 201,
     );
   } catch (error) {
+    if (error instanceof TaxProfileUnavailableError)
+      return reply(
+        {
+          error:
+            "El impuesto asignado está inactivo. Solicita revisar el producto antes de vender.",
+        },
+        409,
+      );
     if (error instanceof DiscountLimitError)
       return reply(
         { error: "El descuento manual del cajero no puede superar el 20%." },

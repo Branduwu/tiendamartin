@@ -50,7 +50,8 @@ export function recoverPendingSale(
     const input = checkoutInput(parsed.data);
     completeSale(input.draft);
     const paid = input.payments.reduce((s, p) => s + p.amount.minorUnits, 0n);
-    if (paid > input.draft.total.minorUnits) return blocked;
+    if (!input.taxes?.length && paid > input.draft.total.minorUnits)
+      return blocked;
     salePayments(input.payments, { currency: "MXN", minorUnits: paid });
     return {
       kind: "recover",

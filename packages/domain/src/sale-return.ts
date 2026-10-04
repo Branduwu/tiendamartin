@@ -20,6 +20,7 @@ export type SaleReturnLine = Readonly<{
   productId: ProductId;
   quantity: Quantity;
   refunded: Money;
+  refundedTax?: Money;
 }>;
 export type SaleReturn = Readonly<{
   id: SaleReturnId;
@@ -70,7 +71,7 @@ export function quoteSaleReturn(
   )
     throw new TypeError("Select return lines");
   const seen = new Set<string>();
-  const lines = selections.map((input) => {
+  const lines: SaleReturnLine[] = selections.map((input) => {
     const pid = productId(input.productId).toLowerCase(),
       lineId = productId(input.saleLineId).toLowerCase();
     if (pid !== lineId || seen.has(pid))
@@ -94,6 +95,26 @@ export function quoteSaleReturn(
     }
     if (returned + amount.milliUnits > source.quantity.milliUnits)
       throw new SaleReturnConflictError("Quantity already returned");
+    const cumulative = (value: bigint) =>
+      (value * (returned + amount.milliUnits) * 2n +
+        source.quantity.milliUnits) /
+        (source.quantity.milliUnits * 2n) -
+      (value * returned * 2n + source.quantity.milliUnits) /
+        (source.quantity.milliUnits * 2n);
+    if (source.tax) {
+      const refundedTax = money(cumulative(source.tax.amount.minorUnits));
+      return Object.freeze({
+        saleLineId: productId(lineId),
+        productId: productId(pid),
+        quantity: amount,
+        refundedTax,
+        refunded: money(
+          cumulative(
+            source.lineTotal.minorUnits - source.tax.amount.minorUnits,
+          ) + refundedTax.minorUnits,
+        ),
+      });
+    }
     return Object.freeze({
       saleLineId: productId(lineId),
       productId: productId(pid),

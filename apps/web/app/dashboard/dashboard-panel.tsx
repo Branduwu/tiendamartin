@@ -172,7 +172,15 @@ export default function DashboardPanel() {
         ["Efectivo", mxn(report.sales.cash)],
         ["Tarjeta", mxn(report.sales.card)],
         ["Devoluciones", mxn(report.sales.refunds)],
-        ["Venta neta", mxn(report.sales.net)],
+        ["Cobro neto (con impuestos)", mxn(report.sales.net)],
+        ["Venta bruta antes de descuentos", mxn(report.sales.baseGross)],
+        ["Descuentos", mxn(report.sales.discounts)],
+        ["Impuestos cobrados", mxn(report.sales.taxCollected)],
+        ["Impuestos devueltos", mxn(report.sales.taxRefunded)],
+        [
+          "Venta comercial neta (sin impuestos)",
+          mxn(report.sales.netCommercial),
+        ],
         ["Compras recibidas", mxn(report.purchases.receivedAmount)],
         ["Stock bajo", report.inventory.low],
         ["Agotados", report.inventory.empty],
@@ -341,10 +349,13 @@ export default function DashboardPanel() {
                       </button>
                     </div>
                     <p className="muted">
-                      Venta neta = ventas completadas − devoluciones completadas
-                      por fecha de registro. Ticket promedio redondeado al
-                      centavo más cercano. Producto y método seleccionan ventas
-                      completas que los contienen; no prorratean pagos.
+                      Cobro neto = ventas completadas − devoluciones
+                      completadas, incluidos impuestos. Venta comercial neta
+                      excluye impuestos cobrados y devueltos. Las devoluciones
+                      se cuentan en su fecha; puede resultar negativa. por fecha
+                      de registro. Ticket promedio redondeado al centavo más
+                      cercano. Producto y método seleccionan ventas completas
+                      que los contienen; no prorratean pagos.
                     </p>
                     <Trend days={report.days} />
                     <div

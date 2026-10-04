@@ -56,6 +56,7 @@ export const SaleReturnSchema = z.strictObject({
         productId: UuidSchema,
         quantity: ReturnQuantity,
         refunded: MoneySchema,
+        refundedTax: MoneySchema.exactOptional(),
       }),
     )
     .min(1)

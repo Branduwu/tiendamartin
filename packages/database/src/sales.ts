@@ -1,3 +1,4 @@
+import { priceCatalogTaxes } from "./taxes";
 import type { PoolClient } from "pg";
 import {
   completeSale,
@@ -68,6 +69,11 @@ interface LineRow {
   unit_price_minor_units: string;
   line_total_minor_units: string;
   discount_minor_units: string;
+  tax_profile_id: string | null;
+  tax_profile_name: string | null;
+  tax_rate: string | null;
+  tax_base_minor_units: string | null;
+  tax_amount_minor_units: string;
 }
 interface PaymentRow {
   method: "cash" | "card";
@@ -97,6 +103,17 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         name: productName(l.product_name),
         unit: l.unit,
         quantity: quantity(l.unit, integer(l.quantity_milli_units)),
+        ...(l.tax_profile_id === null
+          ? {}
+          : {
+              tax: {
+                profileId: l.tax_profile_id,
+                name: l.tax_profile_name!,
+                rate: integer(l.tax_rate!),
+                base: money(integer(l.tax_base_minor_units!)),
+                amount: money(integer(l.tax_amount_minor_units)),
+              },
+            }),
         unitPrice: money(integer(l.unit_price_minor_units)),
         lineTotal: money(integer(l.line_total_minor_units)),
         ...(row.pricing_version === 1
@@ -189,15 +206,23 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           `${p.toLowerCase()}/${l.toLowerCase()}`;
         const balances = new Map<string, ReturnType<typeof balanceFromRow>>();
         const tx: SaleTransaction = {
-          priceSale: async (sale, input) => {
+          priceSale: async (sale, input, quote = false) => {
             assertActive();
-            return priceCatalogSale(
+            const priced = await priceCatalogSale(
               client,
               this.tenant,
               this.user,
               sale,
               input.discounts,
             );
+            const saleWithTaxes = await priceCatalogTaxes(
+              client,
+              this.tenant,
+              priced.sale,
+              input.taxes,
+              quote,
+            );
+            return { ...priced, sale: saleWithTaxes };
           },
           findRecorded: async () => {
             assertActive();
@@ -316,8 +341,8 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           persistSale: async (sale, input, payload, details) => {
             assertActive();
             await client.query(
-              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id,customer_id,pricing_version,discount_intent,discount_details)
-              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id,customer_id,pricing_version,discount_intent,discount_details,tax_version)
+              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
               [
                 validId,
                 this.tenant,
@@ -333,6 +358,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                   ? JSON.stringify(discountIntentJson(input.discounts))
                   : null,
                 details ? JSON.stringify(details) : null,
+                sale.lines.some((l) => l.tax) ? 1 : 0,
               ],
             );
             for (const [ordinal, line] of sale.lines.entries()) {
@@ -341,8 +367,8 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
               );
               if (!movement) throw new Error("Missing sale movement");
               await client.query(
-                `INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id,discount_minor_units)
-                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                `INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id,discount_minor_units,tax_profile_id,tax_profile_name,tax_rate,tax_base_minor_units,tax_amount_minor_units)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
                 [
                   this.tenant,
                   validId,
@@ -356,6 +382,11 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                   bigintParameter(line.lineTotal.minorUnits),
                   movement.movementId,
                   bigintParameter(line.discount?.minorUnits ?? 0n),
+                  line.tax?.profileId ?? null,
+                  line.tax?.name ?? null,
+                  line.tax ? bigintParameter(line.tax.rate) : null,
+                  line.tax ? bigintParameter(line.tax.base.minorUnits) : null,
+                  bigintParameter(line.tax?.amount.minorUnits ?? 0n),
                 ],
               );
             }
@@ -402,7 +433,11 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
     input: Pick<SaleCheckoutInput, "draft" | "locationId" | "discounts">,
   ) {
     const validated = completeSale(input.draft);
-    if (validated.lines.some((l) => l.discount !== undefined))
+    if (
+      validated.lines.some(
+        (l) => l.discount !== undefined || l.tax !== undefined,
+      )
+    )
       throw new TypeError("Expected base draft");
     return this.runSale(validated.id, async (tx) => {
       const location = await tx.readLocation(input.locationId);
@@ -426,12 +461,16 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         )
           throw new SaleQuoteChangedError();
       }
-      return tx.priceSale!(completeSale(trusted), {
-        ...input,
-        draft: trusted,
-        payments: [],
-        movements: [],
-      });
+      return tx.priceSale!(
+        completeSale(trusted),
+        {
+          ...input,
+          draft: trusted,
+          payments: [],
+          movements: [],
+        },
+        true,
+      );
     });
   }
 }

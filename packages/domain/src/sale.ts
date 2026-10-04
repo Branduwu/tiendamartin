@@ -1,3 +1,4 @@
+import { taxRate, taxAmount, type TaxSnapshot } from "./tax-rate";
 import { money, addMoney, compareMoney, type Money } from "./money";
 import { quantity, addQuantity, type Quantity } from "./quantity";
 import { createProduct, type Product } from "./product";
@@ -29,6 +30,7 @@ export type SaleLine = Readonly<{
   unitPrice: Money;
   lineTotal: Money;
   discount?: Money;
+  tax?: TaxSnapshot;
 }>;
 type SaleValues = Readonly<{
   id: SaleId;
@@ -79,7 +81,26 @@ function snapshotLine(value: SaleLine): SaleLine {
     value.discount === undefined ? undefined : nonnegativePrice(value.discount);
   if (reduction && reduction.minorUnits > base.minorUnits)
     throw new TypeError("Discount exceeds line");
-  const total = money(base.minorUnits - (reduction?.minorUnits ?? 0n));
+  const taxable = money(base.minorUnits - (reduction?.minorUnits ?? 0n));
+  let tax: TaxSnapshot | undefined;
+  if (value.tax !== undefined) {
+    const rate = taxRate(value.tax.rate);
+    const amount = taxAmount(taxable, rate);
+    if (
+      value.tax.base.currency !== "MXN" ||
+      value.tax.base.minorUnits !== taxable.minorUnits ||
+      compareMoney(amount, value.tax.amount) !== 0
+    )
+      throw new TypeError("Inconsistent tax snapshot");
+    tax = Object.freeze({
+      profileId: productId(value.tax.profileId).toLowerCase(),
+      name: productName(value.tax.name),
+      rate,
+      base: taxable,
+      amount,
+    });
+  }
+  const total = money(taxable.minorUnits + (tax?.amount.minorUnits ?? 0n));
   if (compareMoney(total, value.lineTotal) !== 0)
     throw new TypeError("Inconsistent sale line total");
   return Object.freeze({
@@ -91,6 +112,7 @@ function snapshotLine(value: SaleLine): SaleLine {
     unitPrice: price,
     lineTotal: total,
     ...(reduction === undefined ? {} : { discount: reduction }),
+    ...(tax === undefined ? {} : { tax }),
   });
 }
 

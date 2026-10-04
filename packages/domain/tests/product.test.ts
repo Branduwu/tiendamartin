@@ -182,6 +182,7 @@ describe("Product fields", () => {
         name: ProductName;
         sku: Sku;
         barcode?: Barcode;
+        taxProfileId?: string;
         unit: "piece" | "kg" | "g" | "l" | "ml" | "m" | "cm";
         purchaseCost: ReturnType<typeof money>;
         salePrice: ReturnType<typeof money>;

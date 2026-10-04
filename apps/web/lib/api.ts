@@ -19,6 +19,7 @@ import {
 import { verifiedUserId } from "./auth";
 import { productsForUser, tenantsForUser } from "./database";
 import { productInput, productChanges, productDto } from "./product-mapping";
+import { TaxProfileUnavailableError } from "@smartretail/domain";
 
 export class InvalidInput extends Error {}
 export class SameOriginError extends Error {}
@@ -158,6 +159,14 @@ export async function handleApi(
       operation === "create" ? 201 : 200,
     );
   } catch (error) {
+    if (error instanceof TaxProfileUnavailableError)
+      return reply(
+        {
+          error:
+            "El impuesto no existe, está inactivo o no pertenece a esta empresa. Actualiza la selección del producto.",
+        },
+        409,
+      );
     if (
       error instanceof PermissionDeniedError ||
       error instanceof SameOriginError

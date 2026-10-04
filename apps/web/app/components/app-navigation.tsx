@@ -13,6 +13,7 @@ const pages = [
   ["/customers", "Clientes"],
   ["/settings/users", "Usuarios"],
   ["/promotions", "Promociones"],
+  ["/settings/taxes", "Impuestos"],
 ] as const;
 export default function AppNavigation({
   current,
@@ -55,6 +56,7 @@ export default function AppNavigation({
             "/customers": "customers.read",
             "/settings/users": "members.manage",
             "/promotions": "promotions.read",
+            "/settings/taxes": "taxes.manage",
           };
           return visiblePermissions.includes(required[href] ?? "");
         })
