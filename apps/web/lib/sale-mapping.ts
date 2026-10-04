@@ -6,8 +6,14 @@ import {
   money,
   quantity,
   type SaleDraft,
+  type CompletedSale,
+  discount,
 } from "@smartretail/domain";
-import type { CheckoutDto, StoredSaleDto } from "@smartretail/contracts";
+import type {
+  CheckoutDto,
+  StoredSaleDto,
+  CompletedSaleDto,
+} from "@smartretail/contracts";
 import type { SaleCheckoutInput, StoredSale } from "@smartretail/application";
 export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
   const draft: SaleDraft = {
@@ -25,6 +31,9 @@ export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
       quantity: quantity(l.quantity.unit, BigInt(l.quantity.milliUnits)),
       unitPrice: money(BigInt(l.unitPrice.minorUnits)),
       lineTotal: money(BigInt(l.lineTotal.minorUnits)),
+      ...(l.discount === undefined
+        ? {}
+        : { discount: money(BigInt(l.discount.minorUnits)) }),
     })),
   };
   return {
@@ -39,6 +48,34 @@ export function checkoutInput(dto: CheckoutDto): SaleCheckoutInput {
       method: p.method,
       amount: money(BigInt(p.amount.minorUnits)),
     })),
+    ...(dto.discounts === undefined
+      ? {}
+      : {
+          discounts: {
+            ...(dto.discounts.sale === undefined
+              ? {}
+              : {
+                  sale: discount(
+                    dto.discounts.sale.type,
+                    BigInt(dto.discounts.sale.value),
+                  ),
+                }),
+            ...(dto.discounts.lines === undefined
+              ? {}
+              : {
+                  lines: dto.discounts.lines.map((l) => ({
+                    productId: l.productId,
+                    discount: discount(
+                      l.discount.type,
+                      BigInt(l.discount.value),
+                    ),
+                  })),
+                }),
+            ...(dto.discounts.couponCode === undefined
+              ? {}
+              : { couponCode: dto.discounts.couponCode }),
+          },
+        }),
   };
 }
 export function storedSaleDto(recorded: StoredSale): StoredSaleDto {
@@ -51,7 +88,10 @@ export function storedSaleDto(recorded: StoredSale): StoredSaleDto {
         minorUnits: recorded.sale.total.minorUnits.toString(),
       },
       lines: recorded.sale.lines.map((l) => ({
-        ...l,
+        productId: l.productId,
+        name: l.name,
+        sku: l.sku,
+        unit: l.unit,
         quantity: {
           unit: l.quantity.unit,
           milliUnits: l.quantity.milliUnits.toString(),
@@ -64,11 +104,51 @@ export function storedSaleDto(recorded: StoredSale): StoredSaleDto {
           currency: "MXN",
           minorUnits: l.lineTotal.minorUnits.toString(),
         },
+        ...(l.discount === undefined
+          ? {}
+          : {
+              discount: {
+                currency: "MXN" as const,
+                minorUnits: l.discount.minorUnits.toString(),
+              },
+            }),
       })),
     },
     payments: recorded.payments.map((p) => ({
       method: p.method,
       amount: { currency: "MXN", minorUnits: p.amount.minorUnits.toString() },
+    })),
+  };
+}
+export function completedSaleDto(sale: CompletedSale): CompletedSaleDto {
+  return {
+    ...sale,
+    total: { currency: "MXN", minorUnits: sale.total.minorUnits.toString() },
+    lines: sale.lines.map((l) => ({
+      productId: l.productId,
+      name: l.name,
+      sku: l.sku,
+      unit: l.unit,
+      quantity: {
+        unit: l.quantity.unit,
+        milliUnits: l.quantity.milliUnits.toString(),
+      },
+      unitPrice: {
+        currency: "MXN",
+        minorUnits: l.unitPrice.minorUnits.toString(),
+      },
+      lineTotal: {
+        currency: "MXN",
+        minorUnits: l.lineTotal.minorUnits.toString(),
+      },
+      ...(l.discount === undefined
+        ? {}
+        : {
+            discount: {
+              currency: "MXN",
+              minorUnits: l.discount.minorUnits.toString(),
+            },
+          }),
     })),
   };
 }

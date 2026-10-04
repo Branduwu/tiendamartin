@@ -4,6 +4,7 @@ import {
   CheckoutSchema,
   SaleIdSchema,
   UuidSchema,
+  SaleQuoteSchema,
 } from "@smartretail/contracts";
 import {
   completeSaleTransaction,
@@ -21,10 +22,12 @@ import {
 import {
   InsufficientStockError,
   IncompatibleQuantityUnitError,
+  DiscountLimitError,
+  DiscountUnavailableError,
 } from "@smartretail/domain";
 import { verifiedUserId } from "./auth";
 import { salesForUser } from "./database";
-import { checkoutInput, storedSaleDto } from "./sale-mapping";
+import { checkoutInput, storedSaleDto, completedSaleDto } from "./sale-mapping";
 import {
   InvalidInput,
   SameOriginError,
@@ -34,7 +37,7 @@ import {
 } from "./api";
 export async function handleSales(
   request: Request,
-  operation: "create" | "read" | "list",
+  operation: "create" | "read" | "list" | "quote",
   id?: string,
 ) {
   const correlationId = randomUUID();
@@ -44,6 +47,18 @@ export async function handleSales(
     const tenant = UuidSchema.safeParse(request.headers.get("x-tenant-id"));
     if (!tenant.success) throw new InvalidInput();
     const repo = salesForUser(userId, tenant.data);
+    if (operation === "quote") {
+      requireSameOrigin(request);
+      const value = SaleQuoteSchema.safeParse(await jsonBody(request));
+      if (!value.success) throw new InvalidInput();
+      const quoted = await repo.quoteSale(
+        checkoutInput({ ...value.data, payments: [], movements: [] }),
+      );
+      return reply({
+        sale: completedSaleDto(quoted.sale),
+        ...(quoted.details === undefined ? {} : { details: quoted.details }),
+      });
+    }
     if (operation === "list") {
       if (new URL(request.url).search)
         return reply({ error: "Consulta no soportada." }, 400);
@@ -85,6 +100,16 @@ export async function handleSales(
       result.replayed ? 200 : 201,
     );
   } catch (error) {
+    if (error instanceof DiscountLimitError)
+      return reply(
+        { error: "El descuento manual del cajero no puede superar el 20%." },
+        403,
+      );
+    if (error instanceof DiscountUnavailableError)
+      return reply(
+        { error: "Cupón inválido, inactivo, expirado o agotado." },
+        409,
+      );
     if (
       error instanceof PermissionDeniedError ||
       error instanceof SameOriginError
@@ -133,7 +158,8 @@ export async function handleSales(
     if (error instanceof SaleQuoteChangedError)
       return reply(
         {
-          error: "El producto cambió. Actualiza el carrito antes de completar.",
+          error:
+            "El precio o descuento cambió. Actualiza la cotización antes de completar.",
         },
         409,
       );

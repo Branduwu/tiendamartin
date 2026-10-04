@@ -25,13 +25,15 @@ const LineShapeSchema = z.strictObject({
   quantity: PositiveQuantitySchema,
   unitPrice: PriceSchema,
   lineTotal: PriceSchema,
+  discount: PriceSchema.exactOptional(),
 });
 export const SaleLineSchema = LineShapeSchema.refine(
   (line) => line.unit === line.quantity.unit,
   "Sale quantity unit mismatch",
 ).refine(
   (line) =>
-    BigInt(line.lineTotal.minorUnits) ===
+    BigInt(line.lineTotal.minorUnits) +
+      BigInt(line.discount?.minorUnits ?? "0") ===
     (BigInt(line.unitPrice.minorUnits) * BigInt(line.quantity.milliUnits) +
       500n) /
       1000n,

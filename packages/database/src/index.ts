@@ -6,6 +6,7 @@ export {
 export { listTenantMemberships, type TenantMembership } from "./memberships";
 export { Pool } from "pg";
 export { PostgresSales } from "./sales";
+export { PostgresPromotions, PromotionNotFoundError } from "./discounts";
 
 export { PostgresCash } from "./cash";
 

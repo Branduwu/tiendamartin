@@ -16,6 +16,10 @@ import {
   type InventoryLocation,
   type StockBalance,
   type InventoryIssue,
+  type DiscountIntent,
+  type DiscountDetails,
+  discount,
+  couponCode,
 } from "@smartretail/domain";
 import { CustomerUnavailableError } from "./customers";
 import { StockBalanceNotFoundError } from "./inventory";
@@ -29,6 +33,7 @@ export type SaleCheckoutInput = Readonly<{
   locationId: string;
   payments: readonly SalePayment[];
   movements: readonly Readonly<{ productId: string; movementId: string }>[];
+  discounts?: DiscountIntent;
 }>;
 export type StoredSale = Readonly<{
   shiftId: string | null;
@@ -41,6 +46,7 @@ export type StoredSale = Readonly<{
   createdByName?: string;
   locationName?: string;
   createdAt: string;
+  details?: DiscountDetails;
 }>;
 export type SaleCheckoutResult = Readonly<{
   recorded: StoredSale;
@@ -54,6 +60,10 @@ export interface SaleTransaction {
   findRecorded(): Promise<
     Readonly<{ payload: string; recorded: StoredSale }> | undefined
   >;
+  priceSale?(
+    sale: CompletedSale,
+    input: SaleCheckoutInput,
+  ): Promise<Readonly<{ sale: CompletedSale; details?: DiscountDetails }>>;
   lockSuspendedSale?(id: string, locationId: string): Promise<void>;
   validateCustomer?(id: string): Promise<void>;
   lockOpenShift(locationId: string, shiftId: string | undefined): Promise<void>;
@@ -69,6 +79,7 @@ export interface SaleTransaction {
     sale: CompletedSale,
     input: SaleCheckoutInput,
     payload: string,
+    details?: DiscountDetails,
   ): Promise<StoredSale>;
 }
 export interface SaleUnitOfWork {
@@ -83,7 +94,45 @@ export function saleCommand(input: SaleCheckoutInput) {
     throw new TypeError("Invalid checkout");
   const validated = completeSale(input.draft);
   const draft: SaleDraft = Object.freeze({ ...validated, status: "draft" });
-  const payments = salePayments(input.payments, draft.total);
+  if (draft.lines.some((l) => l.discount !== undefined))
+    throw new TypeError("Client discounts belong to intent, not paid lines");
+  const discounts =
+    input.discounts === undefined
+      ? undefined
+      : Object.freeze({
+          ...(input.discounts.sale === undefined
+            ? {}
+            : {
+                sale: discount(
+                  input.discounts.sale.type,
+                  input.discounts.sale.value,
+                ),
+              }),
+          ...(input.discounts.lines === undefined
+            ? {}
+            : {
+                lines: Object.freeze(
+                  input.discounts.lines
+                    .map((l) =>
+                      Object.freeze({
+                        productId: productId(l.productId).toLowerCase(),
+                        discount: discount(l.discount.type, l.discount.value),
+                      }),
+                    )
+                    .sort((a, b) => a.productId.localeCompare(b.productId)),
+                ),
+              }),
+          ...(input.discounts.couponCode === undefined
+            ? {}
+            : { couponCode: couponCode(input.discounts.couponCode) }),
+        });
+  const payments = salePayments(input.payments, {
+    currency: "MXN",
+    minorUnits: input.payments.reduce(
+      (sum, p) => sum + p.amount.minorUnits,
+      0n,
+    ),
+  });
   const locationId = inventoryLocationId(input.locationId).toLowerCase();
   if (
     !Array.isArray(input.movements) ||
@@ -117,6 +166,7 @@ export function saleCommand(input: SaleCheckoutInput) {
     locationId,
     payments,
     movements: Object.freeze(movements),
+    ...(discounts === undefined ? {} : { discounts }),
   });
   const canonicalLines = [...draft.lines]
     .sort((a, b) => a.productId.localeCompare(b.productId))
@@ -146,6 +196,34 @@ export function saleCommand(input: SaleCheckoutInput) {
         amount: p.amount.minorUnits.toString(),
       })),
     movements,
+    ...(discounts === undefined
+      ? {}
+      : {
+          discounts: {
+            ...(discounts.sale === undefined
+              ? {}
+              : {
+                  sale: {
+                    type: discounts.sale.type,
+                    value: discounts.sale.value.toString(),
+                  },
+                }),
+            ...(discounts.lines === undefined
+              ? {}
+              : {
+                  lines: discounts.lines.map((l) => ({
+                    productId: l.productId,
+                    discount: {
+                      type: l.discount.type,
+                      value: l.discount.value.toString(),
+                    },
+                  })),
+                }),
+            ...(discounts.couponCode === undefined
+              ? {}
+              : { couponCode: discounts.couponCode }),
+          },
+        }),
   });
   return { snapshot, payload };
 }
@@ -191,7 +269,17 @@ export async function completeSaleTransaction(
       )
         throw new SaleQuoteChangedError();
     }
-    const completed = completeSale(trusted);
+    if (snapshot.discounts !== undefined && !tx.priceSale)
+      throw new TypeError("Discount-aware transaction required");
+    const priced = tx.priceSale
+      ? await tx.priceSale(completeSale(trusted), snapshot)
+      : { sale: completeSale(trusted) };
+    const completed = priced.sale;
+    if (
+      snapshot.payments.reduce((s, p) => s + p.amount.minorUnits, 0n) !==
+      completed.total.minorUnits
+    )
+      throw new SaleQuoteChangedError();
     salePayments(snapshot.payments, completed.total);
     await tx.lockBalances(
       lines.map((l) => l.productId),
@@ -216,7 +304,12 @@ export async function completeSaleTransaction(
       await tx.appendIssue(movement, balance);
     }
     return Object.freeze({
-      recorded: await tx.persistSale(completed, snapshot, payload),
+      recorded: await tx.persistSale(
+        completed,
+        snapshot,
+        payload,
+        "details" in priced ? priced.details : undefined,
+      ),
       replayed: false,
     });
   });

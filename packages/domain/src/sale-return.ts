@@ -98,11 +98,23 @@ export function quoteSaleReturn(
       saleLineId: productId(lineId),
       productId: productId(pid),
       quantity: amount,
-      refunded: returnedLineAmount(
-        source.unitPrice,
-        quantity(source.unit, returned),
-        amount,
-      ),
+      refunded:
+        source.discount === undefined
+          ? returnedLineAmount(
+              source.unitPrice,
+              quantity(source.unit, returned),
+              amount,
+            )
+          : money(
+              (source.lineTotal.minorUnits *
+                (returned + amount.milliUnits) *
+                2n +
+                source.quantity.milliUnits) /
+                (source.quantity.milliUnits * 2n) -
+                (source.lineTotal.minorUnits * returned * 2n +
+                  source.quantity.milliUnits) /
+                  (source.quantity.milliUnits * 2n),
+            ),
     });
   });
   const total = money(

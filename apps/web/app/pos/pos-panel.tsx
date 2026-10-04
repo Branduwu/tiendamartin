@@ -1,5 +1,6 @@
 "use client";
 import PosCustomerSelector from "../components/pos-customer-selector";
+import PosDiscounts, { type PosPriceQuote } from "../components/pos-discounts";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -91,6 +92,38 @@ export default function PosPanel({ userId }: { userId: string }) {
     [search, setSearch] = useState("");
   const [draft, setDraft] = useState<SaleDraft | null>(null),
     [texts, setTexts] = useState<Record<string, string>>({});
+  const [priceQuote, setPriceQuote] = useState<PosPriceQuote | null>(null);
+  function baseDto(value: SaleDraft): SaleDraftDto {
+    return {
+      ...value,
+      total: { currency: "MXN", minorUnits: value.total.minorUnits.toString() },
+      lines: value.lines.map((l) => ({
+        productId: l.productId,
+        name: l.name,
+        sku: l.sku,
+        unit: l.unit,
+        quantity: {
+          unit: l.quantity.unit,
+          milliUnits: l.quantity.milliUnits.toString(),
+        },
+        unitPrice: {
+          currency: "MXN",
+          minorUnits: l.unitPrice.minorUnits.toString(),
+        },
+        lineTotal: {
+          currency: "MXN",
+          minorUnits: l.lineTotal.minorUnits.toString(),
+        },
+      })),
+    };
+  }
+  const base = draft ? baseDto(draft) : null;
+  const quoteKey = JSON.stringify({
+    tenantId: tenant,
+    locationId: location,
+    draft: base,
+  });
+  const currentQuote = priceQuote?.key === quoteKey ? priceQuote : null;
   const [method, setMethod] = useState<"cash" | "card" | "mixed">("cash"),
     [cash, setCash] = useState("0.00");
   const [pending, setPending] = useState<CheckoutDto | null>(null),
@@ -501,7 +534,11 @@ export default function PosPanel({ userId }: { userId: string }) {
     }
   }
 
-  const total = draft?.total.minorUnits ?? 0n;
+  const total = pending
+    ? pending.payments.reduce((s, p) => s + BigInt(p.amount.minorUnits), 0n)
+    : currentQuote
+      ? BigInt(currentQuote.sale.total.minorUnits)
+      : (draft?.total.minorUnits ?? 0n);
   let cardAmount = "—";
   try {
     const remainder = total - BigInt(decimalToMinorUnits(cash));
@@ -539,7 +576,19 @@ export default function PosPanel({ userId }: { userId: string }) {
               ),
             ),
           );
-        const amount = edited.total.minorUnits;
+        if (
+          !currentQuote ||
+          currentQuote.key !==
+            JSON.stringify({
+              tenantId: tenant,
+              locationId: location,
+              draft: baseDto(edited),
+            })
+        )
+          throw new Error(
+            "Espera a que se actualice la cotización de descuentos.",
+          );
+        const amount = BigInt(currentQuote.sale.total.minorUnits);
         const payment = (method: "cash" | "card", value: bigint) => ({
           method,
           amount: { currency: "MXN" as const, minorUnits: value.toString() },
@@ -563,9 +612,15 @@ export default function PosPanel({ userId }: { userId: string }) {
           shiftId: shift.id,
           draft: {
             ...edited,
-            total: { currency: "MXN", minorUnits: amount.toString() },
+            total: {
+              currency: "MXN",
+              minorUnits: edited.total.minorUnits.toString(),
+            },
             lines: edited.lines.map((l) => ({
-              ...l,
+              productId: l.productId,
+              name: l.name,
+              sku: l.sku,
+              unit: l.unit,
               quantity: {
                 unit: l.unit,
                 milliUnits: l.quantity.milliUnits.toString(),
@@ -581,6 +636,7 @@ export default function PosPanel({ userId }: { userId: string }) {
             })),
           },
           locationId: location,
+          discounts: currentQuote.discounts,
           payments,
           movements: edited.lines.map((l) => ({
             productId: l.productId,
@@ -1091,13 +1147,36 @@ export default function PosPanel({ userId }: { userId: string }) {
                 <dl className="pos-totals">
                   <div>
                     <dt>Subtotal</dt>
-                    <dd>{mxn(total.toString())}</dd>
+                    <dd>{mxn((draft?.total.minorUnits ?? 0n).toString())}</dd>
+                  </div>
+                  <div>
+                    <dt>Descuento</dt>
+                    <dd>
+                      {mxn(
+                        ((draft?.total.minorUnits ?? 0n) - total).toString(),
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt>Total</dt>
                     <dd>{mxn(total.toString())}</dd>
                   </div>
                 </dl>
+                {base && base.lines.length > 0 && (
+                  <PosDiscounts
+                    key={`${tenant}/${base.id}`}
+                    tenantId={tenant}
+                    disabled={locked}
+                    locationId={location}
+                    draft={base}
+                    canDiscount={
+                      tenants
+                        .find((t) => t.tenantId === tenant)
+                        ?.permissions.includes("sales.discount") ?? false
+                    }
+                    onQuote={setPriceQuote}
+                  />
+                )}
                 <label>
                   Método de pago
                   <select
@@ -1142,7 +1221,8 @@ export default function PosPanel({ userId }: { userId: string }) {
                     pendingSuspend !== null ||
                     !draft?.lines.length ||
                     !location ||
-                    (!pending && shift?.status !== "open")
+                    (!pending && shift?.status !== "open") ||
+                    (!pending && !currentQuote)
                   }
                   onClick={checkout}
                 >

@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   repo: vi.fn(),
   run: vi.fn(),
   read: vi.fn(),
+  quote: vi.fn(),
 }));
 vi.mock("./auth", () => ({ verifiedUserId: mocks.user }));
 vi.mock("./database", () => ({ salesForUser: mocks.repo }));
@@ -74,7 +75,11 @@ beforeEach(() => {
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   mocks.user.mockResolvedValue(user);
-  mocks.repo.mockReturnValue({ runSale: mocks.run, readSale: mocks.read });
+  mocks.repo.mockReturnValue({
+    runSale: mocks.run,
+    readSale: mocks.read,
+    quoteSale: mocks.quote,
+  });
   mocks.run.mockResolvedValue({ recorded, replayed: false });
   mocks.read.mockResolvedValue(recorded);
 });
@@ -143,4 +148,36 @@ it("unexpected SQL errors remain sanitized", async () => {
   const response = await POST(request());
   expect(response.status).toBe(500);
   expect(await response.text()).not.toContain("fictional-private-value");
+});
+
+it("quotes a discount from server pricing and rejects forged roles and cross-origin input", async () => {
+  const { POST: quote } = await import("../app/api/v1/sales/quote/route");
+  const input = {
+    draft: body.draft,
+    locationId: location,
+    discounts: { sale: { type: "percentage", value: "1000" } },
+  };
+  mocks.quote.mockResolvedValue({ sale: recorded.sale });
+  expect((await quote(request(input))).status).toBe(200);
+  expect(mocks.quote.mock.calls[0]?.[0]?.discounts?.sale?.value).toBe(1000n);
+  expect((await quote(request({ ...input, role: "owner" }))).status).toBe(400);
+  expect(
+    (await quote(request(input, { origin: "https://evil.test" }))).status,
+  ).toBe(403);
+});
+it("sanitizes unavailable coupons and excessive manual discount responses", async () => {
+  const { DiscountLimitError, DiscountUnavailableError } =
+    await import("@smartretail/domain");
+  const { POST: quote } = await import("../app/api/v1/sales/quote/route");
+  for (const [error, status] of [
+    [new DiscountLimitError("SQL sensitive"), 403],
+    [new DiscountUnavailableError("SQL sensitive"), 409],
+  ] as const) {
+    mocks.quote.mockRejectedValueOnce(error);
+    const response = await quote(
+      request({ draft: body.draft, locationId: location }),
+    );
+    expect(response.status).toBe(status);
+    expect(await response.text()).not.toContain("SQL sensitive");
+  }
 });

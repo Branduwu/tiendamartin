@@ -4,6 +4,7 @@ import { InventoryLocationNameSchema } from "./inventory-location";
 import { SaleDraftSchema, CompletedSaleSchema } from "./sale";
 import { UuidSchema } from "./identifiers";
 import { MemberDisplayNameSchema } from "./members";
+import { DiscountIntentSchema, DiscountDetailsSchema } from "./discounts";
 export const SalePaymentSchema = z.strictObject({
   method: z.enum(["cash", "card"]),
   amount: MoneySchema.refine(
@@ -20,6 +21,7 @@ export const CheckoutSchema = z.strictObject({
   draft: SaleDraftSchema,
   locationId: UuidSchema,
   payments: PaymentsSchema,
+  discounts: DiscountIntentSchema.exactOptional(),
   movements: z
     .array(z.strictObject({ productId: UuidSchema, movementId: UuidSchema }))
     .min(1)
@@ -36,6 +38,12 @@ export const StoredSaleSchema = z.strictObject({
   createdByName: MemberDisplayNameSchema.exactOptional(),
   locationName: InventoryLocationNameSchema.exactOptional(),
   createdAt: z.iso.datetime({ offset: true }),
+  details: DiscountDetailsSchema.exactOptional(),
+});
+export const SaleQuoteSchema = z.strictObject({
+  draft: SaleDraftSchema,
+  locationId: UuidSchema,
+  discounts: DiscountIntentSchema.exactOptional(),
 });
 export type CheckoutDto = z.infer<typeof CheckoutSchema>;
 export type StoredSaleDto = z.infer<typeof StoredSaleSchema>;

@@ -11,6 +11,10 @@ import {
   inventoryLocationId,
   type SaleLine,
   type UnitCode,
+  type DiscountDetails,
+  createSaleDraft,
+  addSaleProduct,
+  DiscountUnavailableError,
 } from "@smartretail/domain";
 import {
   CustomerUnavailableError,
@@ -23,8 +27,11 @@ import {
   type SaleUnitOfWork,
   type SaleTransaction,
   type StoredSale,
+  type SaleCheckoutInput,
+  SaleQuoteChangedError,
 } from "@smartretail/application";
 import { PostgresInventory, DatabaseUniquenessConflictError } from "./database";
+import { priceCatalogSale, discountIntentJson } from "./discounts";
 import {
   bigintParameter,
   integer,
@@ -49,6 +56,8 @@ interface SaleRow {
   location_name?: string | null;
   created_at: Date;
   command_payload: string;
+  pricing_version: number;
+  discount_details: DiscountDetails | null;
 }
 interface LineRow {
   product_id: string;
@@ -58,6 +67,7 @@ interface LineRow {
   quantity_milli_units: string;
   unit_price_minor_units: string;
   line_total_minor_units: string;
+  discount_minor_units: string;
 }
 interface PaymentRow {
   method: "cash" | "card";
@@ -89,6 +99,9 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         quantity: quantity(l.unit, integer(l.quantity_milli_units)),
         unitPrice: money(integer(l.unit_price_minor_units)),
         lineTotal: money(integer(l.line_total_minor_units)),
+        ...(row.pricing_version === 1
+          ? { discount: money(integer(l.discount_minor_units)) }
+          : {}),
       }),
     );
     const sale = completeSale({
@@ -119,6 +132,9 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         : { createdByName: row.created_by_name }),
       ...(row.location_name == null ? {} : { locationName: row.location_name }),
       createdAt: row.created_at.toISOString(),
+      ...(row.discount_details === null
+        ? {}
+        : { details: row.discount_details }),
     });
     return Object.freeze({ payload: row.command_payload, recorded });
   }
@@ -173,6 +189,16 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
           `${p.toLowerCase()}/${l.toLowerCase()}`;
         const balances = new Map<string, ReturnType<typeof balanceFromRow>>();
         const tx: SaleTransaction = {
+          priceSale: async (sale, input) => {
+            assertActive();
+            return priceCatalogSale(
+              client,
+              this.tenant,
+              this.user,
+              sale,
+              input.discounts,
+            );
+          },
           findRecorded: async () => {
             assertActive();
             return this.recorded(client, validId);
@@ -287,11 +313,11 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
             // apply_ledger is the sole balance writer, within this transaction.
             balances.set(balanceKey(issue.productId, issue.locationId), next);
           },
-          persistSale: async (sale, input, payload) => {
+          persistSale: async (sale, input, payload, details) => {
             assertActive();
             await client.query(
-              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id,customer_id)
-              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8,$9)`,
+              `INSERT INTO retail.sales(id,tenant_id,location_id,status,currency,total_minor_units,created_by,command_payload,shift_id,suspended_sale_id,customer_id,pricing_version,discount_intent,discount_details)
+              VALUES($1,$2,$3,'completed','MXN',$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
               [
                 validId,
                 this.tenant,
@@ -302,6 +328,11 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                 input.shiftId,
                 input.suspendedSaleId ?? null,
                 sale.customerId ?? null,
+                details ? 1 : 0,
+                details
+                  ? JSON.stringify(discountIntentJson(input.discounts))
+                  : null,
+                details ? JSON.stringify(details) : null,
               ],
             );
             for (const [ordinal, line] of sale.lines.entries()) {
@@ -310,8 +341,8 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
               );
               if (!movement) throw new Error("Missing sale movement");
               await client.query(
-                `INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id)
-                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                `INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id,discount_minor_units)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
                 [
                   this.tenant,
                   validId,
@@ -324,6 +355,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                   bigintParameter(line.unitPrice.minorUnits),
                   bigintParameter(line.lineTotal.minorUnits),
                   movement.movementId,
+                  bigintParameter(line.discount?.minorUnits ?? 0n),
                 ],
               );
             }
@@ -337,6 +369,11 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
                   bigintParameter(payment.amount.minorUnits),
                 ],
               );
+            if (details?.coupon)
+              await client.query(
+                "INSERT INTO retail.coupon_redemptions(tenant_id,coupon_id,sale_id) VALUES($1,$2,$3)",
+                [this.tenant, details.coupon.id, validId],
+              );
             const result = await this.recorded(client, validId);
             if (!result) throw new Error("Sale missing after insert");
             return result.recorded;
@@ -349,6 +386,8 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         }
       });
     } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "P0001")
+        throw new DiscountUnavailableError("Cupón no disponible.");
       if (error instanceof Error && "code" in error && error.code === "22003")
         throw new RangeError("Cash exceeds storage range");
       if (
@@ -358,5 +397,41 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         throw new SaleIdempotencyConflictError();
       throw error;
     }
+  }
+  async quoteSale(
+    input: Pick<SaleCheckoutInput, "draft" | "locationId" | "discounts">,
+  ) {
+    const validated = completeSale(input.draft);
+    if (validated.lines.some((l) => l.discount !== undefined))
+      throw new TypeError("Expected base draft");
+    return this.runSale(validated.id, async (tx) => {
+      const location = await tx.readLocation(input.locationId);
+      if (!location || location.status !== "active")
+        throw new StockBalanceNotFoundError();
+      let trusted = createSaleDraft(validated.id, validated.customerId);
+      for (const line of [...validated.lines].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        const p = await tx.readProduct(line.productId);
+        if (!p) throw new SaleQuoteChangedError();
+        trusted = addSaleProduct(trusted, p, line.quantity);
+        const current = trusted.lines.find(
+          (l) => l.productId === line.productId,
+        );
+        if (
+          !current ||
+          current.unitPrice.minorUnits !== line.unitPrice.minorUnits ||
+          current.name !== line.name ||
+          current.sku !== line.sku
+        )
+          throw new SaleQuoteChangedError();
+      }
+      return tx.priceSale!(completeSale(trusted), {
+        ...input,
+        draft: trusted,
+        payments: [],
+        movements: [],
+      });
+    });
   }
 }

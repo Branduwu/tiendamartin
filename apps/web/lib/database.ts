@@ -8,6 +8,7 @@ import {
   PostgresSales,
   PostgresCustomers,
   PostgresMembers,
+  PostgresPromotions,
   PostgresReporting,
   PostgresCash,
   PostgresSaleReturns,
@@ -36,6 +37,8 @@ export const tenantsForUser = (userId: string) =>
 export const productsForUser = (userId: string, tenantId: string) =>
   new PostgresInventory(databasePool(), { userId, tenantId });
 export const inventoryForUser = productsForUser;
+export const promotionsForUser = (userId: string, tenantId: string) =>
+  new PostgresPromotions(databasePool(), { userId, tenantId });
 export const inventoryMinimumForUser = (
   userId: string,
   tenantId: string,

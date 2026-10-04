@@ -16,6 +16,7 @@ import {
 import { minorUnitsToDecimal } from "../../../lib/money-input";
 import { milliUnitsToDecimal } from "../../../lib/quantity-input";
 import { storedSaleDto } from "../../../lib/sale-mapping";
+import SaleDiscountSummary from "../../components/sale-discount-summary";
 import { returnedDto } from "../../../lib/return-mapping";
 import ReturnPanel from "./return-panel";
 import PrintButton from "./print-button";
@@ -123,12 +124,19 @@ export default async function TicketPage({
               {mxn(l.unitPrice.minorUnits)}
             </p>
             <p>Total línea: {mxn(l.lineTotal.minorUnits)}</p>
+            {l.discount !== undefined && (
+              <p>
+                Descuento de línea: {mxn(l.discount.minorUnits)} · Importe
+                original: {mxn(l.lineTotal.minorUnits + l.discount.minorUnits)}
+              </p>
+            )}
           </section>
         ))}
       </div>
       <h2 className="ticket-total">
         Total: {mxn(recorded.sale.total.minorUnits)}
       </h2>
+      <SaleDiscountSummary recorded={storedSaleDto(recorded)} />
       <h3>Pagos</h3>
       {recorded.payments.map((p) => (
         <p key={p.method}>

@@ -51,8 +51,56 @@ it("no pending command does not block; forged payment cannot be recovered", () =
   expect(recoverPendingSale(null, [tenantId])).toEqual({ kind: "none" });
   expect(
     recoverPendingSale(
-      JSON.stringify({ tenantId, command: { ...command, payments: [] } }),
+      JSON.stringify({
+        tenantId,
+        command: {
+          ...command,
+          payments: [
+            { method: "cash", amount: { currency: "MXN", minorUnits: "102" } },
+          ],
+        },
+      }),
       [tenantId],
     ).kind,
+  ).toBe("blocked");
+});
+
+it("recovers a base draft and net payment with its original manual discount", () => {
+  const discounted = {
+    ...command,
+    discounts: { sale: { type: "amount", value: "11" } },
+    payments: [
+      { method: "card", amount: { currency: "MXN", minorUnits: "90" } },
+    ],
+  };
+  const r = recoverPendingSale(
+    JSON.stringify({ tenantId, command: discounted }),
+    [tenantId],
+  );
+  expect(r.kind).toBe("recover");
+  if (r.kind === "recover") expect(r.command).toEqual(discounted);
+});
+it("recovers automatic promotions and zero-paid sales without a manual intent", () => {
+  for (const payments of [
+    [],
+    [{ method: "card", amount: { currency: "MXN", minorUnits: "90" } }],
+  ])
+    expect(
+      recoverPendingSale(
+        JSON.stringify({ tenantId, command: { ...command, payments } }),
+        [tenantId],
+      ).kind,
+    ).toBe("recover");
+});
+it("blocks an inconsistent net draft so retry retains the original gross snapshot", () => {
+  const inconsistent = {
+    ...command,
+    draft: { ...command.draft, total: { currency: "MXN", minorUnits: "90" } },
+    discounts: { sale: { type: "amount", value: "11" } },
+  };
+  expect(
+    recoverPendingSale(JSON.stringify({ tenantId, command: inconsistent }), [
+      tenantId,
+    ]).kind,
   ).toBe("blocked");
 });

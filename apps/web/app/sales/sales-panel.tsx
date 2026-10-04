@@ -1,4 +1,5 @@
 "use client";
+import SaleDiscountSummary from "../components/sale-discount-summary";
 import { formatDateTime } from "../components/presentation";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
@@ -164,6 +165,12 @@ export default function SalesPanel() {
                     </td>
                     <td className="amount price" data-label="Total MXN">
                       ${minorUnitsToDecimal(s.sale.total.minorUnits)}
+                      {s.details && (
+                        <details>
+                          <summary>Ver descuentos</summary>
+                          <SaleDiscountSummary recorded={s} />
+                        </details>
+                      )}
                     </td>
                     <td data-label="Pago">
                       {s.payments

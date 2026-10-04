@@ -104,7 +104,9 @@ export class PostgresInventory
     let broken = false;
     try {
       await client.query(
-        readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN",
+        readOnly
+          ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"
+          : "BEGIN ISOLATION LEVEL READ COMMITTED",
       );
       await client.query("SET LOCAL statement_timeout='15s'");
       await assertApplicationRole(client);

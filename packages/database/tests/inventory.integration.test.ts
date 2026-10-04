@@ -21,6 +21,13 @@ import {
   inventoryTransferId,
   inventoryAdjustmentReason,
   PurchaseConflictError,
+  discount,
+  priceDiscountedSale,
+  DiscountLimitError,
+  DiscountUnavailableError,
+  createInventoryIssue,
+  applyInventoryMovement,
+  type DiscountIntent,
   type PurchaseDraftInput,
   type InventoryTransfer,
   type Quantity,
@@ -68,6 +75,7 @@ import {
   DatabaseUniquenessConflictError,
   listTenantMemberships,
   ProductStorageConflictError,
+  PostgresPromotions,
 } from "../src/index";
 
 const configPath = process.env.SMARTRETAIL_PG_TEST_CONFIG;
@@ -387,6 +395,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.coupons') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/017_discounts.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -423,7 +444,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -1588,7 +1609,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         }),
       ).rejects.toMatchObject({
         code: "23514",
-        constraint: "sale_lines_check",
+        constraint: "sale_paid_line",
       });
     });
     it("SQL refuses a sale with no line, payment or stock movement", async () => {
@@ -2332,7 +2353,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(32);
+    expect(tables.rows).toHaveLength(36);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -4935,6 +4956,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       expect([...permissions].sort()).toEqual(
         [
           "products.read",
+          "sales.discount",
           "customers.read",
           "customers.write",
           "sales.read",
@@ -5334,6 +5356,495 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "REVOKE smartretail_members_guard FROM smartretail_api",
         );
       }
+    });
+  });
+  describe("TASK026 transactional discounts", () => {
+    const catalog = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresPromotions(pool, { userId, tenantId });
+    const saleRepo = (userId = ownerUser) =>
+      new PostgresSales(pool, { tenantId: tenantA, userId });
+    const couponInput = (value = "1000", usageLimit = "3") => ({
+      id: randomUUID(),
+      code: "SMOKE-" + randomUUID().slice(0, 8).toUpperCase(),
+      discount: { type: "percentage" as const, value },
+      active: true,
+      usageLimit,
+    });
+    const promoInput = (value = "1000") => ({
+      id: randomUUID(),
+      name: "SMOKE Promotion",
+      productId: product,
+      discount: { type: "percentage" as const, value },
+      active: true,
+    });
+    const command = (
+      paid = 2000n,
+      discounts?: DiscountIntent,
+      locationId: string = source,
+      openedShift = shiftId,
+      amount = 1000n,
+    ): SaleCheckoutInput => ({
+      draft: addSaleProduct(
+        createSaleDraft(randomUUID()),
+        fixtureProduct(),
+        quantity("piece", amount),
+      ),
+      locationId,
+      shiftId: openedShift,
+      payments: paid === 0n ? [] : [{ method: "card", amount: money(paid) }],
+      movements: [{ productId: product, movementId: randomUUID() }],
+      ...(discounts === undefined ? {} : { discounts }),
+    });
+    const sell = (input: SaleCheckoutInput, userId = ownerUser) =>
+      completeSaleTransaction(saleRepo(userId), input);
+    beforeEach(async () => {
+      await admin.query(
+        "INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status,display_name) VALUES($1,$2,'cashier','active','Cajero descuentos')",
+        [tenantA, outsiderUser],
+      );
+      await admin.query(
+        "INSERT INTO retail.member_locations(tenant_id,user_id,location_id) VALUES($1,$2,$3)",
+        [tenantA, outsiderUser, source],
+      );
+    });
+    it("creates edits and audits tenant-normalized catalog with unique coupon codes", async () => {
+      const c = { ...couponInput(), code: " smoke-case " };
+      const saved = await catalog().saveCoupon(c);
+      expect(saved.code).toBe("SMOKE-CASE");
+      expect(saved.uses).toBe("0");
+      await catalog().saveCoupon(
+        { ...c, code: "SMOKE-CASE", active: false },
+        true,
+      );
+      expect((await catalog().listCoupons())[0]?.active).toBe(false);
+      await expect(
+        catalog().saveCoupon({ ...c, id: randomUUID() }),
+      ).rejects.toBeInstanceOf(DatabaseUniquenessConflictError);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.promotion_audit WHERE tenant_id=$1 AND actor_user_id=$2",
+            [tenantA, ownerUser],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+    });
+    it("permits owner admin catalogs and denies cashier and clerk administration", async () => {
+      await catalog(adminUser).savePromotion(promoInput());
+      for (const user of [outsiderUser, clerkUser]) {
+        await expect(catalog(user).listCoupons()).rejects.toBeInstanceOf(
+          PermissionDeniedError,
+        );
+        await expect(
+          catalog(user).saveCoupon(couponInput()),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+      }
+    });
+    it("prevents cross-tenant product promotion and coupon lookup", async () => {
+      const foreign = randomUUID();
+      await other.createProduct(
+        fixtureProduct(productId(foreign), foreign.toUpperCase(), null),
+      );
+      await expect(
+        catalog().savePromotion({ ...promoInput(), productId: foreign }),
+      ).rejects.toThrow();
+      const c = couponInput();
+      await catalog(ownerUser, tenantB).saveCoupon(c);
+      await expect(
+        sell(command(1800n, { couponCode: c.code })),
+      ).rejects.toBeInstanceOf(DiscountUnavailableError);
+    });
+    it("rebuilds automatic promotions and manual line replacement from the current catalog", async () => {
+      await catalog().savePromotion(promoInput("5000"));
+      const automatic = command(1000n);
+      const quote = await saleRepo().quoteSale(automatic);
+      expect(quote.sale.total.minorUnits).toBe(1000n);
+      const result = await sell(
+        command(1800n, {
+          lines: [{ productId: product, discount: discount("amount", 200n) }],
+        }),
+      );
+      expect(result.recorded.sale.total.minorUnits).toBe(1800n);
+      expect(result.recorded.details?.lines[0]?.source).toBe("manual");
+      expect(await stock()).toBe(9000n);
+    });
+    it("enforces cashier 20 percent including combined fixed and percentage intents", async () => {
+      await expect(
+        sell(
+          command(1580n, { sale: discount("percentage", 2100n) }),
+          outsiderUser,
+        ),
+      ).rejects.toBeInstanceOf(DiscountLimitError);
+      await expect(
+        sell(
+          command(1280n, {
+            sale: discount("percentage", 2000n),
+            lines: [{ productId: product, discount: discount("amount", 400n) }],
+          }),
+          outsiderUser,
+        ),
+      ).rejects.toBeInstanceOf(DiscountLimitError);
+      const pass = await sell(
+        command(1600n, { sale: discount("percentage", 2000n) }),
+        outsiderUser,
+      );
+      expect(pass.recorded.sale.total.minorUnits).toBe(1600n);
+    });
+    it("owner can exceed the cashier cap with exact persisted snapshots", async () => {
+      const result = await sell(
+        command(500n, { sale: discount("percentage", 7500n) }),
+      );
+      expect(result.recorded.sale.lines[0]?.discount?.minorUnits).toBe(1500n);
+      const reread = await saleRepo().readSale(result.recorded.sale.id);
+      expect(reread.details).toEqual(result.recorded.details);
+      expect(reread.sale.total.minorUnits).toBe(500n);
+    });
+    async function rawSale(user: string, forgedPromotion = false) {
+      const input = command(100n, { sale: discount("percentage", 9500n) }),
+        priced = priceDiscountedSale(input.draft, input.discounts);
+      const noManual = { ...priced.details! };
+      delete noManual.manualSale;
+      const details = forgedPromotion
+        ? {
+            ...noManual,
+            saleDiscountTotal: "0",
+            lines: priced.details!.lines.map((l) => ({
+              ...l,
+              source: "promotion" as const,
+              promotionId: randomUUID(),
+              promotionName: "Forged",
+              lineDiscount: "1900",
+              saleAllocation: "0",
+            })),
+          }
+        : priced.details;
+      return saleRepo(user).runSale(input.draft.id, async (tx) => {
+        await tx.lockOpenShift(source, shiftId);
+        await tx.lockBalances([product], source);
+        const issue = createInventoryIssue({
+          id: inventoryMovementId(input.movements[0]!.movementId),
+          type: "issue",
+          productId: product,
+          locationId: source,
+          quantity: quantity("piece", 1000n),
+        });
+        await tx.appendIssue(
+          issue,
+          applyInventoryMovement(await tx.readBalance(product, source), issue),
+        );
+        return tx.persistSale(
+          priced.sale,
+          { ...input, ...(forgedPromotion ? { discounts: {} } : {}) },
+          "raw security probe",
+          details,
+        );
+      });
+    }
+    it("raw runtime SQL cannot bypass the cashier cap", async () => {
+      await expect(rawSale(outsiderUser)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      expect(await stock()).toBe(10000n);
+    });
+    it("raw runtime SQL cannot label an arbitrary reduction as an approved promotion", async () => {
+      await expect(rawSale(ownerUser, true)).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+    });
+    it("rejects discounted children even after constraints are made immediate", async () => {
+      const id = randomUUID(),
+        movement = randomUUID();
+      await expect(
+        sql(tenantA, async (c) => {
+          await c.query(
+            "INSERT INTO retail.sales(id,tenant_id,location_id,status,total_minor_units,created_by,command_payload,shift_id) VALUES($1,$2,$3,'completed',100,$4,'{}',$5)",
+            [id, tenantA, source, ownerUser, shiftId],
+          );
+          await c.query(
+            "SET CONSTRAINTS retail.sale_discount_complete,retail.sale_line_discount_complete IMMEDIATE",
+          );
+          await c.query(
+            "INSERT INTO retail.inventory_commands(id,tenant_id,kind) VALUES($1,$2,'issue')",
+            [movement, tenantA],
+          );
+          await c.query(
+            "INSERT INTO retail.inventory_movements(id,tenant_id,product_id,location_id,type,unit,amount,balance_after,sale_id) VALUES($1,$2,$3,$4,'issue','piece',1000,9000,$5)",
+            [movement, tenantA, product, source, id],
+          );
+          await c.query(
+            "INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id,discount_minor_units) VALUES($1,$2,$3,0,'SKU-1','Producto','piece',1000,2000,100,$4,1900)",
+            [tenantA, id, product, movement],
+          );
+        }),
+      ).rejects.toMatchObject({
+        code: "23514",
+        message: "Legacy discount forbidden",
+      });
+      expect(await stock()).toBe(10000n);
+    });
+    it("rejects absent or numeric descriptive discount values in raw SQL snapshots", async () => {
+      for (const malformed of ["absent", "number"]) {
+        const id = randomUUID(),
+          movement = randomUUID();
+        const priced = priceDiscountedSale(command().draft, {
+          sale: discount("amount", 0n),
+        });
+        const details = {
+          ...priced.details!,
+          lines: priced.details!.lines.map((l) => ({ ...l })),
+        };
+        const line = details.lines[0]!;
+        if (malformed === "absent") Reflect.deleteProperty(line, "type");
+        else Reflect.set(line, "value", 0);
+        await expect(
+          sql(tenantA, async (c) => {
+            await c.query(
+              "INSERT INTO retail.sales(id,tenant_id,location_id,status,total_minor_units,created_by,command_payload,shift_id,pricing_version,discount_intent,discount_details) VALUES($1,$2,$3,'completed',2000,$4,'{}',$5,1,$6,$7)",
+              [
+                id,
+                tenantA,
+                source,
+                ownerUser,
+                shiftId,
+                JSON.stringify({ sale: { type: "amount", value: "0" } }),
+                JSON.stringify(details),
+              ],
+            );
+            await c.query(
+              "INSERT INTO retail.inventory_commands(id,tenant_id,kind) VALUES($1,$2,'issue')",
+              [movement, tenantA],
+            );
+            await c.query(
+              "INSERT INTO retail.inventory_movements(id,tenant_id,product_id,location_id,type,unit,amount,balance_after,sale_id) VALUES($1,$2,$3,$4,'issue','piece',1000,9000,$5)",
+              [movement, tenantA, product, source, id],
+            );
+            await c.query(
+              "INSERT INTO retail.sale_lines(tenant_id,sale_id,product_id,ordinal,sku,product_name,unit,quantity_milli_units,unit_price_minor_units,line_total_minor_units,movement_id) VALUES($1,$2,$3,0,'SKU-1','Producto','piece',1000,2000,2000,$4)",
+              [tenantA, id, product, movement],
+            );
+            await c.query(
+              "SET CONSTRAINTS retail.sale_discount_complete IMMEDIATE",
+            );
+          }),
+        ).rejects.toMatchObject({
+          code: "23514",
+          message: "Invalid line snapshot",
+        });
+        expect(await stock()).toBe(10000n);
+      }
+    });
+    it("denies coupon redemption under snapshot isolation instead of accepting a stale usage count", async () => {
+      const c = couponInput();
+      await catalog().saveCoupon(c);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await client.query(
+          "SELECT set_config('app.user_id',$1,true),set_config('app.tenant_id',$2,true)",
+          [ownerUser, tenantA],
+        );
+        await expect(
+          client.query(
+            "INSERT INTO retail.coupon_redemptions(tenant_id,coupon_id,sale_id) VALUES($1,$2,$3)",
+            [tenantA, c.id, randomUUID()],
+          ),
+        ).rejects.toMatchObject({
+          code: "42501",
+          message: "Coupon redemption requires read committed",
+        });
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+      expect((await catalog().listCoupons())[0]?.uses).toBe("0");
+    });
+    it("serializes the last coupon use across different branches and role scopes", async () => {
+      const c = couponInput("1000", "1");
+      await catalog().saveCoupon(c);
+      const destShift = randomUUID();
+      await new PostgresCash(pool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).openShift({
+        id: destShift,
+        locationId: destination,
+        openingCash: money(0n),
+      });
+      await receiveInventory(db, { ...receipt(), locationId: destination });
+      const results = await Promise.allSettled([
+        sell(command(1800n, { couponCode: c.code }), outsiderUser),
+        sell(command(1800n, { couponCode: c.code }, destination, destShift)),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+      expect((await catalog().listCoupons())[0]?.uses).toBe("1");
+    });
+    it("rejects expired coupons and leaves balances unchanged", async () => {
+      const c = { ...couponInput(), endsAt: "2000-01-01T00:00:00Z" };
+      await catalog().saveCoupon(c);
+      await expect(
+        sell(command(1800n, { couponCode: c.code })),
+      ).rejects.toBeInstanceOf(DiscountUnavailableError);
+      expect(await stock()).toBe(10000n);
+    });
+    it("rejects a coupon expired between quote and checkout", async () => {
+      const c = couponInput();
+      await catalog().saveCoupon(c);
+      const input = command(1800n, { couponCode: c.code });
+      expect((await saleRepo().quoteSale(input)).sale.total.minorUnits).toBe(
+        1800n,
+      );
+      await catalog().saveCoupon(
+        { ...c, endsAt: "2000-01-01T00:00:00Z" },
+        true,
+      );
+      await expect(sell(input)).rejects.toBeInstanceOf(
+        DiscountUnavailableError,
+      );
+      expect(await stock()).toBe(10000n);
+    });
+    it("replays after catalog deactivation without consuming another coupon use", async () => {
+      const c = couponInput();
+      await catalog().saveCoupon(c);
+      const input = command(1800n, { couponCode: c.code });
+      const first = await sell(input);
+      await catalog().saveCoupon({ ...c, active: false }, true);
+      const retry = await sell(input);
+      expect(retry.replayed).toBe(true);
+      expect(retry.recorded).toEqual(first.recorded);
+      expect((await catalog().listCoupons())[0]?.uses).toBe("1");
+      expect(await stock()).toBe(9000n);
+    });
+    it("conflicts when the same SaleId carries a different discount with the same total", async () => {
+      const input = command(1800n, { sale: discount("amount", 200n) });
+      await sell(input);
+      await expect(
+        sell({ ...input, discounts: { sale: discount("percentage", 1000n) } }),
+      ).rejects.toBeInstanceOf(SaleIdempotencyConflictError);
+      expect(await stock()).toBe(9000n);
+    });
+    it("requires an updated quote when an automatic promotion is disabled", async () => {
+      const p = promoInput();
+      await catalog().savePromotion(p);
+      const input = command(1800n);
+      expect((await saleRepo().quoteSale(input)).sale.total.minorUnits).toBe(
+        1800n,
+      );
+      await catalog().savePromotion({ ...p, active: false }, true);
+      await expect(sell(input)).rejects.toBeInstanceOf(SaleQuoteChangedError);
+      expect(await stock()).toBe(10000n);
+    });
+    it("rollback after redemption restores usage and ledger atomically", async () => {
+      const c = couponInput("1000", "1");
+      await catalog().saveCoupon(c);
+      const input = command(1800n, { couponCode: c.code }),
+        real = saleRepo();
+      const failing = {
+        readSale: real.readSale.bind(real),
+        runSale: <T>(
+          id: string,
+          work: (
+            tx: import("@smartretail/application").SaleTransaction,
+          ) => Promise<T>,
+        ) =>
+          real.runSale(id, (tx) =>
+            work({
+              ...tx,
+              persistSale: async (...args) => {
+                await tx.persistSale(...args);
+                throw new Error("Injected post-redemption rollback");
+              },
+            }),
+          ),
+      };
+      await expect(completeSaleTransaction(failing, input)).rejects.toThrow(
+        "Injected",
+      );
+      expect((await catalog().listCoupons())[0]?.uses).toBe("0");
+      expect(await stock()).toBe(10000n);
+      await sell(input);
+      expect((await catalog().listCoupons())[0]?.uses).toBe("1");
+    });
+    it("forbids appending a coupon use to historical sales", async () => {
+      const c = couponInput();
+      await catalog().saveCoupon(c);
+      const result = await sell(command());
+      await expect(
+        sql(tenantA, (client) =>
+          client.query(
+            "INSERT INTO retail.coupon_redemptions(tenant_id,coupon_id,sale_id) VALUES($1,$2,$3)",
+            [tenantA, c.id, result.recorded.sale.id],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "23514", message: "Closed coupon sale" });
+      expect((await catalog().listCoupons())[0]?.uses).toBe("0");
+    });
+    it("returns discounted paid amounts cumulatively and ignores edited promotions", async () => {
+      const p = promoInput("2500");
+      await catalog().savePromotion(p);
+      const sold = await sell(
+        command(4500n, undefined, source, shiftId, 3000n),
+      );
+      await catalog().savePromotion({ ...p, active: false }, true);
+      const repo = new PostgresSaleReturns(pool, {
+          tenantId: tenantA,
+          userId: ownerUser,
+        }),
+        make = (amount: bigint, total: bigint) => ({
+          id: randomUUID(),
+          lines: [
+            {
+              saleLineId: product,
+              productId: product,
+              quantity: quantity("piece", amount),
+              movementId: randomUUID(),
+            },
+          ],
+          refunds: [{ method: "card" as const, amount: money(total) }],
+        });
+      const a = await repo.returnSale(
+        sold.recorded.sale.id,
+        make(1000n, 1500n),
+      );
+      const b = await repo.returnSale(
+        sold.recorded.sale.id,
+        make(2000n, 3000n),
+      );
+      expect(a.record.total.minorUnits + b.record.total.minorUnits).toBe(4500n);
+      expect(await stock()).toBe(10000n);
+    });
+    it("supports zero-paid returns while guarding redemption privacy and runtime roles", async () => {
+      const result = await sell(
+        command(0n, { sale: discount("percentage", 10000n) }),
+      );
+      const r = await new PostgresSaleReturns(pool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      }).returnSale(result.recorded.sale.id, {
+        id: randomUUID(),
+        lines: [
+          {
+            saleLineId: product,
+            productId: product,
+            quantity: quantity("piece", 1000n),
+            movementId: randomUUID(),
+          },
+        ],
+        refunds: [],
+      });
+      expect(r.record.total.minorUnits).toBe(0n);
+      await expect(
+        sql(tenantA, (c) => c.query("SELECT * FROM retail.coupon_redemptions")),
+      ).rejects.toThrow();
+      const roles = (
+        await admin.query(
+          "SELECT rolcanlogin,rolsuper,rolbypassrls FROM pg_roles WHERE rolname='smartretail_discounts_guard'",
+        )
+      ).rows[0];
+      expect(roles).toEqual({
+        rolcanlogin: false,
+        rolsuper: false,
+        rolbypassrls: false,
+      });
     });
   });
 });

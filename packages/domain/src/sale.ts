@@ -28,6 +28,7 @@ export type SaleLine = Readonly<{
   quantity: Quantity;
   unitPrice: Money;
   lineTotal: Money;
+  discount?: Money;
 }>;
 type SaleValues = Readonly<{
   id: SaleId;
@@ -73,7 +74,12 @@ function snapshotLine(value: SaleLine): SaleLine {
   if (amount.unit !== value.unit)
     throw new TypeError("Sale line unit mismatch");
   const price = nonnegativePrice(value.unitPrice);
-  const total = calculateSaleLineTotal(price, amount);
+  const base = calculateSaleLineTotal(price, amount);
+  const reduction =
+    value.discount === undefined ? undefined : nonnegativePrice(value.discount);
+  if (reduction && reduction.minorUnits > base.minorUnits)
+    throw new TypeError("Discount exceeds line");
+  const total = money(base.minorUnits - (reduction?.minorUnits ?? 0n));
   if (compareMoney(total, value.lineTotal) !== 0)
     throw new TypeError("Inconsistent sale line total");
   return Object.freeze({
@@ -84,6 +90,7 @@ function snapshotLine(value: SaleLine): SaleLine {
     quantity: amount,
     unitPrice: price,
     lineTotal: total,
+    ...(reduction === undefined ? {} : { discount: reduction }),
   });
 }
 
