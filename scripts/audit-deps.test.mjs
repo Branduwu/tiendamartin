@@ -10,7 +10,7 @@ const tree = {
   certificates: "0.0.6",
   cliForge: "1.4.0",
   certificatesForge: "1.4.0",
-  lockHash: "1d5780c7948af063b677825a9b81900835964a10b6c572701fa02030be2319f7",
+  lockHash: "8cd1f69ecebeaea8fa3d274e6ea9e8b63cecb4f5fcc031d6ace4d248227e1d42",
   appConfigHash:
     "b9448506cc52aa6c96030eeda50d75aa55b3ee480fd9e2338d7405751df125f2",
   dynamicConfig: false,

@@ -1,0 +1,120 @@
+.labels-page .labels-controls {
+  margin-bottom: 1.25rem;
+}
+.labels-page .label-selection-list {
+  list-style: none;
+  padding: 0;
+}
+.labels-page .label-selection-list li {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.labels-page .label-selection-list li > span {
+  flex: 1 1 14rem;
+  overflow-wrap: anywhere;
+}
+.labels-page .label-selection-list input {
+  width: 6rem;
+}
+.labels-page .labels-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+.labels-page .label-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 3mm;
+}
+.labels-page .label-sheet > article {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  break-inside: avoid;
+  background: white;
+  color: black;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.8mm;
+  padding: 3mm;
+  border: 0;
+  outline: 1px solid #cbd5e1;
+  font-family: Arial, sans-serif;
+  line-height: 1.2;
+  height: auto;
+  overflow: visible;
+}
+.labels-page .label-name {
+  font-size: 10pt;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.labels-page .label-sku,
+.labels-page .label-barcode-value,
+.labels-page .label-warning {
+  font-size: 8pt;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.labels-page .label-price {
+  font-size: 12pt;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.labels-page .label-barcode {
+  flex: none;
+  max-width: none;
+}
+.labels-page .label-sheet[data-size="small"] > article {
+  width: 50mm;
+  min-height: 30mm;
+}
+.labels-page .label-sheet[data-size="standard"] > article {
+  width: 70mm;
+  min-height: 40mm;
+}
+
+/* Named page avoids changing ticket defaults when Next retains route CSS. */
+@page product-labels {
+  size: A4;
+  margin: 10mm;
+}
+@media print {
+  body:has(.labels-page) {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+  body:has(.labels-page) .labels-controls,
+  body:has(.labels-page) .topbar,
+  body:has(.labels-page) nav,
+  body:has(.labels-page) button {
+    display: none !important;
+  }
+  body:has(.labels-page) .workspace,
+  body:has(.labels-page) .labels-preview {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  body:has(.labels-page) .label-sheet {
+    page: product-labels;
+    gap: 3mm;
+  }
+  body:has(.labels-page) .label-sheet > article {
+    box-shadow: none;
+    border-radius: 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    print-color-adjust: exact;
+  }
+}

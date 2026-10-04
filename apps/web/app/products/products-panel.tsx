@@ -2,6 +2,7 @@
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type {
   ProductDto,
   CreateProductDto,
@@ -301,6 +302,16 @@ export default function ProductsPanel() {
                           </span>
                         </td>
                         <td data-label="Acciones" className="row-actions">
+                          {saving || editor !== undefined ? (
+                            <span aria-disabled="true">Imprimir etiqueta</span>
+                          ) : (
+                            <Link
+                              href={`/labels?${new URLSearchParams({ tenantId, productId: product.id })}`}
+                              aria-label={`Imprimir etiqueta de ${product.name}`}
+                            >
+                              Imprimir etiqueta
+                            </Link>
+                          )}
                           {canWrite ? (
                             <button
                               className="secondary"

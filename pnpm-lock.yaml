@@ -93,6 +93,9 @@ importers:
       '@supabase/supabase-js':
         specifier: 2.117.2
         version: 2.117.2
+      jsbarcode:
+        specifier: 3.12.3
+        version: 3.12.3
       next:
         specifier: 16.3.6
         version: 16.3.6(@babel/core@7.29.7(supports-color@8.1.1))(@playwright/test@1.63.0)(@types/node@24.13.6)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -2671,6 +2674,9 @@ packages:
   js-yaml@4.3.2:
     resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
+
+  jsbarcode@3.12.3:
+    resolution: {integrity: sha512-CuHU9hC6dPsHF5oVFMo8NW76uQVjH4L22CsP4hW+dNnGywJHC/B0ThA1CTDVLnxKLrrpYdicBLnd2xsgTfRnvg==}
 
   jsc-safe-url@0.2.4:
     resolution: {integrity: sha512-0wM3YBWtYePOjfyXQH5MWQ8H7sdk5EXSwZvmSLKk2RboVQ2Bu239jycHDz5J/8Blf3K0Qnoy2b6xD+z10MFB+Q==}
@@ -6987,6 +6993,8 @@ snapshots:
   js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
+
+  jsbarcode@3.12.3: {}
 
   jsc-safe-url@0.2.4: {}
 
