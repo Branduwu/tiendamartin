@@ -19,10 +19,10 @@ export function reportingCsv(
             "Efectivo centavos MXN",
             "Tarjeta centavos MXN",
             "Devoluciones centavos MXN",
-            "Cobro neto con impuestos centavos MXN",
+            "Ventas netas con impuestos centavos MXN",
             "Bruto comercial centavos MXN",
             "Descuentos centavos MXN",
-            "Impuestos cobrados centavos MXN",
+            "Impuestos de ventas centavos MXN",
             "Impuestos devueltos centavos MXN",
             "Venta comercial neta sin impuestos centavos MXN",
           ],
@@ -41,6 +41,24 @@ export function reportingCsv(
             d.taxRefunded,
             d.netCommercial,
           ]),
+          ...(report.credit
+            ? [
+                ["Métrica de crédito", "Valor"],
+                [
+                  "Saldo actual por cobrar centavos MXN",
+                  report.credit.outstanding,
+                ],
+                [
+                  "Crédito generado en período centavos MXN",
+                  report.credit.generated,
+                ],
+                [
+                  "Abonos cobrados en período centavos MXN",
+                  report.credit.collected,
+                ],
+                ["Cuentas abiertas actuales", report.credit.openAccounts],
+              ]
+            : []),
         ]
       : [
           [

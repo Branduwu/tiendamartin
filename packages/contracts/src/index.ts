@@ -87,3 +87,4 @@ export * from "./discounts";
 export { SaleQuoteSchema } from "./checkout";
 
 export * from "./taxes";
+export * from "./receivable";

@@ -23,6 +23,7 @@ import {
   couponCode,
 } from "@smartretail/domain";
 import { CustomerUnavailableError } from "./customers";
+import { CreditUnavailableError } from "@smartretail/domain";
 import { StockBalanceNotFoundError } from "./inventory";
 import { SuspensionConflictError } from "./suspended-sales";
 import { ProductNotFoundError } from "./products";
@@ -69,6 +70,7 @@ export interface SaleTransaction {
   ): Promise<Readonly<{ sale: CompletedSale; details?: DiscountDetails }>>;
   lockSuspendedSale?(id: string, locationId: string): Promise<void>;
   validateCustomer?(id: string): Promise<void>;
+  validateCredit?(id: string, amount: bigint): Promise<void>;
   lockOpenShift(locationId: string, shiftId: string | undefined): Promise<void>;
   readProduct(id: string): Promise<Product | undefined>;
   readLocation(id: string): Promise<InventoryLocation | undefined>;
@@ -260,6 +262,14 @@ export async function completeSaleTransaction(
     if (prior) {
       if (prior.payload !== payload) throw new SaleIdempotencyConflictError();
       return Object.freeze({ recorded: prior.recorded, replayed: true });
+    }
+    const credit =
+      snapshot.payments.find((p) => p.method === "credit")?.amount.minorUnits ??
+      0n;
+    if (credit > 0n) {
+      if (!snapshot.draft.customerId || !tx.validateCredit)
+        throw new CreditUnavailableError();
+      await tx.validateCredit(snapshot.draft.customerId, credit);
     }
     if (snapshot.draft.customerId !== undefined) {
       if (!tx.validateCustomer) throw new CustomerUnavailableError();

@@ -1,8 +1,9 @@
 "use client";
 import PosCustomerSelector from "../components/pos-customer-selector";
+import PosCredit from "../components/pos-credit";
 import PosDiscounts, { type PosPriceQuote } from "../components/pos-discounts";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -93,6 +94,14 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [draft, setDraft] = useState<SaleDraft | null>(null),
     [texts, setTexts] = useState<Record<string, string>>({});
   const [priceQuote, setPriceQuote] = useState<PosPriceQuote | null>(null);
+  const [creditCustomer, setCreditCustomer] = useState<{
+    id: string;
+    enabled: boolean;
+  } | null>(null);
+  const creditStatus = useCallback(
+    (id: string, enabled: boolean) => setCreditCustomer({ id, enabled }),
+    [],
+  );
   const [quoteRevision, setQuoteRevision] = useState(0);
   function baseDto(value: SaleDraft): SaleDraftDto {
     return {
@@ -125,7 +134,15 @@ export default function PosPanel({ userId }: { userId: string }) {
     draft: base,
   });
   const currentQuote = priceQuote?.key === quoteKey ? priceQuote : null;
-  const [method, setMethod] = useState<"cash" | "card" | "mixed">("cash"),
+  const [method, setMethod] = useState<
+      | "cash"
+      | "card"
+      | "mixed"
+      | "credit"
+      | "cash-credit"
+      | "card-credit"
+      | "mixed-credit"
+    >("cash"),
     [cash, setCash] = useState("0.00");
   const [pending, setPending] = useState<CheckoutDto | null>(null),
     [sending, setSending] = useState(false);
@@ -590,21 +607,33 @@ export default function PosPanel({ userId }: { userId: string }) {
             "Espera a que se actualice la cotización de descuentos.",
           );
         const amount = BigInt(currentQuote.sale.total.minorUnits);
-        const payment = (method: "cash" | "card", value: bigint) => ({
+        const payment = (
+          method: "cash" | "card" | "credit",
+          value: bigint,
+        ) => ({
           method,
           amount: { currency: "MXN" as const, minorUnits: value.toString() },
         });
         let payments: CheckoutDto["payments"] = [];
         if (amount > 0n) {
-          if (method === "mixed") {
+          if (method === "mixed-credit")
+            throw new Error("Reintenta el comando conservado de esta venta.");
+          if (
+            method === "mixed" ||
+            method === "cash-credit" ||
+            method === "card-credit"
+          ) {
             const cashAmount = BigInt(decimalToMinorUnits(cash));
             if (cashAmount <= 0n || cashAmount >= amount)
               throw new Error(
                 "En pago mixto, efectivo y tarjeta deben ser mayores que cero y sumar el total.",
               );
             payments = [
-              payment("cash", cashAmount),
-              payment("card", amount - cashAmount),
+              payment(method === "card-credit" ? "card" : "cash", cashAmount),
+              payment(
+                method === "mixed" ? "card" : "credit",
+                amount - cashAmount,
+              ),
             ];
           } else payments = [payment(method, amount)];
         }
@@ -795,6 +824,8 @@ export default function PosPanel({ userId }: { userId: string }) {
                   ?.permissions.includes("customers.write") ?? false
               }
               onSelect={(id) => {
+                if (method.includes("credit")) setMethod("cash");
+                setCreditCustomer(null);
                 setDraft((current) =>
                   assignSaleCustomer(
                     current ?? createSaleDraft(crypto.randomUUID()),
@@ -1222,19 +1253,44 @@ export default function PosPanel({ userId }: { userId: string }) {
                   <select
                     value={method}
                     disabled={locked}
-                    onChange={(e) =>
-                      setMethod(e.target.value as "cash" | "card" | "mixed")
-                    }
+                    onChange={(e) => setMethod(e.target.value as typeof method)}
                   >
                     <option value="cash">Efectivo</option>
                     <option value="card">Tarjeta</option>
                     <option value="mixed">Mixto</option>
+                    {draft?.customerId === creditCustomer?.id &&
+                      creditCustomer?.enabled && (
+                        <>
+                          <option value="credit">Crédito</option>
+                          <option value="cash-credit">
+                            Efectivo + crédito
+                          </option>
+                          <option value="card-credit">Tarjeta + crédito</option>
+                        </>
+                      )}
+                    {method === "mixed-credit" && (
+                      <option value="mixed-credit">
+                        Efectivo + tarjeta + crédito (pendiente)
+                      </option>
+                    )}
                   </select>
                 </label>
-                {method === "mixed" ? (
+                {draft?.customerId && (
+                  <PosCredit
+                    key={tenant + draft.customerId}
+                    tenant={tenant}
+                    customerId={draft.customerId}
+                    onStatus={creditStatus}
+                  />
+                )}
+                {method === "mixed" ||
+                method === "cash-credit" ||
+                method === "card-credit" ? (
                   <div className="stack">
                     <label>
-                      Efectivo (MXN)
+                      {method === "card-credit"
+                        ? "Tarjeta (MXN)"
+                        : "Efectivo (MXN)"}
                       <input
                         inputMode="decimal"
                         value={cash}
@@ -1243,13 +1299,20 @@ export default function PosPanel({ userId }: { userId: string }) {
                       />
                     </label>
                     <p>
-                      Tarjeta: <strong>{cardAmount}</strong>
+                      {method === "mixed" ? "Tarjeta" : "Crédito pendiente"}:{" "}
+                      <strong>{cardAmount}</strong>
                     </p>
                   </div>
                 ) : (
                   <p>
-                    Pago {method === "cash" ? "en efectivo" : "con tarjeta"}:{" "}
-                    <strong>{mxn(total.toString())}</strong>
+                    {method === "credit"
+                      ? "Crédito pendiente"
+                      : method === "cash"
+                        ? "Pago en efectivo"
+                        : method === "mixed-credit"
+                          ? "Pago conservado"
+                          : "Pago con tarjeta"}
+                    : <strong>{mxn(total.toString())}</strong>
                   </p>
                 )}
                 <button

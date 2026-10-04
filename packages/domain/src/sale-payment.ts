@@ -1,18 +1,21 @@
 import { money, addMoney, type Money } from "./money";
 
-export type SalePayment = Readonly<{ method: "cash" | "card"; amount: Money }>;
+export type SalePayment = Readonly<{
+  method: "cash" | "card" | "credit";
+  amount: Money;
+}>;
 
 /** Registered tender only; card does not represent a gateway charge. */
 export function salePayments(
   input: readonly SalePayment[],
   total: Money,
 ): readonly SalePayment[] {
-  if (!Array.isArray(input) || input.length > 2)
+  if (!Array.isArray(input) || input.length > 3)
     throw new TypeError("Invalid payments");
   const methods = new Set<string>();
   let paid = money(0n);
   const copies = input.map((payment) => {
-    if (!payment || !["cash", "card"].includes(payment.method))
+    if (!payment || !["cash", "card", "credit"].includes(payment.method))
       throw new TypeError("Invalid payment method");
     if (methods.has(payment.method))
       throw new TypeError("Duplicate payment method");

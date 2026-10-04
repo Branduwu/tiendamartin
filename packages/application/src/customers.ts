@@ -10,7 +10,7 @@ export type CustomerSale = Readonly<{
   id: string;
   createdAt: string;
   total: Money;
-  paymentMethods: readonly ("cash" | "card")[];
+  paymentMethods: readonly ("cash" | "card" | "credit")[];
   returnedTotal: Money;
 }>;
 export interface CustomerRepository {

@@ -7,14 +7,14 @@ import { UuidSchema } from "./identifiers";
 import { MemberDisplayNameSchema } from "./members";
 import { DiscountIntentSchema, DiscountDetailsSchema } from "./discounts";
 export const SalePaymentSchema = z.strictObject({
-  method: z.enum(["cash", "card"]),
+  method: z.enum(["cash", "card", "credit"]),
   amount: MoneySchema.refine(
     (v) => v.minorUnits !== "0" && !v.minorUnits.startsWith("-"),
   ),
 });
 const PaymentsSchema = z
   .array(SalePaymentSchema)
-  .max(2)
+  .max(3)
   .refine((p) => new Set(p.map((v) => v.method)).size === p.length);
 export const CheckoutSchema = z.strictObject({
   shiftId: UuidSchema.exactOptional(),

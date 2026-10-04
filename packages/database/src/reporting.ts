@@ -267,6 +267,19 @@ export class PostgresReporting
         const cash = (
           await client.query<OperationalReport["cash"]>(query(cashSql), values)
         ).rows[0];
+        const credit = (
+          await client.query<{
+            outstanding: string;
+            generated: string;
+            collected: string;
+            openAccounts: string;
+          }>(
+            query(
+              `WITH ${bounds}, accounts AS (SELECT r.* FROM retail.receivables r JOIN retail.sales s ON s.tenant_id=r.tenant_id AND s.id=r.sale_id WHERE ${saleScope}) SELECT coalesce(sum(outstanding_minor_units),0)::text AS outstanding,count(*) FILTER(WHERE outstanding_minor_units>0)::text AS "openAccounts",(SELECT coalesce(sum(original_minor_units),0)::text FROM accounts,b WHERE created_at>=b.start AND created_at<b.finish) AS generated,(SELECT coalesce(sum(p.amount_minor_units),0)::text FROM retail.receivable_payments p JOIN accounts a ON a.tenant_id=p.tenant_id AND a.id=p.receivable_id CROSS JOIN b WHERE p.created_at>=b.start AND p.created_at<b.finish) AS collected FROM accounts`,
+            ),
+            values,
+          )
+        ).rows[0];
         const summary = sales.find((r) => r.key === "period"),
           daily = sales.find((r) => r.key === "today");
         if (!summary || !daily || !inventory || !purchases || !cash)
@@ -301,6 +314,7 @@ export class PostgresReporting
           inventory,
           purchases,
           cash,
+          ...(credit === undefined ? {} : { credit }),
         };
       },
       true,

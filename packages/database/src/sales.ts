@@ -16,6 +16,7 @@ import {
   createSaleDraft,
   addSaleProduct,
   DiscountUnavailableError,
+  CreditUnavailableError,
 } from "@smartretail/domain";
 import {
   CustomerUnavailableError,
@@ -76,7 +77,7 @@ interface LineRow {
   tax_amount_minor_units: string;
 }
 interface PaymentRow {
-  method: "cash" | "card";
+  method: "cash" | "card" | "credit";
   amount_minor_units: string;
 }
 
@@ -238,6 +239,19 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
             } catch (e) {
               if (e instanceof Error && "code" in e && e.code === "P0001")
                 throw new SuspensionConflictError();
+              throw e;
+            }
+          },
+          validateCredit: async (id, amount) => {
+            assertActive();
+            try {
+              await client.query(
+                "SELECT retail.validate_customer_credit($1,$2)",
+                [id, bigintParameter(amount)],
+              );
+            } catch (e) {
+              if (e instanceof Error && "code" in e && e.code === "P0001")
+                throw new CreditUnavailableError();
               throw e;
             }
           },

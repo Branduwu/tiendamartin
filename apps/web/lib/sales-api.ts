@@ -25,6 +25,7 @@ import {
   DiscountLimitError,
   DiscountUnavailableError,
   TaxProfileUnavailableError,
+  CreditUnavailableError,
 } from "@smartretail/domain";
 import { verifiedUserId } from "./auth";
 import { salesForUser } from "./database";
@@ -112,6 +113,14 @@ export async function handleSales(
       result.replayed ? 200 : 201,
     );
   } catch (error) {
+    if (error instanceof CreditUnavailableError)
+      return reply(
+        {
+          error:
+            "El cliente no tiene crédito disponible. Revisa su estado, límite y saldo.",
+        },
+        409,
+      );
     if (error instanceof TaxProfileUnavailableError)
       return reply(
         {

@@ -1,10 +1,13 @@
 ﻿import { productId } from "./product-fields";
+import { money, type Money } from "./money";
 export type CustomerFields = Readonly<{
   name: string;
   phone?: string;
   email?: string;
   notes?: string;
   status: "active" | "inactive";
+  creditEnabled?: boolean;
+  creditLimit?: Money;
 }>;
 export type Customer = CustomerFields &
   Readonly<{
@@ -14,8 +17,13 @@ export type Customer = CustomerFields &
     lastPurchaseAt?: string;
   }>;
 export type CustomerChanges = Partial<
-  Pick<CustomerFields, "name" | "status">
-> & { phone?: string | null; email?: string | null; notes?: string | null };
+  Pick<CustomerFields, "name" | "status" | "creditEnabled">
+> & {
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  creditLimit?: Money | null;
+};
 export const customerId = (value: string): string =>
   productId(value).toLowerCase();
 export function customerFields(input: CustomerFields): CustomerFields {
@@ -35,9 +43,24 @@ export function customerFields(input: CustomerFields): CustomerFields {
   };
   if (input.status !== "active" && input.status !== "inactive")
     throw new TypeError("Invalid customer status");
+  if (
+    input.creditEnabled !== undefined &&
+    typeof input.creditEnabled !== "boolean"
+  )
+    throw new TypeError("Invalid credit settings");
+  const limit =
+    input.creditLimit === undefined
+      ? undefined
+      : money(input.creditLimit.minorUnits);
+  if (limit && (input.creditLimit?.currency !== "MXN" || limit.minorUnits < 0n))
+    throw new TypeError("Invalid credit limit");
   return Object.freeze({
     name: text(input.name, 200),
     status: input.status,
+    ...(input.creditEnabled === undefined
+      ? {}
+      : { creditEnabled: input.creditEnabled }),
+    ...(limit === undefined ? {} : { creditLimit: limit }),
     ...(input.phone === undefined ? {} : { phone: text(input.phone, 50) }),
     ...(input.email === undefined ? {} : { email: text(input.email, 254) }),
     ...(input.notes === undefined ? {} : { notes: text(input.notes, 2000) }),

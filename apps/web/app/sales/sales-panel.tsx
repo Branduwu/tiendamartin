@@ -175,7 +175,11 @@ export default function SalesPanel() {
                     <td data-label="Pago">
                       {s.payments
                         .map((p) =>
-                          p.method === "cash" ? "Efectivo" : "Tarjeta",
+                          p.method === "cash"
+                            ? "Efectivo"
+                            : p.method === "credit"
+                              ? "Crédito pendiente"
+                              : "Tarjeta",
                         )
                         .join(" + ") || "Sin pago (total cero)"}
                     </td>

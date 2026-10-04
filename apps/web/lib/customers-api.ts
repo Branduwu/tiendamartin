@@ -1,5 +1,6 @@
 ﻿import "server-only";
 import { randomUUID } from "node:crypto";
+import { money, type Customer } from "@smartretail/domain";
 import {
   CreateCustomerSchema,
   UpdateCustomerSchema,
@@ -20,6 +21,17 @@ import {
   jsonBody,
   requireSameOrigin,
 } from "./api";
+const customerDto = (customer: Customer) => ({
+  ...customer,
+  ...(customer.creditLimit === undefined
+    ? {}
+    : {
+        creditLimit: {
+          currency: "MXN",
+          minorUnits: customer.creditLimit.minorUnits.toString(),
+        },
+      }),
+});
 export async function handleCustomers(
   request: Request,
   operation: "list" | "create" | "read" | "update",
@@ -41,7 +53,9 @@ export async function handleCustomers(
         throw new InvalidInput();
       const search = CustomerSearchSchema.safeParse(query.get("q") ?? "");
       if (!search.success) throw new InvalidInput();
-      return reply({ customers: await repo.listCustomers(search.data) });
+      return reply({
+        customers: (await repo.listCustomers(search.data)).map(customerDto),
+      });
     }
     if (query.size) throw new InvalidInput();
     const valid = id === undefined ? undefined : UuidSchema.safeParse(id);
@@ -50,7 +64,7 @@ export async function handleCustomers(
       if (!valid?.success) throw new InvalidInput();
       const detail = await repo.readCustomer(valid.data);
       return reply({
-        customer: detail.customer,
+        customer: customerDto(detail.customer),
         sales: detail.sales.map((s) => ({
           ...s,
           total: { currency: "MXN", minorUnits: s.total.minorUnits.toString() },
@@ -66,16 +80,38 @@ export async function handleCustomers(
     if (operation === "create") {
       const value = CreateCustomerSchema.safeParse(body);
       if (!value.success) throw new InvalidInput();
-      const { id: createdId, ...fields } = value.data;
+      const { id: createdId, creditLimit, ...fields } = value.data;
       return reply(
-        { customer: await repo.createCustomer(createdId, fields) },
+        {
+          customer: customerDto(
+            await repo.createCustomer(createdId, {
+              ...fields,
+              ...(creditLimit === undefined
+                ? {}
+                : { creditLimit: money(BigInt(creditLimit.minorUnits)) }),
+            }),
+          ),
+        },
         201,
       );
     }
     const value = UpdateCustomerSchema.safeParse(body);
     if (!value.success || !valid?.success) throw new InvalidInput();
+    const { creditLimit, ...changes } = value.data;
     return reply({
-      customer: await repo.updateCustomer(valid.data, value.data),
+      customer: customerDto(
+        await repo.updateCustomer(valid.data, {
+          ...changes,
+          ...(creditLimit === undefined
+            ? {}
+            : {
+                creditLimit:
+                  creditLimit === null
+                    ? null
+                    : money(BigInt(creditLimit.minorUnits)),
+              }),
+        }),
+      ),
     });
   } catch (e) {
     if (e instanceof PermissionDeniedError || e instanceof SameOriginError)

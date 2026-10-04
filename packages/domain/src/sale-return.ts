@@ -8,6 +8,7 @@ import { productId, type ProductId } from "./product-fields";
 import { quantity, type Quantity } from "./quantity";
 import { money, type Money } from "./money";
 import { salePayments, type SalePayment } from "./sale-payment";
+import { creditReturn } from "./receivable";
 declare const returnBrand: unique symbol;
 export type SaleReturnId = string & { readonly [returnBrand]: true };
 export function saleReturnId(value: string): SaleReturnId {
@@ -29,6 +30,7 @@ export type SaleReturn = Readonly<{
   lines: readonly SaleReturnLine[];
   total: Money;
   refunds: readonly SalePayment[];
+  debtReduction?: Money;
 }>;
 export class SaleReturnConflictError extends Error {}
 export type ReturnSelection = Readonly<{
@@ -149,15 +151,28 @@ export function createSaleReturn(
   selections: readonly ReturnSelection[],
   previous: readonly SaleReturn[],
   refunds: readonly SalePayment[],
+  outstanding?: Money,
 ): SaleReturn {
   const quote = quoteSaleReturn(original, selections, previous);
-  const payments = salePayments(refunds, quote.total);
+  if (refunds.some((p) => p.method === "credit"))
+    throw new TypeError("Credit cannot be refunded as money");
+  const settlement =
+    outstanding === undefined
+      ? undefined
+      : creditReturn(quote.total, outstanding);
+  const payments = salePayments(
+    refunds,
+    settlement?.refundAmount ?? quote.total,
+  );
   return Object.freeze({
     id: saleReturnId(id),
     saleId: saleId(original.id),
     status: "completed",
     ...quote,
     refunds: payments,
+    ...(settlement === undefined
+      ? {}
+      : { debtReduction: settlement.debtReduction }),
   });
 }
 export function assertRefundLimits(

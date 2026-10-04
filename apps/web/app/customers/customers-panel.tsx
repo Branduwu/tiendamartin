@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
@@ -8,6 +8,8 @@ import {
   type CustomerSaleDto,
 } from "@smartretail/contracts";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
+import CustomerCredit from "../components/customer-credit";
+import { CustomerReceivables } from "../receivables/receivables-panel";
 import { formatDateTime } from "../components/presentation";
 import {
   purchasingApi,
@@ -338,6 +340,19 @@ export default function CustomersPanel({
                   )}
                   {detail.customer.notes && <p>{detail.customer.notes}</p>}
                 </section>
+                <CustomerCredit
+                  customer={detail.customer}
+                  tenant={company.tenantId}
+                  canManage={company.permissions.includes("credit.manage")}
+                  onUpdated={() => setReload((r) => r + 1)}
+                />
+                {company.permissions.includes("receivables.read") && (
+                  <CustomerReceivables
+                    key={company.tenantId + detail.customer.id}
+                    tenant={company.tenantId}
+                    customerId={detail.customer.id}
+                  />
+                )}
                 <section className="card">
                   <h2>Historial de compras</h2>
                   <p className="muted">
@@ -370,7 +385,11 @@ export default function CustomersPanel({
                               <td data-label="Pago">
                                 {s.paymentMethods
                                   .map((m) =>
-                                    m === "cash" ? "Efectivo" : "Tarjeta",
+                                    m === "cash"
+                                      ? "Efectivo"
+                                      : m === "credit"
+                                        ? "Crédito"
+                                        : "Tarjeta",
                                   )
                                   .join(" / ") || "Sin pago"}
                               </td>

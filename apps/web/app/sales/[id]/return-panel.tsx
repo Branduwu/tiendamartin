@@ -38,20 +38,30 @@ async function api<T>(url: string, init: RequestInit): Promise<T> {
   return b as T;
 }
 const mxn = (value: string) => `$${minorUnitsToDecimal(value)} MXN`;
+type Settlement = {
+  outstandingAmount: { currency: "MXN"; minorUnits: string };
+  payments: {
+    method: "cash" | "card";
+    amount: { currency: "MXN"; minorUnits: string };
+  }[];
+};
 export default function ReturnPanel({
   recorded,
   initial,
+  initialSettlement,
   userId,
   canReturn,
 }: {
   recorded: StoredSaleDto;
   initial: SaleReturnDto[];
+  initialSettlement: Settlement;
   userId: string;
   canReturn: boolean;
 }) {
   const tenant = recorded.tenantId,
     url = `/api/v1/sales/${recorded.sale.id}/returns`,
     key = `smartretail.pending-return.${userId}.${tenant}.${recorded.sale.id}`;
+  const [settlement, setSettlement] = useState(initialSettlement);
   const [returns, setReturns] = useState(initial),
     [opened, setOpened] = useState(false),
     [texts, setTexts] = useState<Record<string, string>>({}),
@@ -146,7 +156,7 @@ export default function ReturnPanel({
     );
   const available = (m: "cash" | "card") =>
     BigInt(
-      recorded.payments.find((p) => p.method === m)?.amount.minorUnits ?? "0",
+      settlement.payments.find((p) => p.method === m)?.amount.minorUnits ?? "0",
     ) -
     previous.reduce(
       (sum, r) =>
@@ -183,6 +193,11 @@ export default function ReturnPanel({
     previewError =
       "Revisa las cantidades: sólo puedes devolver lo que queda de la venta original.";
   }
+  const debtReduction =
+    total < BigInt(settlement.outstandingAmount.minorUnits)
+      ? total
+      : BigInt(settlement.outstandingAmount.minorUnits);
+  const refundTotal = total - debtReduction;
   async function submit() {
     if (sendingRef.current || blocked || !ready) return;
     sendingRef.current = true;
@@ -195,14 +210,14 @@ export default function ReturnPanel({
           throw new Error("Selecciona cantidades válidas.");
         const refunds: CreateSaleReturnDto["refunds"] = [];
         let cashAmount = 0n;
-        if (total > 0n) {
+        if (refundTotal > 0n) {
           cashAmount =
             method === "cash"
-              ? total
+              ? refundTotal
               : method === "mixed"
                 ? BigInt(decimalToMinorUnits(cash))
                 : 0n;
-          const cardAmount = total - cashAmount;
+          const cardAmount = refundTotal - cashAmount;
           if (
             cashAmount < 0n ||
             cardAmount < 0n ||
@@ -274,10 +289,14 @@ export default function ReturnPanel({
       setTexts({});
       setOpened(false);
       try {
-        const updated = await api<{ returns: SaleReturnDto[] }>(url, {
+        const updated = await api<{
+          returns: SaleReturnDto[];
+          settlement: Settlement;
+        }>(url, {
           headers: { "x-tenant-id": tenant },
         });
         setReturns(updated.returns);
+        setSettlement(updated.settlement);
       } catch {
         setError(
           "Devolución confirmada. Recarga el ticket para consultar todos los registros.",
@@ -307,8 +326,17 @@ export default function ReturnPanel({
       </p>
       {confirmed && (
         <p role="status" className="notice">
-          Reembolso registrado: {mxn(confirmed.total.minorUnits)}. Devolución{" "}
-          {confirmed.id}.
+          Reembolso en dinero registrado:{" "}
+          {mxn(
+            confirmed.refunds
+              .reduce((sum, p) => sum + BigInt(p.amount.minorUnits), 0n)
+              .toString(),
+          )}
+          .{" "}
+          {confirmed.debtReduction && (
+            <>Reducción de deuda: {mxn(confirmed.debtReduction.minorUnits)}. </>
+          )}
+          Devolución {confirmed.id}.
         </p>
       )}
       {error && (
@@ -334,7 +362,20 @@ export default function ReturnPanel({
               {mxn(l.refunded.minorUnits)}
             </p>
           ))}
-          <strong>Total reembolsado: {mxn(r.total.minorUnits)}</strong>
+          <strong>
+            Valor de mercancía devuelta: {mxn(r.total.minorUnits)}
+          </strong>
+          {r.debtReduction && (
+            <p>Deuda reducida: {mxn(r.debtReduction.minorUnits)}</p>
+          )}
+          <p>
+            Total reembolsado en dinero:{" "}
+            {mxn(
+              r.refunds
+                .reduce((sum, p) => sum + BigInt(p.amount.minorUnits), 0n)
+                .toString(),
+            )}
+          </p>
           {r.refunds.map((p) => (
             <p key={p.method}>
               {p.method === "cash" ? "Efectivo" : "Tarjeta (registro contable)"}
@@ -437,15 +478,20 @@ export default function ReturnPanel({
                           (sum, p) => sum + BigInt(p.amount.minorUnits),
                           0n,
                         )
-                      : total
+                      : refundTotal
                     ).toString(),
                   )}
                 </strong>
               </p>
               <p>
-                Disponible por método: efectivo{" "}
+                Disponible por método: efectivo {""}
                 {mxn(available("cash").toString())}; tarjeta{" "}
                 {mxn(available("card").toString())}.
+              </p>
+              <p>
+                Valor de mercancía devuelta: {mxn(total.toString())}. Primero
+                reduce deuda: {mxn(debtReduction.toString())}; sólo el excedente
+                se reembolsa en dinero.
               </p>
               <label>
                 Método de reembolso

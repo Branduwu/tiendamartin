@@ -64,6 +64,12 @@ export type OperationalReport = Readonly<{
     cashIn: string;
     cashOut: string;
   };
+  credit?: {
+    outstanding: string;
+    generated: string;
+    collected: string;
+    openAccounts: string;
+  };
 }>;
 export interface ReportingQueries {
   operationalReport(filters: ReportFilters): Promise<OperationalReport>;

@@ -77,6 +77,7 @@ import {
   ProductStorageConflictError,
   PostgresPromotions,
   PostgresTaxes,
+  PostgresReceivables,
 } from "../src/index";
 
 const configPath = process.env.SMARTRETAIL_PG_TEST_CONFIG;
@@ -422,6 +423,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.receivables') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/019_credit.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -458,7 +472,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -492,6 +506,514 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     await receiveInventory(db, receipt());
   });
 
+  describe("TASK-028 credit and collections", () => {
+    const customers = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresCustomers(apiPool, { userId, tenantId });
+    const accounts = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresReceivables(apiPool, { userId, tenantId });
+    const sales = () =>
+      new PostgresSales(pool, { userId: ownerUser, tenantId: tenantA });
+    const returns = () =>
+      new PostgresSaleReturns(pool, { userId: ownerUser, tenantId: tenantA });
+    const cashier = "550e8400-e29b-41d4-a716-446655440025";
+    const mxn = (minorUnits: string) => money(BigInt(minorUnits));
+    async function customer(limit: bigint | null = 10000n) {
+      return customers().createCustomer(randomUUID(), {
+        name: "SMOKE Credit",
+        status: "active",
+        creditEnabled: true,
+        ...(limit === null ? {} : { creditLimit: money(limit) }),
+      });
+    }
+    function command(
+      cid?: string,
+      credit = 6000n,
+      location = source,
+      shift = shiftId,
+    ): SaleCheckoutInput {
+      const draft = addSaleProduct(
+        createSaleDraft(randomUUID(), cid),
+        fixtureProduct(),
+        quantity("piece", 3000n),
+      );
+      return {
+        draft,
+        locationId: location,
+        shiftId: shift,
+        payments: [
+          ...(credit < 6000n
+            ? [{ method: "cash" as const, amount: money(6000n - credit) }]
+            : []),
+          ...(credit > 0n
+            ? [{ method: "credit" as const, amount: money(credit) }]
+            : []),
+        ],
+        movements: [{ productId: product, movementId: randomUUID() }],
+      };
+    }
+    async function sold(credit = 6000n, limit: bigint | null = 10000n) {
+      const c = await customer(limit),
+        input = command(c.id, credit);
+      const sale = await completeSaleTransaction(sales(), input);
+      return { c, input, sale, rid: sale.recorded.sale.id };
+    }
+    const card = (value = "1000", id = randomUUID()) => ({
+      id,
+      method: "card" as const,
+      amount: mxn(value),
+    });
+    const cash = (value = "1000", id = randomUUID(), shift = shiftId) => ({
+      id,
+      method: "cash" as const,
+      amount: mxn(value),
+      shiftId: shift,
+    });
+    const returnInput = (
+      quantityMilli = 1000n,
+      refunds: SaleReturnInput["refunds"] = [],
+    ): SaleReturnInput => ({
+      id: randomUUID(),
+      lines: [
+        {
+          saleLineId: product,
+          productId: product,
+          quantity: quantity("piece", quantityMilli),
+          movementId: randomUUID(),
+        },
+      ],
+      refunds,
+    });
+    async function allowCashier() {
+      await admin.query(
+        "INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'cashier','active')",
+        [tenantA, cashier],
+      );
+      await admin.query(
+        "INSERT INTO retail.member_locations VALUES($1,$2,$3)",
+        [tenantA, cashier, source],
+      );
+    }
+    async function debt(id: string) {
+      return (await accounts().read(id)).receivable.outstandingAmount
+        .minorUnits;
+    }
+    it("default disabled; owner updates enabled limit and clears limit", async () => {
+      const c = await customers().createCustomer(randomUUID(), {
+        name: "Default",
+        status: "active",
+      });
+      expect(c.creditEnabled).toBe(false);
+      await expect(
+        customers().updateCustomer(c.id, {
+          creditLimit: money(9223372036854775808n),
+        }),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(
+        (
+          await customers().updateCustomer(c.id, {
+            creditEnabled: true,
+            creditLimit: money(1n),
+          })
+        ).creditLimit,
+      ).toEqual(money(1n));
+      expect(
+        (await customers().updateCustomer(c.id, { creditLimit: null }))
+          .creditLimit,
+      ).toBeUndefined();
+    });
+    it("cashier cannot enable or configure credit through CRUD or direct SQL", async () => {
+      await allowCashier();
+      const c = await customer();
+      await expect(
+        customers(cashier).updateCustomer(c.id, { creditLimit: money(20000n) }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        customers(cashier).createCustomer(randomUUID(), {
+          name: "Escalation",
+          status: "active",
+          creditEnabled: true,
+        }),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        sql(
+          tenantA,
+          (client) =>
+            client.query(
+              "UPDATE retail.customers SET credit_enabled=false WHERE id=$1",
+              [c.id],
+            ),
+          cashier,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("pure and mixed credit create exact receivable without increasing cash credit", async () => {
+      const { rid } = await sold(4000n);
+      const account = (await accounts().read(rid)).receivable;
+      expect(account.originalAmount.minorUnits).toBe("4000");
+      expect(account.status).toBe("open");
+      expect(
+        (
+          await new PostgresCash(apiPool, {
+            userId: ownerUser,
+            tenantId: tenantA,
+          }).currentShift(source)
+        )?.expectedCash.minorUnits,
+      ).toBe(2000n);
+    });
+    it("general public disabled inactive missing foreign customer fail without stock writes", async () => {
+      const c = await customer();
+      await customers().updateCustomer(c.id, { creditEnabled: false });
+      const foreign = await customers(ownerUser, tenantB).createCustomer(
+        randomUUID(),
+        { name: "Foreign", status: "active", creditEnabled: true },
+      );
+      for (const id of [undefined, c.id, foreign.id, randomUUID()])
+        await expect(
+          completeSaleTransaction(sales(), command(id)),
+        ).rejects.toThrow();
+      await customers().updateCustomer(c.id, {
+        creditEnabled: true,
+        status: "inactive",
+      });
+      await expect(
+        completeSaleTransaction(sales(), command(c.id)),
+      ).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+      expect(await accounts().list()).toHaveLength(0);
+    });
+    it("limit equality allowed; excess denied; no configured limit supported", async () => {
+      const c = await customer(6000n);
+      await completeSaleTransaction(sales(), command(c.id));
+      await expect(
+        completeSaleTransaction(sales(), command(c.id, 1n)),
+      ).rejects.toThrow();
+      const unbounded = await customer(null);
+      await completeSaleTransaction(sales(), command(unbounded.id));
+    });
+    it("replay same SaleId preserves account after disabling credit", async () => {
+      const { c, input, rid } = await sold();
+      await customers().updateCustomer(c.id, { creditEnabled: false });
+      expect((await completeSaleTransaction(sales(), input)).replayed).toBe(
+        true,
+      );
+      expect(await debt(rid)).toBe("6000");
+      expect(await accounts().list()).toHaveLength(1);
+      await expect(
+        completeSaleTransaction(sales(), {
+          ...input,
+          payments: [{ method: "cash", amount: money(6000n) }],
+        }),
+      ).rejects.toBeInstanceOf(SaleIdempotencyConflictError);
+    });
+    it("cash collection links cash_in and audit once; replay even when closed", async () => {
+      const { rid } = await sold();
+      const input = cash();
+      await accounts().collect(rid, input, randomUUID());
+      expect(await debt(rid)).toBe("5000");
+      const cashierRepo = new PostgresCash(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      expect(
+        (await cashierRepo.currentShift(source))?.expectedCash.minorUnits,
+      ).toBe(1000n);
+      await cashierRepo.closeShift(shiftId, money(1000n));
+      expect(
+        (await accounts().collect(rid, input, randomUUID())).replayed,
+      ).toBe(true);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::text n FROM retail.cash_movements WHERE receivable_payment_id=$1",
+            [input.id],
+          )
+        ).rows[0]?.n,
+      ).toBe("1");
+    });
+    it("card collection reduces debt without physical cash", async () => {
+      const { rid } = await sold();
+      await accounts().collect(rid, card(), randomUUID());
+      expect(await debt(rid)).toBe("5000");
+      expect(
+        (
+          await new PostgresCash(apiPool, {
+            userId: ownerUser,
+            tenantId: tenantA,
+          }).currentShift(source)
+        )?.expectedCash.minorUnits,
+      ).toBe(0n);
+    });
+    it("same PaymentId different amount method account actor conflicts", async () => {
+      const { rid } = await sold();
+      const input = card();
+      await accounts().collect(rid, input, randomUUID());
+      for (const changed of [
+        { ...input, amount: mxn("2") },
+        cash("1000", input.id),
+      ])
+        await expect(
+          accounts().collect(rid, changed, randomUUID()),
+        ).rejects.toThrow();
+      const other = await sold(1000n);
+      await expect(
+        accounts().collect(other.rid, input, randomUUID()),
+      ).rejects.toThrow();
+      await allowCashier();
+      await expect(
+        accounts(cashier).collect(rid, input, randomUUID()),
+      ).rejects.toThrow();
+      expect(await debt(rid)).toBe("5000");
+    });
+    it("overpayment zero negatives rejected; full payment derives liquidated", async () => {
+      const { rid } = await sold();
+      for (const value of ["6001", "0", "-1"])
+        await expect(
+          accounts().collect(rid, card(value), randomUUID()),
+        ).rejects.toThrow();
+      await accounts().collect(rid, card("6000"), randomUUID());
+      expect((await accounts().read(rid)).receivable.status).toBe("paid");
+    });
+    it("cash requires matching open branch and rolls back missing or closed shift", async () => {
+      const { rid } = await sold();
+      await expect(
+        accounts().collect(
+          rid,
+          cash("1", randomUUID(), randomUUID()),
+          randomUUID(),
+        ),
+      ).rejects.toThrow();
+      await new PostgresCash(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).closeShift(shiftId, money(0n));
+      await expect(
+        accounts().collect(rid, cash(), randomUUID()),
+      ).rejects.toThrow();
+      expect(await debt(rid)).toBe("6000");
+      expect((await accounts().read(rid)).payments).toHaveLength(0);
+    });
+    it("cashier read/pay allowed while clerk inactive and tenant outsider denied", async () => {
+      const { rid } = await sold();
+      await allowCashier();
+      await accounts(cashier).collect(rid, card("1"), randomUUID());
+      await expect(accounts(clerkUser).list()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        accounts(ownerUser, tenantB).read(rid),
+      ).rejects.toBeInstanceOf(SaleNotFoundError);
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE user_id=$1",
+        [cashier],
+      );
+      await expect(
+        accounts(cashier).collect(rid, card(), randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("return reduces original sale debt first and never creates money refund", async () => {
+      const { rid } = await sold(4000n);
+      const result = await returns().returnSale(rid, returnInput());
+      expect(result.record.total.minorUnits).toBe(2000n);
+      expect(result.record.debtReduction?.minorUnits).toBe(2000n);
+      expect(result.record.refunds).toHaveLength(0);
+      expect(await debt(rid)).toBe("2000");
+    });
+    it("return excess refundable only by real collected method absent original tender", async () => {
+      const { rid } = await sold();
+      await accounts().collect(rid, card("5000"), randomUUID());
+      const result = await returns().returnSale(
+        rid,
+        returnInput(1000n, [{ method: "card", amount: money(1000n) }]),
+      );
+      expect(result.record.debtReduction?.minorUnits).toBe(1000n);
+      expect(await debt(rid)).toBe("0");
+      await expect(
+        returns().returnSale(rid, {
+          ...returnInput(1000n, [{ method: "cash", amount: money(2000n) }]),
+          shiftId,
+          cashMovementId: randomUUID(),
+        }),
+      ).rejects.toThrow();
+    });
+    it("full return after partial payment closes exact debt refund and stock", async () => {
+      const { rid } = await sold();
+      await accounts().collect(rid, card("2501"), randomUUID());
+      const input = returnInput(3000n, [
+          { method: "card", amount: money(2501n) },
+        ]),
+        result = await returns().returnSale(rid, input);
+      expect(result.record.debtReduction?.minorUnits).toBe(3499n);
+      expect(await debt(rid)).toBe("0");
+      expect(await stock()).toBe(10000n);
+      expect((await returns().returnSale(rid, input)).replayed).toBe(true);
+    });
+    it("disabling or lowering customer limit preserves collections and historical reference", async () => {
+      const { c, rid } = await sold();
+      await customers().updateCustomer(c.id, {
+        creditEnabled: false,
+        status: "inactive",
+        creditLimit: money(1n),
+      });
+      await accounts().collect(rid, card(), randomUUID());
+      expect(await debt(rid)).toBe("5000");
+      expect((await customers().readCustomer(c.id)).sales[0]?.id).toBe(rid);
+    });
+    it("accounts ledger/audit FORCE RLS and runtime cannot change balance or original", async () => {
+      const { rid } = await sold();
+      const tables = [
+        "receivables",
+        "receivable_payments",
+        "receivable_adjustments",
+        "credit_audit",
+      ];
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::text n FROM pg_class WHERE relname=ANY($1) AND relrowsecurity AND relforcerowsecurity",
+            [tables],
+          )
+        ).rows[0]?.n,
+      ).toBe("4");
+      for (const query of [
+        "UPDATE retail.receivables SET outstanding_minor_units=0",
+        "DELETE FROM retail.receivables",
+        "INSERT INTO retail.receivable_payments(id,tenant_id,receivable_id,location_id,method,amount_minor_units,created_by,command_payload) VALUES(gen_random_uuid(),$1,$2,$3,'card',1,$4,'{}')",
+        "DELETE FROM retail.credit_audit",
+      ])
+        await expect(
+          sql(tenantA, (c) =>
+            c.query(
+              query,
+              query.includes("$1") ? [tenantA, rid, source, ownerUser] : [],
+            ),
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      expect(await debt(rid)).toBe("6000");
+    });
+    it("cashier cannot read audit or unassigned account while global summary includes other branches", async () => {
+      await allowCashier();
+      const c = await customer(6000n);
+      const otherShift = randomUUID();
+      await new PostgresCash(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).openShift({
+        id: otherShift,
+        locationId: destination,
+        openingCash: money(0n),
+      });
+      await receiveInventory(db, { ...receipt(), locationId: destination });
+      await completeSaleTransaction(
+        sales(),
+        command(c.id, 6000n, destination, otherShift),
+      );
+      expect(await accounts(cashier).list()).toHaveLength(0);
+      expect((await accounts(cashier).summary(c.id)).minorUnits).toBe("6000");
+      await expect(
+        completeSaleTransaction(
+          new PostgresSales(pool, { userId: cashier, tenantId: tenantA }),
+          command(c.id, 1n),
+        ),
+      ).rejects.toThrow();
+      expect(
+        await sql(
+          tenantA,
+          (c) => c.query("SELECT * FROM retail.credit_audit"),
+          cashier,
+        ).then((r) => r.rows),
+      ).toHaveLength(0);
+    });
+    it("simultaneous two credit sales cannot exceed customer limit", async () => {
+      const c = await customer(6000n);
+      const results = await Promise.allSettled([
+        completeSaleTransaction(sales(), command(c.id)),
+        completeSaleTransaction(sales(), command(c.id)),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect((await accounts().summary(c.id)).minorUnits).toBe("6000");
+      expect(await stock()).toBe(7000n);
+    });
+    it("concurrent distinct payments serialize and cannot overpay", async () => {
+      const { rid } = await sold();
+      const repo = new PostgresReceivables(pool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const result = await Promise.allSettled([
+        repo.collect(rid, card("4000"), randomUUID()),
+        repo.collect(rid, card("4000"), randomUUID()),
+      ]);
+      expect(result.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(await debt(rid)).toBe("2000");
+    });
+    it("concurrent same payment ID returns one commit and replay", async () => {
+      const { rid } = await sold();
+      const repo = new PostgresReceivables(pool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        }),
+        input = card();
+      const result = await Promise.all([
+        repo.collect(rid, input, randomUUID()),
+        repo.collect(rid, input, randomUUID()),
+      ]);
+      expect(result.filter((r) => r.replayed)).toHaveLength(1);
+      expect((await accounts().read(rid)).payments).toHaveLength(1);
+    });
+    it("collection and return conserve debt regardless of commit ordering", async () => {
+      const { rid } = await sold();
+      const repo = new PostgresReceivables(pool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      await Promise.all([
+        repo.collect(rid, card("1000"), randomUUID()),
+        returns().returnSale(rid, returnInput()),
+      ]);
+      const r = (await accounts().read(rid)).receivable;
+      expect(r.paidAmount.minorUnits).toBe("1000");
+      expect(r.returnedAmount.minorUnits).toBe("2000");
+      expect(r.outstandingAmount.minorUnits).toBe("3000");
+    });
+    it("IMMEDIATE constraints verify linked collection and rollback later failure", async () => {
+      const { rid } = await sold();
+      await expect(
+        sql(tenantA, async (c) => {
+          await c.query(
+            "SELECT retail.collect_receivable($1,$2,'card',1000,NULL,$1)",
+            [randomUUID(), rid],
+          );
+          await c.query("SET CONSTRAINTS ALL IMMEDIATE");
+          throw new Error("After ledger failure");
+        }),
+      ).rejects.toThrow("After ledger failure");
+      expect(await debt(rid)).toBe("6000");
+      await sql(tenantA, async (c) => {
+        await c.query(
+          "SELECT retail.collect_receivable($1,$2,'cash',1000,$3,$1)",
+          [randomUUID(), rid, shiftId],
+        );
+        await c.query("SET CONSTRAINTS ALL IMMEDIATE");
+      });
+      expect(await debt(rid)).toBe("5000");
+    });
+    it("reports separate pending/generated/collected and never double-count sale revenue", async () => {
+      const { rid } = await sold(4000n);
+      await accounts().collect(rid, card("1000"), randomUUID());
+      const report = await new PostgresReporting(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).operationalReport(reportPeriod("today"));
+      expect(report.sales.gross).toBe("6000");
+      expect(report.sales.cash).toBe("2000");
+      expect(report.credit).toEqual({
+        outstanding: "3000",
+        generated: "4000",
+        collected: "1000",
+        openAccounts: "1",
+      });
+    });
+  });
   describe("transactional sale returns", () => {
     const repo = (userId = ownerUser, tenantId = tenantA) =>
       new PostgresSaleReturns(pool, { userId, tenantId });
@@ -2367,7 +2889,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(37);
+    expect(tables.rows).toHaveLength(41);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -4973,6 +5495,8 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "sales.discount",
           "customers.read",
           "customers.write",
+          "receivables.read",
+          "receivables.pay",
           "sales.read",
           "sales.create",
           "cash.read",

@@ -38,6 +38,7 @@ export async function handleReturns(
     if (operation === "list")
       return reply({
         returns: (await repo.listReturns(sale.data)).map(returnedDto),
+        settlement: await repo.settlement(sale.data),
       });
     requireSameOrigin(request);
     const parsed = CreateSaleReturnSchema.safeParse(await jsonBody(request));

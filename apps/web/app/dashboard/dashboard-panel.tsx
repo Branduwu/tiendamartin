@@ -172,10 +172,21 @@ export default function DashboardPanel() {
         ["Efectivo", mxn(report.sales.cash)],
         ["Tarjeta", mxn(report.sales.card)],
         ["Devoluciones", mxn(report.sales.refunds)],
-        ["Cobro neto (con impuestos)", mxn(report.sales.net)],
+        ["Ventas netas (con impuestos)", mxn(report.sales.net)],
         ["Venta bruta antes de descuentos", mxn(report.sales.baseGross)],
         ["Descuentos", mxn(report.sales.discounts)],
-        ["Impuestos cobrados", mxn(report.sales.taxCollected)],
+        ["Impuestos de las ventas", mxn(report.sales.taxCollected)],
+        ...(report.credit
+          ? ([
+              [
+                "Saldo pendiente de crédito (actual)",
+                mxn(report.credit.outstanding),
+              ],
+              ["Crédito generado (período)", mxn(report.credit.generated)],
+              ["Abonos cobrados (período)", mxn(report.credit.collected)],
+              ["Cuentas pendientes (actual)", report.credit.openAccounts],
+            ] as [string, string][])
+          : []),
         ["Impuestos devueltos", mxn(report.sales.taxRefunded)],
         [
           "Venta comercial neta (sin impuestos)",
@@ -331,6 +342,13 @@ export default function DashboardPanel() {
                       </div>
                     ))}
                   </dl>
+                  {report.credit && (
+                    <p className="muted">
+                      Las ventas incluyen crédito pendiente. Los abonos son
+                      cobros del período y no se suman de nuevo a las ventas;
+                      los abonos en efectivo entran al ledger de caja.
+                    </p>
+                  )}
                   {report.sales.count === "0" &&
                     report.sales.refunds === "0" && (
                       <p className="notice">
@@ -349,9 +367,9 @@ export default function DashboardPanel() {
                       </button>
                     </div>
                     <p className="muted">
-                      Cobro neto = ventas completadas − devoluciones
+                      Ventas netas = ventas completadas − devoluciones
                       completadas, incluidos impuestos. Venta comercial neta
-                      excluye impuestos cobrados y devueltos. Las devoluciones
+                      excluye impuestos de ventas y devueltos. Las devoluciones
                       se cuentan en su fecha; puede resultar negativa. por fecha
                       de registro. Ticket promedio redondeado al centavo más
                       cercano. Producto y método seleccionan ventas completas

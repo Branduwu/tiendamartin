@@ -67,7 +67,14 @@ beforeEach(() => {
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   m.user.mockResolvedValue(id);
-  m.repo.mockReturnValue({ returnSale: m.create, listReturns: m.list });
+  m.repo.mockReturnValue({
+    returnSale: m.create,
+    listReturns: m.list,
+    settlement: async () => ({
+      outstandingAmount: { currency: "MXN", minorUnits: "0" },
+      payments: [],
+    }),
+  });
   m.create.mockResolvedValue({ record, replayed: false });
   m.list.mockResolvedValue([record]);
 });

@@ -24,6 +24,8 @@ type Row = {
   email: string | null;
   notes: string | null;
   status: "active" | "inactive";
+  credit_enabled: boolean;
+  credit_limit_minor_units: string | null;
   created_at: Date;
   last_purchase_at?: Date | null;
 };
@@ -34,6 +36,10 @@ const mapped = (r: Row): Customer =>
     name: r.name,
     status: r.status,
     createdAt: r.created_at.toISOString(),
+    creditEnabled: r.credit_enabled,
+    ...(r.credit_limit_minor_units === null
+      ? {}
+      : { creditLimit: money(integer(r.credit_limit_minor_units)) }),
     ...(r.phone === null ? {} : { phone: r.phone }),
     ...(r.email === null ? {} : { email: r.email }),
     ...(r.notes === null ? {} : { notes: r.notes }),
@@ -78,9 +84,14 @@ export class PostgresCustomers
   async createCustomer(id: string, input: CustomerFields): Promise<Customer> {
     const value = customerFields(input),
       valid = customerId(id);
+    if (
+      value.creditLimit &&
+      value.creditLimit.minorUnits > 9223372036854775807n
+    )
+      throw new RangeError("Credit limit exceeds storage range");
     return this.scope("customers.write", async (c) => {
       const r = await c.query<Row>(
-        "INSERT INTO retail.customers(id,tenant_id,name,phone,email,notes,status) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+        "INSERT INTO retail.customers(id,tenant_id,name,phone,email,notes,status,credit_enabled,credit_limit_minor_units) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
         [
           valid,
           this.tenant,
@@ -89,6 +100,8 @@ export class PostgresCustomers
           value.email ?? null,
           value.notes ?? null,
           value.status,
+          value.creditEnabled ?? false,
+          value.creditLimit?.minorUnits.toString() ?? null,
         ],
       );
       const row = r.rows[0];
@@ -114,6 +127,18 @@ export class PostgresCustomers
       const input: CustomerFields = {
         name: changes.name ?? old.name,
         status: changes.status ?? old.status,
+        creditEnabled: changes.creditEnabled ?? old.credit_enabled,
+        ...((changes.creditLimit === undefined
+          ? old.credit_limit_minor_units === null
+            ? null
+            : money(integer(old.credit_limit_minor_units))
+          : changes.creditLimit) === null
+          ? {}
+          : {
+              creditLimit:
+                changes.creditLimit ??
+                money(integer(old.credit_limit_minor_units!)),
+            }),
         ...((changes.phone === undefined ? old.phone : changes.phone) === null
           ? {}
           : {
@@ -134,9 +159,14 @@ export class PostgresCustomers
             }),
       };
       const value = customerFields(input);
+      if (
+        value.creditLimit &&
+        value.creditLimit.minorUnits > 9223372036854775807n
+      )
+        throw new RangeError("Credit limit exceeds storage range");
       const row = (
         await c.query<Row>(
-          "UPDATE retail.customers SET name=$3,phone=$4,email=$5,notes=$6,status=$7 WHERE tenant_id=$1 AND id=$2 RETURNING *",
+          "UPDATE retail.customers SET name=$3,phone=$4,email=$5,notes=$6,status=$7,credit_enabled=$8,credit_limit_minor_units=$9 WHERE tenant_id=$1 AND id=$2 RETURNING *",
           [
             this.tenant,
             valid,
@@ -145,6 +175,8 @@ export class PostgresCustomers
             value.email ?? null,
             value.notes ?? null,
             value.status,
+            value.creditEnabled ?? false,
+            value.creditLimit?.minorUnits.toString() ?? null,
           ],
         )
       ).rows[0];
@@ -172,7 +204,7 @@ export class PostgresCustomers
         id: string;
         created_at: Date;
         total_minor_units: string;
-        methods: ("cash" | "card")[];
+        methods: ("cash" | "card" | "credit")[];
         returned: string;
       }>(
         "SELECT s.id,s.created_at,s.total_minor_units,ARRAY(SELECT p.method FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id ORDER BY p.method) AS methods,(SELECT coalesce(sum(r.total_minor_units),0)::text FROM retail.sale_returns r WHERE r.tenant_id=s.tenant_id AND r.sale_id=s.id) AS returned FROM retail.sales s WHERE s.tenant_id=$1 AND s.customer_id=$2 ORDER BY s.created_at DESC,s.id DESC LIMIT 50",

@@ -129,6 +129,24 @@ it("sanitizes SQL errors without logging PII or query values", async () => {
   log.mockRestore();
 });
 it("CSV respects the same filters and neutralizes spreadsheet formulas", async () => {
+  const creditCsv = reportingCsv(
+    {
+      ...report,
+      credit: {
+        outstanding: "9007199254740993",
+        generated: "4000",
+        collected: "2000",
+        openAccounts: "1",
+      },
+    },
+    "sales",
+  );
+  expect(creditCsv).toContain(
+    '"Saldo actual por cobrar centavos MXN","9007199254740993"',
+  );
+  expect(creditCsv).toContain(
+    '"Abonos cobrados en período centavos MXN","2000"',
+  );
   const r = await handleReports(
     request("?period=custom&from=2026-10-01&to=2026-10-03"),
     "sales",

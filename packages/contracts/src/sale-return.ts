@@ -10,6 +10,9 @@ const ReturnQuantity = QuantitySchema.refine(
     BigInt(q.milliUnits) > 0n &&
     (q.unit !== "piece" || BigInt(q.milliUnits) % 1000n === 0n),
 );
+const RefundPaymentSchema = SalePaymentSchema.extend({
+  method: z.enum(["cash", "card"]),
+});
 export const CreateSaleReturnSchema = z
   .strictObject({
     id: SaleReturnIdSchema,
@@ -26,7 +29,7 @@ export const CreateSaleReturnSchema = z
       )
       .min(1)
       .max(1000),
-    refunds: z.array(SalePaymentSchema).max(2),
+    refunds: z.array(RefundPaymentSchema).max(2),
   })
   .refine(
     (v) =>
@@ -62,7 +65,8 @@ export const SaleReturnSchema = z.strictObject({
     .min(1)
     .max(1000),
   total: MoneySchema,
-  refunds: z.array(SalePaymentSchema).max(2),
+  debtReduction: MoneySchema.exactOptional(),
+  refunds: z.array(RefundPaymentSchema).max(2),
 });
 export type CreateSaleReturnDto = z.infer<typeof CreateSaleReturnSchema>;
 export type SaleReturnDto = z.infer<typeof SaleReturnSchema>;

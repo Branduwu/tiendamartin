@@ -33,15 +33,17 @@ async function loadTicket(
       memberships.find((m) => m.permissions.includes("sales.read"))?.tenantId;
     const tenant = UuidSchema.safeParse(selected);
     if (!tenant.success) throw new SaleNotFoundError();
-    const [recorded, locations, returns] = await Promise.all([
+    const [recorded, locations, returns, settlement] = await Promise.all([
       salesForUser(userId, tenant.data).readSale(id),
       inventoryForUser(userId, tenant.data).listLocations(),
       returnsForUser(userId, tenant.data).listReturns(id),
+      returnsForUser(userId, tenant.data).settlement(id),
     ]);
     return {
       recorded,
       locations,
       returns,
+      settlement,
       canReturn: memberships.some(
         (m) =>
           m.tenantId === tenant.data && m.permissions.includes("sales.return"),
@@ -78,7 +80,7 @@ export default async function TicketPage({
         <Link href="/sales">Volver a ventas</Link>
       </main>
     );
-  const { recorded, locations, returns, canReturn } = result;
+  const { recorded, locations, returns, canReturn, settlement } = result;
   const mxn = (v: bigint) => `$${minorUnitsToDecimal(v.toString())} MXN`;
   return (
     <main className="ticket">
@@ -140,8 +142,12 @@ export default async function TicketPage({
       <h3>Pagos</h3>
       {recorded.payments.map((p) => (
         <p key={p.method}>
-          {p.method === "cash" ? "Efectivo" : "Tarjeta"}:{" "}
-          {mxn(p.amount.minorUnits)}
+          {p.method === "cash"
+            ? "Efectivo"
+            : p.method === "credit"
+              ? "Crédito pendiente"
+              : "Tarjeta"}
+          : {mxn(p.amount.minorUnits)}
         </p>
       ))}
       {!recorded.payments.length && <p>Sin pago: total cero.</p>}
@@ -149,6 +155,7 @@ export default async function TicketPage({
         key={`${recorded.tenantId}/${recorded.sale.id}/${userId}`}
         recorded={storedSaleDto(recorded)}
         initial={returns.map(returnedDto)}
+        initialSettlement={settlement}
         userId={userId}
         canReturn={canReturn}
       />

@@ -19,6 +19,10 @@ export const CustomerFieldsSchema = z.strictObject({
   email: z.email().max(254).exactOptional(),
   notes: text(2000).exactOptional(),
   status: z.enum(["active", "inactive"]),
+  creditEnabled: z.boolean().exactOptional(),
+  creditLimit: MoneySchema.refine(
+    (m) => !m.minorUnits.startsWith("-"),
+  ).exactOptional(),
 });
 export const CreateCustomerSchema = CustomerFieldsSchema.extend({
   id: UuidSchema,
@@ -30,6 +34,10 @@ export const UpdateCustomerSchema = z
     phone: text(50).nullable().exactOptional(),
     email: z.email().max(254).nullable().exactOptional(),
     notes: text(2000).nullable().exactOptional(),
+    creditEnabled: z.boolean().exactOptional(),
+    creditLimit: MoneySchema.refine((m) => !m.minorUnits.startsWith("-"))
+      .nullable()
+      .exactOptional(),
   })
   .refine((v) => Object.keys(v).length > 0);
 export const CustomerSchema = CustomerFieldsSchema.extend({
@@ -46,7 +54,7 @@ export const CustomerSaleSchema = z.strictObject({
   id: UuidSchema,
   createdAt: z.iso.datetime({ offset: true }),
   total: MoneySchema,
-  paymentMethods: z.array(z.enum(["cash", "card"])).max(2),
+  paymentMethods: z.array(z.enum(["cash", "card", "credit"])).max(3),
   returnedTotal: MoneySchema,
 });
 export type CustomerDto = z.infer<typeof CustomerSchema>;

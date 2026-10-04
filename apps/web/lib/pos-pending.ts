@@ -13,7 +13,14 @@ type Recovery =
       kind: "recover";
       tenantId: string;
       command: CheckoutDto;
-      method: "cash" | "card" | "mixed";
+      method:
+        | "cash"
+        | "card"
+        | "mixed"
+        | "credit"
+        | "cash-credit"
+        | "card-credit"
+        | "mixed-credit";
       cash: string;
     };
 /** Never discard or overwrite an existing command whose outcome is uncertain. */
@@ -58,9 +65,16 @@ export function recoverPendingSale(
       tenantId: tenant.data,
       command: parsed.data,
       method:
-        parsed.data.payments.length === 2
-          ? "mixed"
-          : (parsed.data.payments[0]?.method ?? "cash"),
+        parsed.data.payments.some((p) => p.method === "credit") &&
+        parsed.data.payments.length > 1
+          ? parsed.data.payments.length === 3
+            ? "mixed-credit"
+            : parsed.data.payments.some((p) => p.method === "cash")
+              ? "cash-credit"
+              : "card-credit"
+          : parsed.data.payments.length === 2
+            ? "mixed"
+            : (parsed.data.payments[0]?.method ?? "cash"),
       cash: minorUnitsToDecimal(
         parsed.data.payments.find((p) => p.method === "cash")?.amount
           .minorUnits ?? "0",

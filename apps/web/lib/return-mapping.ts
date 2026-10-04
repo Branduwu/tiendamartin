@@ -21,10 +21,14 @@ export function returnInput(dto: CreateSaleReturnDto): SaleReturnInput {
   };
 }
 export function returnedInput(dto: SaleReturnDto): StoredSaleReturn {
+  const { debtReduction, ...rest } = dto;
   return {
-    ...dto,
+    ...rest,
     id: saleReturnId(dto.id),
     total: money(BigInt(dto.total.minorUnits)),
+    ...(debtReduction === undefined
+      ? {}
+      : { debtReduction: money(BigInt(debtReduction.minorUnits)) }),
     lines: dto.lines.map(({ refundedTax, ...l }) => ({
       ...l,
       saleLineId: productId(l.saleLineId),
@@ -46,9 +50,13 @@ export function returnedDto(record: StoredSaleReturn): SaleReturnDto {
     currency: "MXN" as const,
     minorUnits: m.minorUnits.toString(),
   });
+  const { debtReduction, ...rest } = record;
   return {
-    ...record,
+    ...rest,
     total: moneyDto(record.total),
+    ...(debtReduction === undefined
+      ? {}
+      : { debtReduction: moneyDto(debtReduction) }),
     lines: record.lines.map(({ refundedTax, ...l }) => ({
       ...l,
       quantity: {
@@ -61,7 +69,12 @@ export function returnedDto(record: StoredSaleReturn): SaleReturnDto {
         : { refundedTax: moneyDto(refundedTax) }),
     })),
     refunds: record.refunds.map((p) => ({
-      method: p.method,
+      method:
+        p.method === "credit"
+          ? (() => {
+              throw new TypeError("Credit refund forbidden");
+            })()
+          : p.method,
       amount: moneyDto(p.amount),
     })),
   };

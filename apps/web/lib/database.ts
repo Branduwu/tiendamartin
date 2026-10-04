@@ -10,6 +10,7 @@ import {
   PostgresMembers,
   PostgresPromotions,
   PostgresTaxes,
+  PostgresReceivables,
   PostgresReporting,
   PostgresCash,
   PostgresSaleReturns,
@@ -42,6 +43,8 @@ export const promotionsForUser = (userId: string, tenantId: string) =>
   new PostgresPromotions(databasePool(), { userId, tenantId });
 export const taxesForUser = (userId: string, tenantId: string) =>
   new PostgresTaxes(databasePool(), { userId, tenantId });
+export const receivablesForUser = (userId: string, tenantId: string) =>
+  new PostgresReceivables(databasePool(), { userId, tenantId });
 export const inventoryMinimumForUser = (
   userId: string,
   tenantId: string,

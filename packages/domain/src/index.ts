@@ -112,3 +112,4 @@ export * from "./customer";
 export * from "./discounts";
 
 export * from "./taxes";
+export * from "./receivable";

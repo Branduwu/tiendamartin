@@ -31,3 +31,4 @@ export {
 } from "./members";
 
 export * from "./taxes";
+export { PostgresReceivables } from "./receivables";

@@ -40,6 +40,7 @@ interface Header {
   created_by: string;
   created_at: Date;
   total_minor_units: string;
+  debt_reduction_minor_units: string;
   shift_id: string | null;
   cash_movement_id: string | null;
   command_payload: string;
@@ -84,6 +85,9 @@ export class PostgresSaleReturns
       shiftId: row.shift_id,
       cashMovementId: row.cash_movement_id,
       total: money(integer(row.total_minor_units)),
+      ...(row.debt_reduction_minor_units === "0"
+        ? {}
+        : { debtReduction: money(integer(row.debt_reduction_minor_units)) }),
       lines: Object.freeze(
         lines.rows.map((l) =>
           Object.freeze({
@@ -120,6 +124,44 @@ export class PostgresSaleReturns
     }
     return result;
   }
+  private async settledPayments(client: PoolClient, sid: string) {
+    const rows = await client.query<{
+      method: "cash" | "card";
+      amount: string;
+    }>(
+      "SELECT method,sum(amount)::text AS amount FROM (SELECT method,amount_minor_units AS amount FROM retail.sale_payments WHERE tenant_id=$1 AND sale_id=$2 AND method IN('cash','card') UNION ALL SELECT p.method,p.amount_minor_units FROM retail.receivable_payments p JOIN retail.receivables r ON r.tenant_id=p.tenant_id AND r.id=p.receivable_id WHERE r.tenant_id=$1 AND r.sale_id=$2) p GROUP BY method",
+      [this.tenant, sid],
+    );
+    return rows.rows.map((p) => ({
+      method: p.method,
+      amount: money(integer(p.amount)),
+    }));
+  }
+  async settlement(sid: string) {
+    return this.transaction("sales.read", async (client) => {
+      const id = saleId(sid);
+      if (!(await this.recorded(client, id))) throw new SaleNotFoundError();
+      const row = (
+        await client.query<{ outstanding_minor_units: string }>(
+          "SELECT outstanding_minor_units FROM retail.receivables WHERE tenant_id=$1 AND sale_id=$2",
+          [this.tenant, id],
+        )
+      ).rows[0];
+      return {
+        outstandingAmount: {
+          currency: "MXN" as const,
+          minorUnits: row?.outstanding_minor_units ?? "0",
+        },
+        payments: (await this.settledPayments(client, id)).map((p) => ({
+          method: p.method,
+          amount: {
+            currency: "MXN" as const,
+            minorUnits: p.amount.minorUnits.toString(),
+          },
+        })),
+      };
+    });
+  }
   async listReturns(sid: string) {
     return this.transaction("sales.read", async (client) => {
       const original = await this.recorded(client, saleId(sid));
@@ -147,6 +189,12 @@ export class PostgresSaleReturns
         ]);
         const original = await this.recorded(client, originalId);
         if (!original) throw new SaleNotFoundError();
+        const credit = (
+          await client.query<{ outstanding_minor_units: string }>(
+            "SELECT * FROM retail.lock_return_receivable($1)",
+            [originalId],
+          )
+        ).rows[0];
         const previous = await this.returns(client, originalId);
         const result = createSaleReturn(
           snapshot.id,
@@ -154,9 +202,12 @@ export class PostgresSaleReturns
           snapshot.lines,
           previous,
           snapshot.refunds,
+          credit === undefined
+            ? undefined
+            : money(integer(credit.outstanding_minor_units)),
         );
         assertRefundLimits(
-          original.recorded.payments,
+          await this.settledPayments(client, originalId),
           previous,
           result.refunds,
         );
@@ -185,7 +236,7 @@ export class PostgresSaleReturns
         )
           throw new TypeError("Card return has no cash movement");
         await client.query(
-          "INSERT INTO retail.sale_returns(id,tenant_id,sale_id,location_id,created_by,total_minor_units,cash_refund_minor_units,shift_id,cash_movement_id,command_payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+          "INSERT INTO retail.sale_returns(id,tenant_id,sale_id,location_id,created_by,total_minor_units,cash_refund_minor_units,shift_id,cash_movement_id,command_payload,debt_reduction_minor_units) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
           [
             result.id,
             this.tenant,
@@ -197,6 +248,7 @@ export class PostgresSaleReturns
             snapshot.shiftId ?? null,
             snapshot.cashMovementId ?? null,
             payload,
+            bigintParameter(result.debtReduction?.minorUnits ?? 0n),
           ],
         );
         for (const line of [...result.lines].sort((a, b) =>
