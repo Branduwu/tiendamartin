@@ -52,6 +52,8 @@ export async function purchasingApi<T>(
 }
 export type PurchasingTenant = {
   tenantId: string;
+  tenantName?: string;
+  tenantStatus?: "active" | "suspended";
   permissions: readonly string[];
 };
 export function usePurchasingCompany(

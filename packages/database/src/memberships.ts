@@ -5,6 +5,8 @@ import type { MemberRole } from "./members";
 
 export type TenantMembership = Readonly<{
   tenantId: string;
+  tenantName: string;
+  tenantStatus: "active" | "suspended";
   userId: string;
   displayName: string;
   role: MemberRole;
@@ -31,6 +33,8 @@ export async function listTenantMemberships(
     );
     const result = await client.query<{
       tenant_id: string;
+      tenant_name: string;
+      tenant_status: "active" | "suspended";
       user_id: string;
       display_name: string;
       role: MemberRole;
@@ -38,11 +42,11 @@ export async function listTenantMemberships(
       can_write: boolean;
       permissions: string[];
     }>(
-      `SELECT m.tenant_id,m.user_id,coalesce(m.display_name,CASE m.role WHEN 'owner' THEN 'Propietario' WHEN 'admin' THEN 'Administrador' WHEN 'cashier' THEN 'Cajero' ELSE 'Encargado de inventario' END) AS display_name,m.role,
+      `SELECT m.tenant_id,t.display_name AS tenant_name,t.status AS tenant_status,m.user_id,coalesce(m.display_name,CASE m.role WHEN 'owner' THEN 'Propietario' WHEN 'admin' THEN 'Administrador' WHEN 'cashier' THEN 'Cajero' ELSE 'Encargado de inventario' END) AS display_name,m.role,
       m.role IN ('owner','admin') AS all_locations,
       EXISTS (SELECT 1 FROM retail.role_permissions p WHERE p.role=m.role AND p.permission='products.write') AS can_write,
       ARRAY(SELECT p.permission FROM retail.role_permissions p WHERE p.role=m.role ORDER BY p.permission) AS permissions
-      FROM retail.tenant_memberships m WHERE m.user_id=$1 AND m.status='active' ORDER BY m.tenant_id`,
+      FROM retail.tenant_memberships m JOIN retail.membership_tenants() t ON t.tenant_id=m.tenant_id WHERE m.user_id=$1 AND m.status='active' ORDER BY m.tenant_id`,
       [user],
     );
     const memberships: TenantMembership[] = [];
@@ -58,6 +62,8 @@ export async function listTenantMemberships(
       );
       memberships.push({
         tenantId: row.tenant_id,
+        tenantName: row.tenant_name,
+        tenantStatus: row.tenant_status,
         userId: row.user_id,
         displayName: row.display_name,
         role: row.role,

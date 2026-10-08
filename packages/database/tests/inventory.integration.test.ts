@@ -66,6 +66,7 @@ import {
 import {
   PostgresInventory,
   PostgresBusiness,
+  PostgresPlatform,
   PostgresMembers,
   PostgresInventoryMinimum,
   PostgresPurchasing,
@@ -481,6 +482,69 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(await admin.query("SELECT to_regclass('retail.platform_admins') t"))
+        .rows[0].t
+    ) {
+      // Disposable test-only Auth identity directory, not a production Auth replacement.
+      await admin.query(
+        "CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY,email text); ALTER TABLE auth.users ENABLE ROW LEVEL SECURITY; ALTER TABLE auth.users FORCE ROW LEVEL SECURITY",
+      );
+      await admin.query(
+        await readFile(
+          new URL("../migrations/022_platform.sql", import.meta.url),
+          "utf8",
+        ),
+      );
+    }
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regprocedure('retail.platform_existing_auth_users()') AS fn",
+        )
+      ).rows[0].fn
+    ) {
+      // Reproduce Supabase's SET-only owner membership without superuser power.
+      await admin.query(
+        "CREATE ROLE smartretail_migration_test NOLOGIN NOSUPERUSER NOBYPASSRLS; GRANT smartretail_owner TO smartretail_migration_test WITH INHERIT FALSE,SET TRUE; GRANT USAGE ON SCHEMA auth,retail TO smartretail_migration_test; GRANT SELECT(id,email) ON auth.users TO smartretail_migration_test",
+      );
+      const migration = await admin.connect();
+      try {
+        await migration.query(
+          "SET SESSION AUTHORIZATION smartretail_migration_test",
+        );
+        await migration.query(
+          await readFile(
+            new URL(
+              "../migrations/023_platform_auth_directory.sql",
+              import.meta.url,
+            ),
+            "utf8",
+          ),
+        );
+        expect(
+          (
+            await migration.query(
+              "SELECT has_function_privilege('smartretail_app','retail.platform_existing_auth_users()','EXECUTE') AS historical_public",
+            )
+          ).rows[0].historical_public,
+        ).toBe(true);
+      } finally {
+        await migration.query("ROLLBACK");
+        await migration.query("RESET SESSION AUTHORIZATION");
+        migration.release();
+      }
+    }
+    await admin.query(
+      await readFile(
+        new URL("../migrations/024_platform_helper_acl.sql", import.meta.url),
+        "utf8",
+      ),
+    );
+    // Reproduce the managed schema restriction, independently of column grants.
+    await admin.query(
+      "REVOKE USAGE ON SCHEMA auth FROM smartretail_platform_guard",
+    );
     pool = new Pool({
       host: config.host,
       port: config.port,
@@ -502,7 +566,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2919,7 +2983,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(47);
+    expect(tables.rows).toHaveLength(49);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -3495,10 +3559,8 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
               source,
             ]),
           null,
-        ).then((r) => {
-          expect(r.rowCount).toBe(0);
-        }),
-      ).resolves.toBeUndefined();
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
     });
     it("missing tenant GUC fails closed even with a valid user", async () => {
       expect(
@@ -6815,6 +6877,469 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       });
     });
   });
+  describe("TASK031 platform administration", () => {
+    const platform = () => new PostgresPlatform(apiPool, outsiderUser);
+    const command = () => ({
+      id: randomUUID(),
+      displayName: "SMOKE company",
+      ownerUserId: adminUser,
+    });
+    beforeEach(async () => {
+      await admin.query(
+        "INSERT INTO auth.users(id,email) VALUES($1,'owner@example.test'),($2,'admin@example.test'),($3,'platform@example.test') ON CONFLICT(id) DO NOTHING",
+        [ownerUser, adminUser, outsiderUser],
+      );
+      await admin.query(
+        "INSERT INTO retail.platform_admins(user_id) VALUES($1)",
+        [outsiderUser],
+      );
+    });
+    it("platform privilege is separate from tenant owner and normal roles", async () => {
+      expect(await platform().access()).toBe(true);
+      for (const u of [ownerUser, adminUser, clerkUser])
+        expect(await new PostgresPlatform(apiPool, u).access()).toBe(false);
+    });
+    it("normal owner cannot enumerate companies or Auth identities", async () => {
+      const owner = new PostgresPlatform(apiPool, ownerUser);
+      await expect(owner.list()).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(owner.users()).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("lists tenant metadata and correct totals without granting commercial access", async () => {
+      const r = await platform().list();
+      expect(r.summary).toEqual({ total: 2, active: 2, suspended: 0 });
+      expect(r.companies).toHaveLength(2);
+      await expect(
+        new PostgresInventory(apiPool, {
+          userId: outsiderUser,
+          tenantId: tenantA,
+        }).listProducts(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("returns only company profile, members and branches in detail", async () => {
+      const r = await platform().detail(tenantA);
+      expect(r.members).toHaveLength(3);
+      expect(r.branches).toHaveLength(2);
+      expect(r).not.toHaveProperty("sales");
+      expect(r).not.toHaveProperty("products");
+    });
+    it("creates company owner and initial profile atomically with two audit events", async () => {
+      const c = command(),
+        correlation = randomUUID();
+      await platform().create(c, correlation);
+      expect((await platform().detail(c.id)).members).toEqual([
+        { name: "Propietario", role: "owner", status: "active" },
+      ]);
+      expect((await platform().detail(c.id)).profile?.businessName).toBe(
+        c.displayName,
+      );
+      const a = (
+        await admin.query(
+          "SELECT action,user_id,correlation_id FROM retail.platform_audit WHERE tenant_id=$1 ORDER BY action",
+          [c.id],
+        )
+      ).rows;
+      expect(a).toEqual([
+        {
+          action: "company.created",
+          user_id: outsiderUser,
+          correlation_id: correlation,
+        },
+        {
+          action: "owner.assigned",
+          user_id: outsiderUser,
+          correlation_id: correlation,
+        },
+      ]);
+    });
+    it("rejects nonexistent Auth owner without partial tenant or audit", async () => {
+      const c = { ...command(), ownerUserId: randomUUID() };
+      await expect(platform().create(c, randomUUID())).rejects.toThrow();
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.tenants WHERE tenant_id=$1",
+            [c.id],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (await admin.query("SELECT count(*)::int n FROM retail.platform_audit"))
+          .rows[0].n,
+      ).toBe(0);
+    });
+    it("retries same creation once and rejects changed owner or name", async () => {
+      const c = command();
+      await platform().create(c, randomUUID());
+      await platform().create(c, randomUUID());
+      expect(
+        (await admin.query("SELECT count(*)::int n FROM retail.platform_audit"))
+          .rows[0].n,
+      ).toBe(2);
+      await expect(
+        platform().create({ ...c, ownerUserId: ownerUser }, randomUUID()),
+      ).rejects.toThrow();
+      await expect(
+        platform().create({ ...c, displayName: "Different" }, randomUUID()),
+      ).rejects.toThrow();
+    });
+    it("a replayed reactivation cannot undo a later suspension", async () => {
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      const command = randomUUID();
+      await platform().changeStatus(tenantA, "active", randomUUID(), command);
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      await platform().changeStatus(tenantA, "active", randomUUID(), command);
+      expect((await platform().detail(tenantA)).status).toBe("suspended");
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.platform_audit WHERE command_id=$1",
+            [command],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("a no-op command is durable and cannot reactivate on delayed replay", async () => {
+      const command = randomUUID();
+      await platform().changeStatus(tenantA, "active", randomUUID(), command);
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      await platform().changeStatus(tenantA, "active", randomUUID(), command);
+      expect((await platform().detail(tenantA)).status).toBe("suspended");
+      expect(
+        (
+          await admin.query(
+            "SELECT metadata->>'changed' changed FROM retail.platform_audit WHERE command_id=$1",
+            [command],
+          )
+        ).rows[0].changed,
+      ).toBe("false");
+    });
+    it("rejects changed status or tenant for an existing command identity", async () => {
+      const command = randomUUID();
+      await platform().changeStatus(
+        tenantA,
+        "suspended",
+        randomUUID(),
+        command,
+      );
+      await expect(
+        platform().changeStatus(tenantA, "active", randomUUID(), command),
+      ).rejects.toThrow();
+      await expect(
+        platform().changeStatus(tenantB, "suspended", randomUUID(), command),
+      ).rejects.toThrow();
+      expect((await platform().detail(tenantB)).status).toBe("active");
+    });
+    it("direct SQL cash lock, pending suspension and adapter lock have one ordering", async () => {
+      const direct = await pool.connect(),
+        operation = await pool.connect();
+      try {
+        for (const c of [direct, operation]) {
+          await c.query("BEGIN");
+          await c.query("SET LOCAL statement_timeout='5s'");
+          await c.query(
+            "SELECT set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true)",
+            [tenantA, ownerUser],
+          );
+        }
+        await direct.query("SELECT retail.lock_cash_shift($1)", [shiftId]);
+        const suspension = platform().changeStatus(
+          tenantA,
+          "suspended",
+          randomUUID(),
+        );
+        const waitForBlocked = async (pid?: number) => {
+          for (let n = 0; n < 100; n++) {
+            const q = await admin.query(
+              "SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0 AND ($1::int IS NULL OR pid=$1)",
+              [pid ?? null],
+            );
+            if (q.rows[0].n > 0) return;
+            await new Promise((r) => setTimeout(r, 10));
+          }
+          throw Error("Expected blocking not observed");
+        };
+        await waitForBlocked();
+        const pid = (await operation.query("SELECT pg_backend_pid() pid"))
+          .rows[0].pid;
+        const blocked = operation.query(
+          "SELECT retail.lock_membership(),retail.lock_cash_shift($1)",
+          [shiftId],
+        );
+        const result = blocked.then(
+          async () => {
+            await operation.query("COMMIT");
+            return { code: "completed" };
+          },
+          async (e: unknown) => {
+            await operation.query("ROLLBACK");
+            return e;
+          },
+        );
+        await waitForBlocked(pid);
+        await direct.query("COMMIT");
+        await suspension;
+        expect(await result).toEqual(
+          expect.objectContaining({
+            code: expect.stringMatching(/^(completed|42501)$/),
+          }),
+        );
+        expect((await platform().detail(tenantA)).status).toBe("suspended");
+      } finally {
+        await direct.query("ROLLBACK");
+        await operation.query("ROLLBACK");
+        direct.release();
+        operation.release();
+      }
+    });
+    it("suspends and reactivates idempotently with durable audit", async () => {
+      const commandId = randomUUID();
+      await platform().changeStatus(
+        tenantA,
+        "suspended",
+        randomUUID(),
+        commandId,
+      );
+      await platform().changeStatus(
+        tenantA,
+        "suspended",
+        randomUUID(),
+        commandId,
+      );
+      expect((await platform().list()).summary).toEqual({
+        total: 2,
+        active: 1,
+        suspended: 1,
+      });
+      await platform().changeStatus(tenantA, "active", randomUUID());
+      expect(
+        (
+          await admin.query(
+            "SELECT action FROM retail.platform_audit ORDER BY created_at",
+          )
+        ).rows.map((r) => r.action),
+      ).toEqual(["company.suspended", "company.reactivated"]);
+    });
+    it("blocks reads and writes of a suspended company's ordinary owner", async () => {
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      await expect(db.listProducts()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        db.createProduct(
+          fixtureProduct(productId(randomUUID()), "SUSPENDED", null),
+        ),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        new PostgresBusiness(apiPool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        }).read(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("preserves stock, cash and product history and restores normal access", async () => {
+      const counts = async () =>
+        (
+          await admin.query(
+            "SELECT (SELECT count(*) FROM retail.inventory_movements)::int movements,(SELECT count(*) FROM retail.cash_register_shifts)::int shifts,(SELECT count(*) FROM retail.products)::int products",
+          )
+        ).rows[0];
+      const before = await counts();
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      expect(await counts()).toEqual(before);
+      await platform().changeStatus(tenantA, "active", randomUUID());
+      expect(await stock()).toBe(10000n);
+      expect(await db.listProducts()).toHaveLength(1);
+    });
+    it("discovery returns only own memberships and reports suspension explicitly", async () => {
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      const rows = await listTenantMemberships(apiPool, clerkUser);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        tenantId: tenantA,
+        tenantStatus: "suspended",
+      });
+      expect(await listTenantMemberships(apiPool, outsiderUser)).toEqual([]);
+    });
+    it("tenant A cannot query tenant B by forged tenant context", async () => {
+      await expect(
+        new PostgresBusiness(apiPool, {
+          userId: clerkUser,
+          tenantId: tenantB,
+        }).read(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      expect(
+        await new PostgresPlatform(apiPool, clerkUser).tenantStatus(tenantB),
+      ).toBeUndefined();
+    });
+    it("normal SQL cannot grant platform privileges, change status, delete company or write audit", async () => {
+      for (const statement of [
+        "INSERT INTO retail.platform_admins(user_id) VALUES('550e8400-e29b-41d4-a716-446655440020')",
+        "UPDATE retail.tenants SET status='suspended'",
+        "DELETE FROM retail.tenants",
+        "INSERT INTO retail.platform_audit(tenant_id,user_id,action,correlation_id,metadata) VALUES('550e8400-e29b-41d4-a716-446655440001','550e8400-e29b-41d4-a716-446655440020','company.created',gen_random_uuid(),'{}')",
+        "TRUNCATE retail.platform_audit",
+      ])
+        await expect(
+          sql(tenantA, (c) => c.query(statement)),
+        ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("audit cannot be updated or deleted even by platform runtime", async () => {
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      for (const s of [
+        "UPDATE retail.platform_audit SET metadata='{}'",
+        "DELETE FROM retail.platform_audit",
+      ])
+        await expect(
+          sql(tenantA, (c) => c.query(s), outsiderUser),
+        ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("Auth directory exposes only id/email and runtime cannot query auth.users directly", async () => {
+      const users = await platform().users("admin@example");
+      expect(users).toEqual([{ id: adminUser, email: "admin@example.test" }]);
+      await expect(
+        sql(tenantA, (c) => c.query("SELECT id,email FROM auth.users")),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(
+          tenantA,
+          (c) => c.query("SELECT * FROM retail.platform_existing_auth_users()"),
+          outsiderUser,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      const guard = await admin.connect();
+      try {
+        await guard.query("BEGIN");
+        await guard.query("SET LOCAL ROLE smartretail_platform_guard");
+        await guard.query("SELECT set_config('app.user_id',$1,true)", [
+          ownerUser,
+        ]);
+        expect(
+          (
+            await guard.query(
+              "SELECT * FROM retail.platform_existing_auth_users()",
+            )
+          ).rows,
+        ).toEqual([]);
+        expect(
+          (
+            await guard.query(
+              "SELECT has_schema_privilege(current_user,'auth','USAGE') allowed",
+            )
+          ).rows[0].allowed,
+        ).toBe(false);
+      } finally {
+        await guard.query("ROLLBACK");
+        guard.release();
+      }
+    });
+    it("inactive platform administrator cannot access or mutate platform", async () => {
+      await admin.query(
+        "UPDATE retail.platform_admins SET active=false WHERE user_id=$1",
+        [outsiderUser],
+      );
+      expect(await platform().access()).toBe(false);
+      await expect(
+        platform().changeStatus(tenantA, "suspended", randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("unknown company and invalid pagination fail without changes", async () => {
+      await expect(platform().detail(randomUUID())).rejects.toThrow();
+      await expect(
+        platform().changeStatus(randomUUID(), "suspended", randomUUID()),
+      ).rejects.toThrow();
+      await expect(platform().list(0)).rejects.toThrow();
+      await expect(platform().users("", 0)).rejects.toThrow();
+    });
+    it("direct runtime writes are blocked after suspension even outside the adapter", async () => {
+      await platform().changeStatus(tenantA, "suspended", randomUUID());
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "INSERT INTO retail.products(tenant_id,id,name,sku,unit,currency,purchase_cost,sale_price,status) VALUES($1,$2,'Denied','DENIED','piece','MXN',0,0,'active')",
+            [tenantA, randomUUID()],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      expect(
+        (await sql(tenantA, (c) => c.query("SELECT * FROM retail.products")))
+          .rowCount,
+      ).toBe(0);
+    });
+    async function waiting(blocker: number) {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const r = await admin.query<{ waiting: boolean }>(
+          "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND $1::int=ANY(pg_blocking_pids(pid))) waiting",
+          [blocker],
+        );
+        if (r.rows[0]!.waiting) return true;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return false;
+    }
+    it("suspension waits for an authorized operation transaction to finish", async () => {
+      const c = await pool.connect();
+      let pending: Promise<unknown> | undefined;
+      try {
+        await c.query("BEGIN");
+        await c.query(
+          "SELECT set_config('app.user_id',$1,true),set_config('app.tenant_id',$2,true)",
+          [ownerUser, tenantA],
+        );
+        await c.query("SELECT retail.lock_membership()");
+        const pid = (await c.query("SELECT pg_backend_pid() pid")).rows[0].pid;
+        let done = false;
+        pending = platform()
+          .changeStatus(tenantA, "suspended", randomUUID())
+          .finally(() => {
+            done = true;
+          });
+        expect(await waiting(pid)).toBe(true);
+        expect(done).toBe(false);
+        await c.query("COMMIT");
+        await pending;
+        expect((await platform().detail(tenantA)).status).toBe("suspended");
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+        if (pending) await pending;
+      }
+    });
+    it("an operation waiting on suspension rechecks committed tenant state", async () => {
+      const c = await pool.connect();
+      let pending: Promise<boolean> | undefined;
+      try {
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.user_id',$1,true)", [
+          outsiderUser,
+        ]);
+        await c.query(
+          "SELECT retail.platform_company_status($1,'suspended',$2,$2)",
+          [tenantA, randomUUID()],
+        );
+        const pid = (await c.query("SELECT pg_backend_pid() pid")).rows[0].pid;
+        let done = false;
+        pending = db
+          .createProduct(fixtureProduct(productId(randomUUID()), "WAIT", null))
+          .then(
+            () => true,
+            () => false,
+          )
+          .finally(() => {
+            done = true;
+          });
+        expect(await waiting(pid)).toBe(true);
+        expect(done).toBe(false);
+        await c.query("COMMIT");
+        expect(await pending).toBe(false);
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+        if (pending) await pending;
+      }
+    });
+  });
+
   describe("TASK030 business and branch settings", () => {
     const repo = (userId = ownerUser, tenantId = tenantA) =>
       new PostgresBusiness(apiPool, { userId, tenantId });

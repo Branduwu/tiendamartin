@@ -36,3 +36,5 @@ export { PostgresReceivables } from "./receivables";
 export { PostgresPayables } from "./payables";
 
 export { PostgresBusiness } from "./business";
+
+export { PostgresPlatform } from "./platform";

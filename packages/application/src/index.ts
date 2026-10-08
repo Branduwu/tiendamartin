@@ -66,3 +66,5 @@ export * from "./reporting";
 export * from "./inventory-minimum";
 
 export * from "./business";
+
+export * from "./platform";

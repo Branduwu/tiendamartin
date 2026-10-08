@@ -96,3 +96,7 @@ export const payablesForUser = (userId: string, tenantId: string) =>
 
 export const businessForUser = (userId: string, tenantId: string) =>
   new PostgresBusiness(databasePool(), { userId, tenantId });
+
+import { PostgresPlatform } from "@smartretail/database";
+export const platformForUser = (userId: string) =>
+  new PostgresPlatform(databasePool(), userId);

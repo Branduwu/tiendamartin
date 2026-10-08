@@ -265,9 +265,13 @@ function CompanySettings({ tenant }: { tenant: string }) {
           setError("");
         }
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (!c.signal.aborted)
-          setError("No pudimos consultar la configuración. Reintenta.");
+          setError(
+            e instanceof Error
+              ? e.message
+              : "No pudimos consultar la configuración. Reintenta.",
+          );
       });
     return () => c.abort();
   }, [tenant, revision]);
@@ -346,7 +350,8 @@ export default function BusinessPanel() {
               >
                 {company.tenants.map((t, i) => (
                   <option key={t.tenantId} value={t.tenantId}>
-                    {"Empresa " + (i + 1)}
+                    {t.tenantName ?? "Empresa " + (i + 1)}
+                    {t.tenantStatus === "suspended" ? " (Suspendida)" : ""}
                   </option>
                 ))}
               </select>

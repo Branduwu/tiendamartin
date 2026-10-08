@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import PlatformContext from "./platform-context";
 import { useEffect, useState } from "react";
 const pages = [
   ["/settings/business", "Negocio"],
@@ -46,6 +47,7 @@ export default function AppNavigation({
   const visiblePermissions = permissions ?? discovered;
   return (
     <nav className="app-nav" aria-label="Principal">
+      <PlatformContext />
       {pages
         .filter(([href]) => {
           const required: Record<string, string> = {

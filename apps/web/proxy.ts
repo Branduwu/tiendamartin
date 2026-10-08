@@ -1,5 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { UuidSchema } from "@smartretail/contracts";
+import { SUSPENDED_COMPANY_MESSAGE } from "@smartretail/application";
+import { platformForUser } from "./lib/database";
 import { authConfiguration } from "./lib/supabase/config";
 
 export async function proxy(request: NextRequest) {
@@ -19,7 +22,29 @@ export async function proxy(request: NextRequest) {
       },
     });
     try {
-      await client.auth.getClaims();
+      const { data, error } = await client.auth.getClaims();
+      const actor = UuidSchema.safeParse(data?.claims.sub),
+        tenant = UuidSchema.safeParse(request.headers.get("x-tenant-id"));
+      if (
+        !error &&
+        actor.success &&
+        tenant.success &&
+        request.nextUrl.pathname.startsWith("/api/v1/") &&
+        !request.nextUrl.pathname.startsWith("/api/v1/platform") &&
+        request.nextUrl.pathname !== "/api/v1/tenants"
+      ) {
+        if (
+          (await platformForUser(actor.data).tenantStatus(tenant.data)) ===
+          "suspended"
+        ) {
+          const denied = NextResponse.json(
+            { error: SUSPENDED_COMPANY_MESSAGE },
+            { status: 403, headers: { "Cache-Control": "private, no-store" } },
+          );
+          response.cookies.getAll().forEach((c) => denied.cookies.set(c));
+          return denied;
+        }
+      }
     } catch {
       /* Each protected handler verifies again and denies access. */
     }
@@ -30,6 +55,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/login",
+    "/platform/:path*",
+    "/api/v1/:path*",
     "/products/:path*",
     "/inventory/:path*",
     "/pos/:path*",

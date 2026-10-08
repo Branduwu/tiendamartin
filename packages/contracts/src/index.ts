@@ -97,3 +97,10 @@ export {
   type BusinessProfileDto,
   type BranchSettingsInputDto,
 } from "./business";
+
+export {
+  CreateCompanySchema,
+  CompanyStatusSchema,
+  PlatformPageSchema,
+  PlatformUsersQuerySchema,
+} from "./platform";
