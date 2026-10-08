@@ -11,7 +11,12 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("./auth", () => ({ verifiedUserId: m.user }));
-vi.mock("./database", () => ({ reportingForUser: m.repo }));
+vi.mock("./database", () => ({
+  reportingForUser: m.repo,
+  businessForUser: () => ({
+    read: async () => ({ profile: { timezone: "America/Mexico_City" } }),
+  }),
+}));
 import { handleReports } from "./reporting-api";
 import { reportingCsv } from "./reporting-csv";
 const user = "550e8400-e29b-41d4-a716-446655440020",
@@ -82,6 +87,23 @@ beforeEach(() => {
   });
   m.query.mockResolvedValue(report);
   m.options.mockResolvedValue({ locations: [] });
+});
+it("exports escaped business, branch and period context without spreadsheet formulas", () => {
+  const csv = reportingCsv(
+    {
+      ...report,
+      context: {
+        businessName: '=HYPERLINK("bad")',
+        branchName: "Central, norte",
+        locale: "es-MX",
+        currency: "MXN",
+      },
+    },
+    "sales",
+  );
+  expect(csv).toContain('"Negocio","\'=HYPERLINK(""bad"")"');
+  expect(csv).toContain('"Sucursal","Central, norte"');
+  expect(csv).toContain('"Periodo","2026-10-01","2026-10-03"');
 });
 it("requires session before any database composition", async () => {
   m.user.mockResolvedValue(null);

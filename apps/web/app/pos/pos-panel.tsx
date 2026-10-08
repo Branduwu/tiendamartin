@@ -1,4 +1,5 @@
 "use client";
+import BusinessContext from "../components/business-context";
 import PosCustomerSelector from "../components/pos-customer-selector";
 import PosCredit from "../components/pos-credit";
 import PosDiscounts, { type PosPriceQuote } from "../components/pos-discounts";
@@ -754,11 +755,14 @@ export default function PosPanel({ userId }: { userId: string }) {
         <div className="heading">
           <div>
             <h1>Punto de venta</h1>
-            <p className="company-context">
-              Cajero actual:{" "}
-              {tenants.find((t) => t.tenantId === tenant)?.displayName ??
-                "Cajero registrado"}
-            </p>
+            <BusinessContext
+              tenantId={tenant}
+              locationId={location}
+              userName={
+                tenants.find((t) => t.tenantId === tenant)?.displayName ??
+                "Cajero registrado"
+              }
+            />
             <p className="muted">
               Selecciona productos, revisa el pago y confirma la venta.
             </p>

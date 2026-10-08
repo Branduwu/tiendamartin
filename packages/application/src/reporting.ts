@@ -29,7 +29,13 @@ export type SalesMetrics = Readonly<{
 }>;
 export type OperationalReport = Readonly<{
   filters: ReportFilters;
-  timezone: "America/Mexico_City";
+  timezone: string;
+  context?: {
+    businessName: string;
+    branchName: string;
+    locale: string;
+    currency: "MXN";
+  };
   today: string;
   todaySales: SalesMetrics;
   sales: SalesMetrics;
@@ -88,9 +94,12 @@ export type ReportOptions = Record<
 >;
 
 export const REPORT_TIMEZONE = "America/Mexico_City";
-export function mexicoDate(now = new Date()): string {
+export function mexicoDate(
+  now = new Date(),
+  timezone: string = REPORT_TIMEZONE,
+): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: REPORT_TIMEZONE,
+    timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -134,8 +143,9 @@ export function reportFilters(input: ReportFilters): ReportFilters {
 export function reportPeriod(
   period: "today" | "7d" | "30d",
   now = new Date(),
+  timezone: string = REPORT_TIMEZONE,
 ): Pick<ReportFilters, "from" | "to"> {
-  const to = mexicoDate(now);
+  const to = mexicoDate(now, timezone);
   const days =
     period === "today"
       ? 0

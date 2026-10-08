@@ -1,3 +1,4 @@
+import { PostgresBusiness } from "@smartretail/database";
 import "server-only";
 import type { InventoryMinimumRepository } from "@smartretail/application";
 import {
@@ -92,3 +93,6 @@ export const membersForUser = (
 
 export const payablesForUser = (userId: string, tenantId: string) =>
   new PostgresPayables(databasePool(), { userId, tenantId });
+
+export const businessForUser = (userId: string, tenantId: string) =>
+  new PostgresBusiness(databasePool(), { userId, tenantId });

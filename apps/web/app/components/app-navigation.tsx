@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 const pages = [
+  ["/settings/business", "Negocio"],
   ["/dashboard", "Dashboard"],
   ["/products", "Productos"],
   ["/inventory", "Inventario"],
@@ -48,6 +49,7 @@ export default function AppNavigation({
       {pages
         .filter(([href]) => {
           const required: Record<string, string> = {
+            "/settings/business": "settings.manage",
             "/dashboard": "reports.read",
             "/products": "products.read",
             "/inventory": "inventory.read",

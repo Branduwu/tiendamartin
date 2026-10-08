@@ -8,11 +8,19 @@ export function reportingCsv(
   report: OperationalReport,
   kind: "sales" | "products",
 ): string {
+  const context = report.context
+    ? [
+        ["Negocio", report.context.businessName],
+        ["Sucursal", report.context.branchName],
+        ["Periodo", report.filters.from, report.filters.to],
+        ["Zona horaria", report.timezone],
+      ]
+    : [];
   const rows =
     kind === "sales"
       ? [
           [
-            "Fecha México",
+            "Fecha local",
             "Ventas centavos MXN",
             "Cantidad",
             "Ticket promedio centavos MXN",
@@ -99,6 +107,8 @@ export function reportingCsv(
           ]),
         ];
   return (
-    "\uFEFF" + rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n"
+    "\uFEFF" +
+    [...context, ...rows].map((r) => r.map(cell).join(",")).join("\r\n") +
+    "\r\n"
   );
 }

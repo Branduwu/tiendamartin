@@ -7,7 +7,7 @@ import {
   reportPeriod,
 } from "@smartretail/application";
 import { verifiedUserId } from "./auth";
-import { reportingForUser } from "./database";
+import { reportingForUser, businessForUser } from "./database";
 import { InvalidInput, reply } from "./api";
 import { reportingCsv } from "./reporting-csv";
 export async function handleReports(
@@ -31,10 +31,15 @@ export async function handleReports(
     const parsed = ReportQuerySchema.safeParse(Object.fromEntries(params));
     if (!parsed.success) throw new InvalidInput();
     const { period, from, to, ...rest } = parsed.data;
+    const { profile } = await businessForUser(userId, tenant.data).read();
     const filters = reportFilters({
       ...(period === "custom" && from && to
         ? { from, to }
-        : reportPeriod(period === "custom" ? "today" : period)),
+        : reportPeriod(
+            period === "custom" ? "today" : period,
+            new Date(),
+            profile.timezone,
+          )),
       ...(rest.locationId ? { locationId: rest.locationId } : {}),
       ...(rest.productId ? { productId: rest.productId } : {}),
       ...(rest.supplierId ? { supplierId: rest.supplierId } : {}),

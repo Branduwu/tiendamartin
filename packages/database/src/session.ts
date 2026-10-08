@@ -4,7 +4,7 @@ export async function assertApplicationRole(client: PoolClient): Promise<void> {
   const roles = await client.query<{ safe: boolean }>(`SELECT
     NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN (current_user,session_user) AND (rolsuper OR rolbypassrls))
     AND NOT pg_has_role(current_user,'smartretail_owner','MEMBER')
-    AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('smartretail_members_guard','smartretail_discounts_guard','smartretail_credit_guard','smartretail_payables_guard') AND pg_has_role(current_user,oid,'MEMBER'))
+    AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN ('smartretail_members_guard','smartretail_discounts_guard','smartretail_credit_guard','smartretail_payables_guard','smartretail_settings_guard') AND pg_has_role(current_user,oid,'MEMBER'))
     AND pg_has_role(current_user,'smartretail_app','MEMBER')
     AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='retail' AND pg_has_role(current_user,c.relowner,'MEMBER')) AS safe`);

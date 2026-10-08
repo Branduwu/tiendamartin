@@ -1,5 +1,4 @@
 "use client";
-import { formatDateTime } from "../../components/presentation";
 import { useEffect, useRef, useState } from "react";
 import { completeSale, quantity, quoteSaleReturn } from "@smartretail/domain";
 import {
@@ -51,12 +50,16 @@ export default function ReturnPanel({
   initialSettlement,
   userId,
   canReturn,
+  timezone,
+  locale,
 }: {
   recorded: StoredSaleDto;
   initial: SaleReturnDto[];
   initialSettlement: Settlement;
   userId: string;
   canReturn: boolean;
+  timezone: string;
+  locale: string;
 }) {
   const tenant = recorded.tenantId,
     url = `/api/v1/sales/${recorded.sale.id}/returns`,
@@ -353,7 +356,13 @@ export default function ReturnPanel({
             <span className="sale-id">{r.id}</span>
           </details>
           <p className="sale-id print-only">Devolución: {r.id}</p>
-          <time dateTime={r.createdAt}>{formatDateTime(r.createdAt)}</time>
+          <time dateTime={r.createdAt}>
+            {new Date(r.createdAt).toLocaleString(locale, {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: timezone,
+            })}
+          </time>
           {r.lines.map((l) => (
             <p key={l.productId}>
               {recorded.sale.lines.find((s) => s.productId === l.productId)

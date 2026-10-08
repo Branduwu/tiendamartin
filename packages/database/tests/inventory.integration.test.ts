@@ -40,6 +40,8 @@ import {
   reconcileInventory,
   InventoryIdempotencyConflictError,
   PermissionDeniedError,
+  defaultBusinessProfile,
+  BusinessSettingsNotFoundError,
   updateProduct,
   completeSaleTransaction,
   SaleIdempotencyConflictError,
@@ -63,6 +65,7 @@ import {
 } from "@smartretail/application";
 import {
   PostgresInventory,
+  PostgresBusiness,
   PostgresMembers,
   PostgresInventoryMinimum,
   PostgresPurchasing,
@@ -465,6 +468,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       password: config.appPassword,
       max: 1,
     });
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.business_profiles') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/021_business_settings.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     pool = new Pool({
       host: config.host,
       port: config.port,
@@ -486,7 +502,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2903,7 +2919,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(45);
+    expect(tables.rows).toHaveLength(47);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -5097,6 +5113,65 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         refunds: [{ method: "cash", amount: money(2000n) }],
       });
     }
+    it("TASK030 groups exact sale and return totals across a 25-hour configured local day", async () => {
+      const times = [
+        "2026-11-01T06:59:59Z",
+        "2026-11-01T07:00:00Z",
+        "2026-11-02T07:59:59Z",
+        "2026-11-02T08:00:00Z",
+      ];
+      let sold: Awaited<ReturnType<typeof sell>> | undefined;
+      try {
+        for (const time of times) {
+          await admin.query(
+            "ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT '" +
+              time +
+              "'::timestamptz",
+          );
+          const sale = await sell();
+          sold ??= sale;
+        }
+        await admin.query(
+          "ALTER TABLE retail.sale_returns ALTER COLUMN created_at SET DEFAULT '2026-11-02T07:00:00Z'::timestamptz",
+        );
+        await returned(sold!.sale.id);
+      } finally {
+        await admin.query(
+          "ALTER TABLE retail.sales ALTER COLUMN created_at SET DEFAULT clock_timestamp()",
+        );
+        await admin.query(
+          "ALTER TABLE retail.sale_returns ALTER COLUMN created_at SET DEFAULT clock_timestamp()",
+        );
+      }
+      const business = new PostgresBusiness(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      await business.save(
+        { ...defaultBusinessProfile, timezone: "America/Tijuana" },
+        randomUUID(),
+      );
+      const tijuana = await query({ from: "2026-11-01", to: "2026-11-01" });
+      expect(tijuana.sales).toMatchObject({
+        gross: "4000",
+        refunds: "2000",
+        net: "2000",
+        count: "2",
+      });
+      expect(tijuana.days[0]).toMatchObject({
+        date: "2026-11-01",
+        gross: "4000",
+        refunds: "2000",
+      });
+      await business.save(defaultBusinessProfile, randomUUID());
+      const mexico = await query({ from: "2026-11-01", to: "2026-11-01" });
+      expect(mexico.sales).toMatchObject({
+        gross: "4000",
+        refunds: "0",
+        net: "4000",
+        count: "2",
+      });
+    });
     it("empty history yields exact zero summaries and bounded daily rows", async () => {
       const r = await query();
       expect(r.sales).toMatchObject({
@@ -6740,6 +6815,354 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       });
     });
   });
+  describe("TASK030 business and branch settings", () => {
+    const repo = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresBusiness(apiPool, { userId, tenantId });
+    const profile = {
+      ...defaultBusinessProfile,
+      businessName: "Business A",
+      tradeName: "Tienda",
+      phone: "5551234567",
+      email: "shop@example.test",
+      website: "https://example.test",
+      ticketFooter: "Gracias",
+    };
+    const branch = {
+      displayName: "Sucursal central",
+      address: "Calle 1",
+      phone: "5551112222",
+      receiptHeader: "Bienvenido",
+      status: "active" as const,
+    };
+    const checkout = (): SaleCheckoutInput => {
+      const draft = addSaleProduct(
+        createSaleDraft(randomUUID()),
+        fixtureProduct(),
+        quantity("piece", 1000n),
+      );
+      return {
+        draft,
+        locationId: source,
+        shiftId,
+        payments: [{ method: "card", amount: draft.total }],
+        movements: [{ productId: product, movementId: randomUUID() }],
+      };
+    };
+    it("returns explicit operational defaults without inserting on read", async () => {
+      expect((await repo().read()).profile).toEqual(defaultBusinessProfile);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.business_profiles",
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    it("upserts one profile per tenant and preserves tenant isolation", async () => {
+      await repo().save(profile, randomUUID());
+      await repo().save({ ...profile, tradeName: "Actualizado" }, randomUUID());
+      expect((await repo().read()).profile.tradeName).toBe("Actualizado");
+      expect((await repo(ownerUser, tenantB).read()).profile).toEqual(
+        defaultBusinessProfile,
+      );
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.business_profiles",
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("allows admin and denies clerk, inactive member and outsider writes", async () => {
+      await repo(adminUser).save(profile, randomUUID());
+      for (const user of [clerkUser, outsiderUser])
+        await expect(
+          repo(user).save(profile, randomUUID()),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, adminUser],
+      );
+      await expect(repo(adminUser).read()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("lets an assigned clerk read identity but not manage settings", async () => {
+      await repo().save(profile, randomUUID());
+      const r = await repo(clerkUser).read();
+      expect(r.profile.businessName).toBe(profile.businessName);
+      expect(r.branches).toHaveLength(2);
+      await expect(
+        repo(clerkUser).saveBranch(source, branch, randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("changes branch presentation without changing code, identity or stock", async () => {
+      const before = (await repo().read()).branches.find(
+        (b) => b.id === source,
+      )!;
+      await repo().saveBranch(source, branch, randomUUID());
+      const after = (await repo().read()).branches.find(
+        (b) => b.id === source,
+      )!;
+      expect(after).toMatchObject({
+        ...branch,
+        id: before.id,
+        name: before.name,
+        code: before.code,
+      });
+      expect(await stock()).toBe(10000n);
+      expect(
+        (await db.listLocations()).find((b) => b.id === source)?.name,
+      ).toBe(branch.displayName);
+    });
+    it("rejects missing and foreign branch references", async () => {
+      await expect(
+        repo().saveBranch(randomUUID(), branch, randomUUID()),
+      ).rejects.toBeInstanceOf(BusinessSettingsNotFoundError);
+      const foreign = randomUUID();
+      await other.createLocation(
+        createInventoryLocation({
+          id: inventoryLocationId(foreign),
+          name: inventoryLocationName("Other"),
+          code: inventoryLocationCode("OTHER"),
+          status: "active",
+        }),
+      );
+      await expect(
+        repo().saveBranch(foreign, branch, randomUUID()),
+      ).rejects.toBeInstanceOf(BusinessSettingsNotFoundError);
+    });
+    it("enforces direct SQL RLS and fixed currency constraints", async () => {
+      await expect(
+        sql(
+          tenantA,
+          (c) =>
+            c.query(
+              "INSERT INTO retail.business_profiles(tenant_id,business_name) VALUES($1,'Denied')",
+              [tenantA],
+            ),
+          clerkUser,
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(tenantA, async (c) => {
+          await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+            randomUUID(),
+          ]);
+          await c.query(
+            "INSERT INTO retail.business_profiles(tenant_id,business_name,currency) VALUES($1,'Bad','USD')",
+            [tenantA],
+          );
+        }),
+      ).rejects.toMatchObject({ code: "23514" });
+      expect(
+        (await admin.query("SELECT count(*)::int n FROM retail.settings_audit"))
+          .rows[0].n,
+      ).toBe(0);
+    });
+    it("audits actor and correlation with field names only and rejects direct ledger writes", async () => {
+      const correlation = randomUUID();
+      await repo().save(profile, correlation);
+      await repo().save(profile, randomUUID());
+      const rows = (await admin.query("SELECT * FROM retail.settings_audit"))
+        .rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        actor_user_id: ownerUser,
+        tenant_id: tenantA,
+        correlation_id: correlation,
+        operation: "business.settings",
+      });
+      expect(rows[0].fields).toContain("phone");
+      expect(JSON.stringify(rows[0].fields)).not.toContain(profile.phone);
+      await expect(
+        sql(tenantA, (c) => c.query("DELETE FROM retail.settings_audit")),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "INSERT INTO retail.settings_audit(tenant_id,actor_user_id,operation,entity_id,correlation_id,fields) VALUES($1,$2,'business.settings',$1,$3,'[]')",
+            [tenantA, ownerUser, randomUUID()],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("keeps completed sale and cash history after deactivation", async () => {
+      const sales = new PostgresSales(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const input = checkout();
+      await completeSaleTransaction(sales, input);
+      await repo().saveBranch(
+        source,
+        { ...branch, status: "inactive" },
+        randomUUID(),
+      );
+      expect((await sales.readSale(input.draft.id)).sale.total.minorUnits).toBe(
+        2000n,
+      );
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.cash_register_shifts WHERE id=$1",
+            [shiftId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("rejects new sales and shifts at inactive branches without moving stock", async () => {
+      await repo().saveBranch(
+        source,
+        { ...branch, status: "inactive" },
+        randomUUID(),
+      );
+      await expect(
+        completeSaleTransaction(
+          new PostgresSales(apiPool, { userId: ownerUser, tenantId: tenantA }),
+          checkout(),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        new PostgresCash(apiPool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        }).openShift({
+          id: randomUUID(),
+          locationId: source,
+          openingCash: money(0n),
+        }),
+      ).rejects.toThrow();
+      expect(await stock()).toBe(10000n);
+      expect(
+        (await admin.query("SELECT count(*)::int n FROM retail.sales")).rows[0]
+          .n,
+      ).toBe(0);
+    });
+    it("rejects new purchases and receipts after deactivation and preserves ordered history", async () => {
+      const purchases = new PostgresPurchasing(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      });
+      const supplier = await purchases.createSupplier(randomUUID(), {
+        name: "Supplier",
+        status: "active",
+      });
+      const input = {
+        id: randomUUID(),
+        supplierId: supplier.id,
+        locationId: source,
+        lines: [
+          {
+            productId: product,
+            quantityOrdered: quantity("piece", 1000n),
+            unitCost: money(100n),
+          },
+        ],
+      };
+      await purchases.createPurchase(input);
+      await purchases.changePurchase(input.id, "order");
+      await repo().saveBranch(
+        source,
+        { ...branch, status: "inactive" },
+        randomUUID(),
+      );
+      await expect(
+        purchases.createPurchase({ ...input, id: randomUUID() }),
+      ).rejects.toThrow();
+      await expect(
+        purchases.receivePurchaseOrder(input.id, {
+          id: randomUUID(),
+          lines: [{ productId: product, quantity: quantity("piece", 1000n) }],
+        }),
+      ).rejects.toThrow();
+      expect((await purchases.readPurchase(input.id)).status).toBe("ordered");
+      expect(await stock()).toBe(10000n);
+    });
+    it("uses configured timezone and branch/business report context without changing totals", async () => {
+      await repo().save(
+        { ...profile, timezone: "America/Tijuana" },
+        randomUUID(),
+      );
+      await repo().saveBranch(source, branch, randomUUID());
+      const report = await new PostgresReporting(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).operationalReport({
+        ...reportPeriod("today", new Date(), "America/Tijuana"),
+        locationId: source,
+      });
+      expect(report.timezone).toBe("America/Tijuana");
+      expect(report.context).toMatchObject({
+        businessName: "Tienda",
+        branchName: branch.displayName,
+        currency: "MXN",
+      });
+      expect(report.sales.gross).toBe("0");
+    });
+  });
+
+  describe("TASK030 branch serialization", () => {
+    it("waits for deactivation to commit before allowing a new shift", async () => {
+      const c = await admin.connect();
+      let pending: Promise<boolean> | undefined;
+      try {
+        await c.query("BEGIN");
+        await c.query(
+          "UPDATE retail.inventory_locations SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+          [tenantA, destination],
+        );
+        const blocker = (
+          await c.query<{ pid: number }>("SELECT pg_backend_pid() pid")
+        ).rows[0]!.pid;
+        let settled = false;
+        pending = new PostgresCash(apiPool, {
+          userId: ownerUser,
+          tenantId: tenantA,
+        })
+          .openShift({
+            id: randomUUID(),
+            locationId: destination,
+            openingCash: money(0n),
+          })
+          .then(
+            () => true,
+            () => false,
+          )
+          .finally(() => {
+            settled = true;
+          });
+        let waiting = false;
+        const deadline = Date.now() + 5000;
+        while (!waiting && Date.now() < deadline) {
+          waiting = (
+            await admin.query<{ waiting: boolean }>(
+              "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE usename='smartretail_api' AND wait_event_type='Lock' AND $1::int=ANY(pg_blocking_pids(pid))) waiting",
+              [blocker],
+            )
+          ).rows[0]!.waiting;
+          if (!waiting) await new Promise((r) => setTimeout(r, 25));
+        }
+        expect(waiting).toBe(true);
+        expect(settled).toBe(false);
+        await c.query("COMMIT");
+        expect(await pending).toBe(false);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int n FROM retail.cash_register_shifts WHERE location_id=$1",
+              [destination],
+            )
+          ).rows[0].n,
+        ).toBe(0);
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+        if (pending) await pending;
+      }
+    });
+  });
+
   describe("TASK029 payables and expenses", () => {
     const financial = (userId = ownerUser, tenantId = tenantA) =>
       new PostgresPayables(apiPool, { userId, tenantId });

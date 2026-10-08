@@ -90,3 +90,10 @@ export * from "./taxes";
 export * from "./receivable";
 
 export * from "./payables";
+
+export {
+  BusinessProfileSchema,
+  BranchSettingsSchema,
+  type BusinessProfileDto,
+  type BranchSettingsInputDto,
+} from "./business";

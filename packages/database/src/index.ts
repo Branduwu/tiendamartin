@@ -34,3 +34,5 @@ export * from "./taxes";
 export { PostgresReceivables } from "./receivables";
 
 export { PostgresPayables } from "./payables";
+
+export { PostgresBusiness } from "./business";

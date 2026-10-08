@@ -1,3 +1,4 @@
+import { readBusinessProfile } from "./business";
 import { PostgresInventory } from "./database";
 import {
   productId,
@@ -21,18 +22,18 @@ const saleScope = `s.tenant_id=$1 AND ($4::uuid IS NULL OR s.location_id=$4)
  AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id AND l.product_id=$5))
  AND ($6::uuid IS NULL OR s.customer_id=$6)
  AND ($7::text IS NULL OR EXISTS(SELECT 1 FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method=$7))`;
-const bounds = `b AS (SELECT $2::date::timestamp AT TIME ZONE 'America/Mexico_City' AS start,
- ($3::date+1)::timestamp AT TIME ZONE 'America/Mexico_City' AS finish,
- $8::date::timestamp AT TIME ZONE 'America/Mexico_City' AS today,
- ($8::date+1)::timestamp AT TIME ZONE 'America/Mexico_City' AS tomorrow)`;
+const bounds = `b AS (SELECT $2::date::timestamp AT TIME ZONE $11::text AS start,
+ ($3::date+1)::timestamp AT TIME ZONE $11::text AS finish,
+ $8::date::timestamp AT TIME ZONE $11::text AS today,
+ ($8::date+1)::timestamp AT TIME ZONE $11::text AS tomorrow)`;
 const salesSql = `WITH ${bounds},
- ss AS (SELECT s.*, (s.created_at AT TIME ZONE 'America/Mexico_City')::date AS day,
+ ss AS (SELECT s.*, (s.created_at AT TIME ZONE $11::text)::date AS day,
  coalesce((SELECT sum(p.amount_minor_units) FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method='cash'),0) AS cash,
  coalesce((SELECT sum(p.amount_minor_units) FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method='card'),0) AS card,
  coalesce((SELECT sum(l.discount_minor_units) FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id),0) AS discounts,
  coalesce((SELECT sum(l.tax_amount_minor_units) FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id),0) AS tax
  FROM retail.sales s,b WHERE ${saleScope} AND ((s.created_at>=b.start AND s.created_at<b.finish) OR (s.created_at>=b.today AND s.created_at<b.tomorrow))),
- rr AS (SELECT r.*, (r.created_at AT TIME ZONE 'America/Mexico_City')::date AS day,
+ rr AS (SELECT r.*, (r.created_at AT TIME ZONE $11::text)::date AS day,
  coalesce((SELECT sum(l.refunded_tax_minor_units) FROM retail.sale_return_lines l WHERE l.tenant_id=r.tenant_id AND l.return_id=r.id),0) AS tax
  FROM retail.sale_returns r JOIN retail.sales s ON s.tenant_id=r.tenant_id AND s.id=r.sale_id CROSS JOIN b
  WHERE ${saleScope.replace("AND ($4::uuid IS NULL OR s.location_id=$4)", "")} AND ($4::uuid IS NULL OR r.location_id=$4)
@@ -188,7 +189,7 @@ export class PostgresReporting
         ] as const)
           result[key] = (
             await c.query<{ id: string; name: string }>(
-              `SELECT id,name FROM retail.${table} WHERE tenant_id=$1 ORDER BY name,id LIMIT 100`,
+              `SELECT id,${key === "locations" ? "coalesce(display_name,name)" : "name"} AS name FROM retail.${table} WHERE tenant_id=$1 ORDER BY name,id LIMIT 100`,
               [this.tenant],
             )
           ).rows;
@@ -198,12 +199,21 @@ export class PostgresReporting
     );
   }
   async operationalReport(input: ReportFilters): Promise<OperationalReport> {
-    const filters = reportFilters(input),
-      today = mexicoDate();
+    const filters = reportFilters(input);
     return this.transaction(
       "reports.read",
       async (client) => {
         await client.query("SET LOCAL statement_timeout='5s'");
+        const profile = await readBusinessProfile(client, this.tenant),
+          today = mexicoDate(new Date(), profile.timezone);
+        const branchName = filters.locationId
+          ? (
+              await client.query<{ name: string }>(
+                "SELECT coalesce(display_name,name) AS name FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2",
+                [this.tenant, filters.locationId],
+              )
+            ).rows[0]?.name
+          : "Todas las sucursales";
         // Reject missing/foreign references rather than silently filtering them.
         for (const [table, id] of [
           ["inventory_locations", filters.locationId],
@@ -233,12 +243,13 @@ export class PostgresReporting
           today,
           null, // Reserved placeholder; minima are persisted per product/location.
           filters.supplierId ?? null,
+          profile.timezone,
         ];
         // Each query has its own placeholder subset; trim trailing values only.
         const query = (sql: string) =>
           sql.replace(
             "WITH ",
-            "WITH input AS (SELECT $1::uuid,$2::date,$3::date,$4::uuid,$5::uuid,$6::uuid,$7::text,$8::date,$9::numeric,$10::uuid), ",
+            "WITH input AS (SELECT $1::uuid,$2::date,$3::date,$4::uuid,$5::uuid,$6::uuid,$7::text,$8::date,$9::numeric,$10::uuid,$11::text), ",
           );
         const sales = (
           await client.query<SalesMetrics & { key: string }>(
@@ -316,7 +327,13 @@ export class PostgresReporting
         });
         return {
           filters,
-          timezone: "America/Mexico_City",
+          timezone: profile.timezone,
+          context: {
+            businessName: profile.tradeName ?? profile.businessName,
+            branchName: branchName ?? "Sucursal",
+            locale: profile.locale,
+            currency: profile.currency,
+          },
           today,
           todaySales: metrics(daily),
           sales: metrics(summary),

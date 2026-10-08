@@ -300,7 +300,7 @@ export class PostgresInventory
   async listLocations(): Promise<readonly InventoryLocation[]> {
     return this.transaction("locations.read", async (client) => {
       const result = await client.query<LocationRow>(
-        "SELECT * FROM retail.inventory_locations WHERE tenant_id=$1 ORDER BY name,id",
+        "SELECT id,code,coalesce(display_name,name) AS name,status FROM retail.inventory_locations WHERE tenant_id=$1 ORDER BY coalesce(display_name,name),id",
         [this.tenant],
       );
       return result.rows.map(locationFromRow);

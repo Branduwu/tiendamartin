@@ -1,4 +1,4 @@
-import { formatDateTime } from "../../components/presentation";
+import TicketIdentity from "../../components/ticket-identity";
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { SaleIdSchema, UuidSchema } from "@smartretail/contracts";
@@ -9,6 +9,7 @@ import {
 import { verifiedUserId } from "../../../lib/auth";
 import {
   salesForUser,
+  businessForUser,
   tenantsForUser,
   inventoryForUser,
   returnsForUser,
@@ -33,14 +34,17 @@ async function loadTicket(
       memberships.find((m) => m.permissions.includes("sales.read"))?.tenantId;
     const tenant = UuidSchema.safeParse(selected);
     if (!tenant.success) throw new SaleNotFoundError();
-    const [recorded, locations, returns, settlement] = await Promise.all([
-      salesForUser(userId, tenant.data).readSale(id),
-      inventoryForUser(userId, tenant.data).listLocations(),
-      returnsForUser(userId, tenant.data).listReturns(id),
-      returnsForUser(userId, tenant.data).settlement(id),
-    ]);
+    const [recorded, locations, returns, settlement, business] =
+      await Promise.all([
+        salesForUser(userId, tenant.data).readSale(id),
+        inventoryForUser(userId, tenant.data).listLocations(),
+        returnsForUser(userId, tenant.data).listReturns(id),
+        returnsForUser(userId, tenant.data).settlement(id),
+        businessForUser(userId, tenant.data).read(),
+      ]);
     return {
       recorded,
+      business,
       locations,
       returns,
       settlement,
@@ -80,7 +84,8 @@ export default async function TicketPage({
         <Link href="/sales">Volver a ventas</Link>
       </main>
     );
-  const { recorded, locations, returns, canReturn, settlement } = result;
+  const { recorded, business, locations, returns, canReturn, settlement } =
+    result;
   const mxn = (v: bigint) => `$${minorUnitsToDecimal(v.toString())} MXN`;
   return (
     <main className="ticket">
@@ -88,7 +93,16 @@ export default async function TicketPage({
         <Link href="/sales">Volver a ventas</Link>
         <PrintButton />
       </nav>
-      <h1>SmartRetail</h1>
+      <TicketIdentity
+        profile={business.profile}
+        {...(business.branches.find((b) => b.id === recorded.locationId)
+          ? {
+              branch: business.branches.find(
+                (b) => b.id === recorded.locationId,
+              )!,
+            }
+          : {})}
+      />
       <h2>Ticket de venta</h2>
       <p className="badge active">Venta original</p>
       <p>Cliente: {recorded.customerName ?? "Público general"}</p>
@@ -102,7 +116,14 @@ export default async function TicketPage({
       <p className="sale-id">Venta: {recorded.sale.id}</p>
       <p>
         <time dateTime={recorded.createdAt}>
-          {formatDateTime(recorded.createdAt)}
+          {new Date(recorded.createdAt).toLocaleString(
+            business.profile.locale,
+            {
+              dateStyle: "medium",
+              timeStyle: "short",
+              timeZone: business.profile.timezone,
+            },
+          )}
         </time>
       </p>
       <p>
@@ -158,7 +179,12 @@ export default async function TicketPage({
         initialSettlement={settlement}
         userId={userId}
         canReturn={canReturn}
+        timezone={business.profile.timezone}
+        locale={business.profile.locale}
       />
+      {business.profile.ticketFooter && (
+        <p className="ticket-footer">{business.profile.ticketFooter}</p>
+      )}
       <p className="muted">
         Comprobante básico de venta. No es un comprobante fiscal.
       </p>

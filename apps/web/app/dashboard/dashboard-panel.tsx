@@ -158,7 +158,7 @@ export default function DashboardPanel() {
     }
   }
   const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Mexico_City",
+    timeZone: report?.timezone ?? "America/Mexico_City",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -224,6 +224,11 @@ export default function DashboardPanel() {
         <div className="heading">
           <div>
             <h1>Dashboard</h1>
+            {report?.context && (
+              <p className="company-context">
+                {report.context.businessName} · {report.context.branchName}
+              </p>
+            )}
             <p className="muted">
               Ventas y operación de tu empresa, en un solo lugar.
             </p>
@@ -335,7 +340,7 @@ export default function DashboardPanel() {
                 <div className="actions">
                   <button disabled={exporting}>Aplicar filtros</button>
                   <span className="muted">
-                    Fechas de México · máximo 366 días
+                    Fechas de la zona configurada · máximo 366 días
                   </span>
                 </div>
               </form>
@@ -398,7 +403,7 @@ export default function DashboardPanel() {
                       aria-label="Resumen diario desplazable"
                     >
                       <table className="data-table">
-                        <caption>Resumen diario en México</caption>
+                        <caption>Resumen diario local</caption>
                         <thead>
                           <tr>
                             {[
