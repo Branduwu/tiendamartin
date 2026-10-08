@@ -187,6 +187,21 @@ export default function DashboardPanel() {
               ["Cuentas pendientes (actual)", report.credit.openAccounts],
             ] as [string, string][])
           : []),
+        ...(report.financial
+          ? ([
+              ["Cuentas por pagar (actual)", mxn(report.financial.outstanding)],
+              ["Gastos registrados (per?odo)", mxn(report.financial.expenses)],
+              [
+                "Pagos a proveedores (per?odo)",
+                mxn(report.financial.supplierPayments),
+              ],
+              ["Efectivo por gastos", mxn(report.financial.expenseCashOut)],
+              [
+                "Efectivo por proveedores",
+                mxn(report.financial.supplierCashOut),
+              ],
+            ] as [string, string][])
+          : []),
         ["Impuestos devueltos", mxn(report.sales.taxRefunded)],
         [
           "Venta comercial neta (sin impuestos)",

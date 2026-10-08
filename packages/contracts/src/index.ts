@@ -88,3 +88,5 @@ export { SaleQuoteSchema } from "./checkout";
 
 export * from "./taxes";
 export * from "./receivable";
+
+export * from "./payables";

@@ -62,7 +62,9 @@ export function usePurchasingCompany(
     | "reports.read"
     | "promotions.read"
     | "taxes.manage"
-    | "receivables.read",
+    | "receivables.read"
+    | "payables.read"
+    | "expenses.read",
   preferred?: string,
 ) {
   const [tenants, setTenants] = useState<PurchasingTenant[]>([]),

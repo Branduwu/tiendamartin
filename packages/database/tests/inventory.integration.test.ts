@@ -78,6 +78,7 @@ import {
   PostgresPromotions,
   PostgresTaxes,
   PostgresReceivables,
+  PostgresPayables,
 } from "../src/index";
 
 const configPath = process.env.SMARTRETAIL_PG_TEST_CONFIG;
@@ -436,6 +437,19 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "utf8",
         ),
       );
+    if (
+      !(
+        await admin.query(
+          "SELECT to_regclass('retail.payables') IS NOT NULL AS exists",
+        )
+      ).rows[0]?.exists
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/020_payables_expenses.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     const provision = await admin.query<{ command: string }>(
       "SELECT format('ALTER ROLE smartretail_api LOGIN PASSWORD %L',$1::text) AS command",
       [config.appPassword],
@@ -472,7 +486,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -2889,7 +2903,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(41);
+    expect(tables.rows).toHaveLength(45);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);
@@ -5497,6 +5511,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
           "customers.write",
           "receivables.read",
           "receivables.pay",
+          "expenses.read",
           "sales.read",
           "sales.create",
           "cash.read",
@@ -6723,6 +6738,455 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         rolsuper: false,
         rolbypassrls: false,
       });
+    });
+  });
+  describe("TASK029 payables and expenses", () => {
+    const financial = (userId = ownerUser, tenantId = tenantA) =>
+      new PostgresPayables(apiPool, { userId, tenantId });
+    const buying = () =>
+      new PostgresPurchasing(apiPool, { userId: ownerUser, tenantId: tenantA });
+    const cash = () =>
+      new PostgresCash(apiPool, { userId: ownerUser, tenantId: tenantA });
+    async function order(receive = true, cost = 1000n) {
+      const b = buying(),
+        supplier = await b.createSupplier(randomUUID(), {
+          name: "Supplier",
+          status: "active",
+        }),
+        id = randomUUID();
+      await b.createPurchase({
+        id,
+        supplierId: supplier.id,
+        locationId: source,
+        lines: [
+          {
+            productId: product,
+            quantityOrdered: quantity("piece", 3000n),
+            unitCost: money(cost),
+          },
+        ],
+      });
+      await b.changePurchase(id, "order");
+      if (receive)
+        await b.receivePurchaseOrder(id, {
+          id: randomUUID(),
+          lines: [{ productId: product, quantity: quantity("piece", 3000n) }],
+        });
+      return { id, supplier, b };
+    }
+    const payment = (amount = 1000n, id = randomUUID()) => ({
+      id,
+      method: "card" as const,
+      amount: money(amount),
+    });
+    const expense = (
+      method: "cash" | "card" | "bank" = "card",
+      amount = 500n,
+    ) => ({
+      id: randomUUID(),
+      category: "servicios" as const,
+      description: "SMOKE expense",
+      method,
+      amount: money(amount),
+      locationId: source,
+      ...(method === "cash" ? { shiftId } : {}),
+    });
+    async function fund(amount = 5000n) {
+      await cash().moveCash({
+        id: randomUUID(),
+        shiftId,
+        type: "cash_in",
+        amount: money(amount),
+        reason: "SMOKE funding",
+      });
+    }
+    async function ledger() {
+      return (
+        await admin.query("SELECT count(*)::int n FROM retail.payables_audit")
+      ).rows[0].n;
+    }
+    it("creates exact open payable once from completed purchase", async () => {
+      const o = await order();
+      const d = await financial().read(o.id);
+      expect(d.payable.originalAmount.minorUnits).toBe("3000");
+      expect(d.payable.status).toBe("open");
+      expect(await ledger()).toBe(1);
+    });
+    it("partial receipt defers payable until fully received and retry adds none", async () => {
+      const o = await order(false);
+      const part = {
+        id: randomUUID(),
+        lines: [{ productId: product, quantity: quantity("piece", 1000n) }],
+      };
+      await o.b.receivePurchaseOrder(o.id, part);
+      expect(await financial().list()).toEqual([]);
+      const last = {
+        id: randomUUID(),
+        lines: [{ productId: product, quantity: quantity("piece", 2000n) }],
+      };
+      await o.b.receivePurchaseOrder(o.id, last);
+      await o.b.receivePurchaseOrder(o.id, last);
+      expect(await financial().list()).toHaveLength(1);
+    });
+    it("zero-cost purchase has paid zero account", async () => {
+      const o = await order(true, 0n);
+      expect((await financial().read(o.id)).payable.status).toBe("paid");
+    });
+    it("partial card payment updates exact projection without cash", async () => {
+      const o = await order();
+      await financial().pay(o.id, payment(), randomUUID());
+      const d = await financial().read(o.id);
+      expect(d.payable.paidAmount.minorUnits).toBe("1000");
+      expect(d.payable.outstandingAmount.minorUnits).toBe("2000");
+      expect(d.payable.status).toBe("partially_paid");
+      expect((await cash().currentShift(source))?.expectedCash.minorUnits).toBe(
+        0n,
+      );
+      for (let i = 0; i < 101; i++)
+        await financial().pay(o.id, payment(1n), randomUUID());
+      const first = await financial().read(o.id);
+      expect(first.payments).toHaveLength(100);
+      const rest = await financial().read(o.id, first.payments.at(-1)!.id);
+      expect(rest.payments).toHaveLength(2);
+      expect(
+        new Set([...first.payments, ...rest.payments].map((p) => p.id)).size,
+      ).toBe(102);
+      const supplierFirst = await financial().supplierSummary(o.supplier.id);
+      const supplierRest = await financial().supplierSummary(
+        o.supplier.id,
+        supplierFirst.payments.at(-1)!.id,
+      );
+      expect(supplierRest.payments).toHaveLength(2);
+    });
+    it("full bank payment settles immediately", async () => {
+      const o = await order();
+      await financial().pay(
+        o.id,
+        { ...payment(3000n), method: "bank" },
+        randomUUID(),
+      );
+      expect((await financial().read(o.id)).payable.status).toBe("paid");
+    });
+    it("overpayment leaves account payment audit unchanged", async () => {
+      const o = await order();
+      await expect(
+        financial().pay(o.id, payment(3001n), randomUUID()),
+      ).rejects.toThrow();
+      expect((await financial().read(o.id)).payments).toEqual([]);
+      expect(await ledger()).toBe(1);
+    });
+    it("same payment replay after paid does not duplicate", async () => {
+      const o = await order(),
+        p = payment(3000n);
+      const concurrent = await Promise.all([
+        financial().pay(o.id, p, randomUUID()),
+        financial().pay(o.id, p, randomUUID()),
+      ]);
+      expect(concurrent.filter((r) => r.replayed)).toHaveLength(1);
+      expect((await financial().pay(o.id, p, randomUUID())).replayed).toBe(
+        true,
+      );
+      expect((await financial().read(o.id)).payments).toHaveLength(1);
+      expect(await ledger()).toBe(2);
+    });
+    it("same payment changed payload conflicts", async () => {
+      const o = await order(),
+        p = payment();
+      await financial().pay(o.id, p, randomUUID());
+      await expect(
+        financial().pay(o.id, { ...p, method: "bank" }, randomUUID()),
+      ).rejects.toThrow();
+      expect((await financial().read(o.id)).payments).toHaveLength(1);
+    });
+    it("concurrent payments serialize and prevent overpayment", async () => {
+      const o = await order();
+      const r = await Promise.allSettled([
+        financial().pay(o.id, payment(2000n), randomUUID()),
+        financial().pay(o.id, payment(2000n), randomUUID()),
+      ]);
+      expect(r.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+      expect(
+        (await financial().read(o.id)).payable.outstandingAmount.minorUnits,
+      ).toBe("1000");
+      await fund(1500n);
+      const cashRace = await Promise.allSettled([
+        financial().pay(
+          o.id,
+          { ...payment(1000n), method: "cash", shiftId },
+          randomUUID(),
+        ),
+        financial().createExpense(expense("cash", 1000n), randomUUID()),
+      ]);
+      expect(cashRace.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect((await cash().currentShift(source))?.expectedCash.minorUnits).toBe(
+        500n,
+      );
+    });
+    it("cash supplier payment creates one exact cash_out", async () => {
+      const o = await order();
+      await fund();
+      const p = { ...payment(), method: "cash" as const, shiftId };
+      await financial().pay(o.id, p, randomUUID());
+      await financial().pay(o.id, p, randomUUID());
+      expect((await cash().currentShift(source))?.expectedCash.minorUnits).toBe(
+        4000n,
+      );
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.cash_movements WHERE payable_payment_id=$1",
+            [p.id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("insufficient cash rolls back whole supplier payment", async () => {
+      const o = await order();
+      await expect(
+        financial().pay(
+          o.id,
+          { ...payment(), method: "cash", shiftId },
+          randomUUID(),
+        ),
+      ).rejects.toThrow();
+      expect(
+        (await financial().read(o.id)).payable.outstandingAmount.minorUnits,
+      ).toBe("3000");
+      expect(await ledger()).toBe(1);
+    });
+    it("cash shift from another location rejected", async () => {
+      const o = await order();
+      const foreign = randomUUID();
+      await cash().openShift({
+        id: foreign,
+        locationId: destination,
+        openingCash: money(5000n),
+      });
+      await expect(
+        financial().pay(
+          o.id,
+          { ...payment(), method: "cash", shiftId: foreign },
+          randomUUID(),
+        ),
+      ).rejects.toThrow();
+      expect((await financial().read(o.id)).payments).toHaveLength(0);
+    });
+    it("inactive supplier preserves payable and permits settlement", async () => {
+      const o = await order();
+      const otherSupplier = await o.b.createSupplier(randomUUID(), {
+        name: "Other supplier",
+        status: "active",
+      });
+      async function draftBatch(supplier: string) {
+        const ids = Array.from({ length: 100 }, () => randomUUID());
+        await sql(tenantA, async (c) => {
+          await c.query("SELECT set_config('app.correlation_id',$1,true)", [
+            randomUUID(),
+          ]);
+          await c.query(
+            "INSERT INTO retail.purchase_orders(id,tenant_id,supplier_id,location_id,created_by) SELECT id,$2,$3,$4,$5 FROM unnest($1::uuid[]) id",
+            [ids, tenantA, supplier, source, ownerUser],
+          );
+          await c.query(
+            "INSERT INTO retail.purchase_order_lines(tenant_id,purchase_id,product_id,unit,quantity_ordered,unit_cost) SELECT $2,id,$3,'piece',1000,1 FROM unnest($1::uuid[]) id",
+            [ids, tenantA, product],
+          );
+        });
+      }
+      await draftBatch(otherSupplier.id);
+      expect(
+        (await financial().supplierSummary(o.supplier.id)).purchases,
+      ).toHaveLength(1);
+      await draftBatch(o.supplier.id);
+      const history = await financial().supplierSummary(o.supplier.id);
+      expect(history.purchases).toHaveLength(100);
+      const older = await financial().supplierSummary(
+        o.supplier.id,
+        undefined,
+        history.purchases.at(-1)!.id,
+      );
+      expect(older.purchases).toHaveLength(1);
+      expect(older.purchases[0]?.id).toBe(o.id);
+      await o.b.updateSupplier(o.supplier.id, { status: "inactive" });
+      await financial().pay(o.id, payment(3000n), randomUUID());
+      expect((await financial().list(o.supplier.id))[0]?.status).toBe("paid");
+    });
+    it("cross-tenant account and location are denied", async () => {
+      const o = await order();
+      await expect(
+        financial(ownerUser, tenantB).pay(o.id, payment(), randomUUID()),
+      ).rejects.toThrow();
+      await expect(financial(ownerUser, tenantB).read(o.id)).rejects.toThrow();
+      const unique = inventoryLocationId(randomUUID());
+      await db.createLocation(
+        createInventoryLocation({
+          id: unique,
+          code: inventoryLocationCode("ONLY-A"),
+          name: inventoryLocationName("Only A"),
+          status: "active",
+        }),
+      );
+      await expect(
+        financial(ownerUser, tenantB).createExpense(
+          { ...expense(), locationId: unique },
+          randomUUID(),
+        ),
+      ).rejects.toThrow();
+    });
+    it("clerk cannot see or write financial data", async () => {
+      const o = await order();
+      await expect(financial(clerkUser).list()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        financial(clerkUser).pay(o.id, payment(), randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        financial(clerkUser).createExpense(expense(), randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("inactive membership denied", async () => {
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, adminUser],
+      );
+      await expect(financial(adminUser).expenses()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("expense cash adds cash_out once with audit", async () => {
+      await fund();
+      const e = expense("cash");
+      await financial().createExpense(e, randomUUID());
+      expect((await financial().createExpense(e, randomUUID())).replayed).toBe(
+        true,
+      );
+      expect((await cash().currentShift(source))?.expectedCash.minorUnits).toBe(
+        4500n,
+      );
+      expect(await ledger()).toBe(1);
+    });
+    it("expense card and bank do not affect physical cash", async () => {
+      await financial().createExpense(expense("card"), randomUUID());
+      await financial().createExpense(expense("bank"), randomUUID());
+      expect((await cash().currentShift(source))?.expectedCash.minorUnits).toBe(
+        0n,
+      );
+      expect(await financial().expenses()).toHaveLength(2);
+    });
+    it("expense same ID different intent conflicts", async () => {
+      const e = expense();
+      await financial().createExpense(e, randomUUID());
+      await expect(
+        financial().createExpense(
+          { ...e, description: "Changed" },
+          randomUUID(),
+        ),
+      ).rejects.toThrow();
+      expect(await ledger()).toBe(1);
+    });
+    it("expense insufficient cash leaves no ledger or expense", async () => {
+      await expect(
+        financial().createExpense(expense("cash"), randomUUID()),
+      ).rejects.toThrow();
+      expect(await financial().expenses()).toHaveLength(0);
+      expect(await ledger()).toBe(0);
+    });
+    it("closed cash shift rejects new cash expense but replays prior", async () => {
+      await fund();
+      const e = expense("cash");
+      await financial().createExpense(e, randomUUID());
+      await cash().closeShift(shiftId, money(4500n));
+      expect((await financial().createExpense(e, randomUUID())).replayed).toBe(
+        true,
+      );
+      await expect(
+        financial().createExpense(expense("cash"), randomUUID()),
+      ).rejects.toThrow();
+    });
+    it("runtime cannot mutate financial ledger or grant its guard", async () => {
+      await financial().createExpense(expense(), randomUUID());
+      await expect(
+        sql(tenantA, (c) =>
+          c.query("UPDATE retail.expenses SET amount_minor_units=1"),
+        ),
+      ).rejects.toThrow();
+      const roles = (
+        await admin.query(
+          "SELECT pg_has_role('smartretail_api','smartretail_payables_guard','MEMBER') AS member",
+        )
+      ).rows[0];
+      expect(roles.member).toBe(false);
+    });
+    it("cashier reads assigned expenses but cannot pay or write", async () => {
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET role='cashier' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, clerkUser],
+      );
+      await financial().createExpense(expense(), randomUUID());
+      expect(await financial(clerkUser).expenses()).toHaveLength(1);
+      await expect(
+        financial(clerkUser).createExpense(expense(), randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      const o = await order();
+      await expect(
+        financial(clerkUser).pay(o.id, payment(), randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("guard membership is rejected before financial write", async () => {
+      await admin.query("GRANT smartretail_payables_guard TO smartretail_api");
+      try {
+        await expect(
+          financial().createExpense(expense(), randomUUID()),
+        ).rejects.toThrow("Unsafe database application role");
+        expect(await ledger()).toBe(0);
+      } finally {
+        await admin.query(
+          "REVOKE smartretail_payables_guard FROM smartretail_api",
+        );
+      }
+    });
+    it("audit failure rolls back expense and cash atomically", async () => {
+      await fund();
+      await admin.query(
+        "CREATE FUNCTION retail.task029_fail_audit() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'simulated audit failure'; END$$; CREATE TRIGGER task029_fail_audit BEFORE INSERT ON retail.payables_audit FOR EACH ROW EXECUTE FUNCTION retail.task029_fail_audit()",
+      );
+      try {
+        await expect(
+          financial().createExpense(expense("cash"), randomUUID()),
+        ).rejects.toThrow();
+        expect(await financial().expenses()).toHaveLength(0);
+        expect(
+          (await cash().currentShift(source))?.expectedCash.minorUnits,
+        ).toBe(5000n);
+      } finally {
+        await admin.query(
+          "DROP TRIGGER task029_fail_audit ON retail.payables_audit;DROP FUNCTION retail.task029_fail_audit()",
+        );
+      }
+    });
+    it("reports split debt expenses payments and two cash_out sources", async () => {
+      const o = await order();
+      await fund();
+      await financial().pay(
+        o.id,
+        { ...payment(), method: "cash", shiftId },
+        randomUUID(),
+      );
+      await financial().createExpense(expense("cash"), randomUUID());
+      await financial().createExpense(expense("bank"), randomUUID());
+      const r = await new PostgresReporting(apiPool, {
+        userId: ownerUser,
+        tenantId: tenantA,
+      }).operationalReport(reportPeriod("today"));
+      expect(r.financial).toEqual({
+        outstanding: "2000",
+        expenses: "1000",
+        supplierPayments: "1000",
+        expenseCashOut: "500",
+        supplierCashOut: "1000",
+      });
+      expect(r.sales.gross).toBe("0");
     });
   });
 });

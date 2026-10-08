@@ -132,6 +132,13 @@ it("CSV respects the same filters and neutralizes spreadsheet formulas", async (
   const creditCsv = reportingCsv(
     {
       ...report,
+      financial: {
+        outstanding: "9007199254740993",
+        expenses: "1500",
+        supplierPayments: "3000",
+        expenseCashOut: "500",
+        supplierCashOut: "1000",
+      },
       credit: {
         outstanding: "9007199254740993",
         generated: "4000",
@@ -147,6 +154,10 @@ it("CSV respects the same filters and neutralizes spreadsheet formulas", async (
   expect(creditCsv).toContain(
     '"Abonos cobrados en período centavos MXN","2000"',
   );
+  expect(creditCsv).toContain(
+    '"Saldo actual por pagar centavos MXN","9007199254740993"',
+  );
+  expect(creditCsv).toContain('"Efectivo por gastos centavos MXN","500"');
   const r = await handleReports(
     request("?period=custom&from=2026-10-01&to=2026-10-03"),
     "sales",

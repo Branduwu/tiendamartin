@@ -11,6 +11,7 @@ import {
   PostgresPromotions,
   PostgresTaxes,
   PostgresReceivables,
+  PostgresPayables,
   PostgresReporting,
   PostgresCash,
   PostgresSaleReturns,
@@ -88,3 +89,6 @@ export const membersForUser = (
   tenantId: string,
   correlationId?: string,
 ) => new PostgresMembers(databasePool(), { userId, tenantId }, correlationId);
+
+export const payablesForUser = (userId: string, tenantId: string) =>
+  new PostgresPayables(databasePool(), { userId, tenantId });

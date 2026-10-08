@@ -280,6 +280,19 @@ export class PostgresReporting
             values,
           )
         ).rows[0];
+        const financial = (
+          await client.query<NonNullable<OperationalReport["financial"]>>(
+            query(`WITH ${bounds}, accounts AS (SELECT a.* FROM retail.payables a WHERE a.tenant_id=$1 AND ($4::uuid IS NULL OR a.location_id=$4) AND ($10::uuid IS NULL OR a.supplier_id=$10) AND ($5::uuid IS NULL OR EXISTS(SELECT 1 FROM retail.purchase_order_lines l WHERE l.tenant_id=a.tenant_id AND l.purchase_id=a.purchase_order_id AND l.product_id=$5))),
+ ep AS (SELECT e.* FROM retail.expenses e,b WHERE e.tenant_id=$1 AND ($4::uuid IS NULL OR e.location_id=$4) AND e.created_at>=b.start AND e.created_at<b.finish),
+ pp AS (SELECT p.* FROM retail.payable_payments p JOIN accounts a ON a.tenant_id=p.tenant_id AND a.id=p.payable_id CROSS JOIN b WHERE p.created_at>=b.start AND p.created_at<b.finish)
+ SELECT (SELECT coalesce(sum(outstanding_minor_units),0)::text FROM accounts) AS outstanding,
+ (SELECT coalesce(sum(amount_minor_units),0)::text FROM ep) AS expenses,
+ (SELECT coalesce(sum(amount_minor_units),0)::text FROM pp) AS "supplierPayments",
+ (SELECT coalesce(sum(amount_minor_units),0)::text FROM ep WHERE method='cash') AS "expenseCashOut",
+ (SELECT coalesce(sum(amount_minor_units),0)::text FROM pp WHERE method='cash') AS "supplierCashOut"`),
+            values,
+          )
+        ).rows[0];
         const summary = sales.find((r) => r.key === "period"),
           daily = sales.find((r) => r.key === "today");
         if (!summary || !daily || !inventory || !purchases || !cash)
@@ -315,6 +328,7 @@ export class PostgresReporting
           purchases,
           cash,
           ...(credit === undefined ? {} : { credit }),
+          ...(financial === undefined ? {} : { financial }),
         };
       },
       true,

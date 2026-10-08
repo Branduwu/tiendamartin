@@ -64,6 +64,13 @@ export type OperationalReport = Readonly<{
     cashIn: string;
     cashOut: string;
   };
+  financial?: {
+    outstanding: string;
+    expenses: string;
+    supplierPayments: string;
+    expenseCashOut: string;
+    supplierCashOut: string;
+  };
   credit?: {
     outstanding: string;
     generated: string;

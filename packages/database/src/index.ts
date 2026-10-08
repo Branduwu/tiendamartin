@@ -32,3 +32,5 @@ export {
 
 export * from "./taxes";
 export { PostgresReceivables } from "./receivables";
+
+export { PostgresPayables } from "./payables";

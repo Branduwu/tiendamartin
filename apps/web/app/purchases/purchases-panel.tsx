@@ -11,6 +11,7 @@ import {
   type ProductDto,
   type InventoryLocationDto,
 } from "@smartretail/contracts";
+import { PurchasePayable } from "../components/financial-panel";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { formatDateTime } from "../components/presentation";
 import {
@@ -585,6 +586,14 @@ export default function PurchasesPanel({
                   ? ` · Ordenada: ${formatDateTime(detail.orderedAt)}`
                   : ""}
               </p>
+              {detail.status === "received" &&
+                company.permissions.includes("payables.read") && (
+                  <PurchasePayable
+                    key={company.tenantId + detail.id}
+                    tenant={company.tenantId}
+                    id={detail.id}
+                  />
+                )}
               {detail.notes && <p>{detail.notes}</p>}
               <details className="secondary-reference">
                 <summary>Referencia de la orden</summary>

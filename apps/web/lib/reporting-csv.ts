@@ -41,6 +41,28 @@ export function reportingCsv(
             d.taxRefunded,
             d.netCommercial,
           ]),
+          ...(report.financial
+            ? [
+                ["Métrica operativa financiera", "Valor"],
+                [
+                  "Saldo actual por pagar centavos MXN",
+                  report.financial.outstanding,
+                ],
+                ["Gastos del período centavos MXN", report.financial.expenses],
+                [
+                  "Pagos a proveedores del período centavos MXN",
+                  report.financial.supplierPayments,
+                ],
+                [
+                  "Efectivo por gastos centavos MXN",
+                  report.financial.expenseCashOut,
+                ],
+                [
+                  "Efectivo por proveedores centavos MXN",
+                  report.financial.supplierCashOut,
+                ],
+              ]
+            : []),
           ...(report.credit
             ? [
                 ["Métrica de crédito", "Valor"],

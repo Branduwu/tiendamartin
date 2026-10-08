@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CreateSupplierSchema,
@@ -189,7 +190,22 @@ export default function SuppliersPanel() {
                   <tbody>
                     {suppliers.map((s) => (
                       <tr key={s.id}>
-                        <th scope="row">{s.name}</th>
+                        <th scope="row">
+                          {company.permissions.includes("payables.read") ? (
+                            <Link
+                              href={
+                                "/suppliers/" +
+                                s.id +
+                                "?tenantId=" +
+                                company.tenantId
+                              }
+                            >
+                              {s.name}
+                            </Link>
+                          ) : (
+                            s.name
+                          )}
+                        </th>
                         <td data-label="Contacto">
                           {s.contactName ?? "Sin contacto"}
                         </td>

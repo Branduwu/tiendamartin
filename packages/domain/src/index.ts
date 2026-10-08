@@ -113,3 +113,5 @@ export * from "./discounts";
 
 export * from "./taxes";
 export * from "./receivable";
+
+export * from "./payables";
