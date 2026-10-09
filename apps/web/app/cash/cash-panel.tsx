@@ -456,7 +456,21 @@ export default function CashPanel({ userId }: { userId: string }) {
                                     : undefined
                               }
                             >
-                              <dt>{label}</dt>
+                              <dt>
+                                {label}
+                                {label === "Efectivo esperado" && (
+                                  <ContextHelp
+                                    label="Dinero esperado"
+                                    href="/help/expected-cash"
+                                    keepPage
+                                  >
+                                    Es el efectivo inicial más ventas y entradas
+                                    en efectivo, menos salidas, incluidos
+                                    reembolsos y gastos en efectivo. Tarjetas y
+                                    deuda a crédito no son efectivo en caja.
+                                  </ContextHelp>
+                                )}
+                              </dt>
                               <dd>
                                 {mxn(value.minorUnits)}
                                 {label === "Diferencia" && (
@@ -579,7 +593,11 @@ export default function CashPanel({ userId }: { userId: string }) {
                             onChange={(e) => setCounted(e.target.value)}
                           />
                         </label>
-                        <ContextHelp label="Diferencia al cerrar caja">
+                        <ContextHelp
+                          label="Diferencia al cerrar caja"
+                          href="/help/cash-difference"
+                          keepPage
+                        >
                           Se conserva la diferencia entre efectivo esperado y
                           contado. Los movimientos registrados no se ajustan
                           automáticamente.

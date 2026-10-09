@@ -1,4 +1,5 @@
 "use client";
+import { ContextHelp } from "../components/ui";
 import { LoadingLabel } from "../components/ui";
 import { useEffect, useState } from "react";
 import type {
@@ -130,6 +131,14 @@ export default function PromotionsPanel() {
           <div>
             <p className="eyebrow">Precios</p>
             <h1>Promociones y cupones</h1>
+            <ContextHelp
+              label="Descuentos e impuestos"
+              href="/help/promotions"
+              keepPage={busy || showForm}
+            >
+              Los descuentos de línea, promociones y cupones se aplican antes de
+              calcular el impuesto. Revisa el desglose confirmado en POS.
+            </ContextHelp>
             <p className="muted">
               Configura descuentos simples para tus ventas.
             </p>

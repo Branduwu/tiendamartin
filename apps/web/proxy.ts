@@ -104,6 +104,7 @@ export const config = {
     "/expenses/:path*",
     "/settings/:path*",
     "/platform/:path*",
+    "/help/:path*",
     "/api/v1/:path*",
     "/products/:path*",
     "/inventory/:path*",

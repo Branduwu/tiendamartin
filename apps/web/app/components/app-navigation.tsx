@@ -224,6 +224,7 @@ export default function AppNavigation({
           )}
         </div>
         <AccountControls
+          role={member?.role}
           blocked={blocked}
           compact={compact}
           identity={[member?.displayName, roleLabel(member?.role)]

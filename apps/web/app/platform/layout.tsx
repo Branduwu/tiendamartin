@@ -34,6 +34,9 @@ export default async function PlatformLayout({
           <Link href="/platform/companies" prefetch={false}>
             Empresas
           </Link>
+          <Link href="/platform/support" prefetch={false}>
+            Soporte
+          </Link>
           {company && (
             <Link href={roleLanding(company)} prefetch={false}>
               Mi empresa

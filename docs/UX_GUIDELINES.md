@@ -34,3 +34,15 @@ Desktop: rail izquierdo con grupos por actividad y sólo el grupo actual abierto
 ## Siguientes tareas
 
 AUTH-SEC01 → UX03C → UX03D: recuperación/cambio de contraseña, guía/ayuda/onboarding y captura cámara/QR/foto/OCR respectivamente. No implementadas por UX03B1. La validación visual es una muestra de módulos/roles/estados, no una certificación WCAG general ni de todos los dispositivos.
+
+## Ayuda integrada y soporte — UX03C
+
+- Tres niveles: helper de instrucción, ContextHelp para conceptos y guía `/help` por tareas. Tips con título, 1–3 frases y enlace directo; no `?` por campo ni manual permanente en POS.
+- ContextHelp conserva foco al abrir por hover; botón con nombre accesible y estado expandido, cierre con Escape y retorno de foco. Desktop usa diálogo no modal; activación móvil usa diálogo modal. Las guías abren otra pestaña, con aviso y `noopener`, cuando salir descartaría una edición o una operación pendiente.
+- Guía estática en español, búsqueda de título/palabras/resumen y categorías. Lectura de ancho limitado; tarjetas en desktop, lista en móvil. Artículos de administración pueden explicar conceptos a otros roles, pero sus CTA se filtran por permisos del miembro actual. El servidor sigue siendo la autoridad.
+- Cuenta muestra el rol humano y «Ver qué puedo hacer». Propietario y Administrador son roles empresariales; la explicación de Administrador de SmartRetail aparece sólo con autorización de plataforma. Cajero no devuelve ni administra catálogo; Almacén recibe compras, pero no crea órdenes, configura mínimos ni hace conteos de ajuste.
+- Checklist de Propietario/Administrador derivado del servidor: seis pasos esenciales y equipo/impuestos opcionales. Equipo se reconoce con otro miembro activo; movimientos, turnos y ventas por historial. Dashboard lo colapsa desde cuatro esenciales y lo retira al completar seis; `/help/first-steps` conserva acceso. No hay progreso comercial en localStorage.
+- Soporte muestra contexto antes de enviar: empresa, actor/rol derivados, pantalla de una lista segura y fecha del servidor. Sin adjuntos, chat, logs, cookies, tokens, formularios ajenos ni correo entrante. Advertir que el usuario no escriba secretos; no afirmar que texto libre puede detectar todos los secretos voluntarios.
+- Cada usuario consulta sus solicitudes; plataforma puede cambiar estado sin impersonación ni acceso automático a operaciones comerciales. Folio corto secundario, texto escapado, cuerpo limitado y 20 solicitudes/hora por actor/empresa. Reintentos conservan intención e ID; sessionStorage guarda únicamente empresa/ID para reconciliar respuestas inciertas, nunca descripción ni credenciales. El formulario espera a terminar esa reconciliación.
+
+La evidencia focal de ejecución se registra en PROJECT_STATE. UX03D no forma parte de esta entrega.

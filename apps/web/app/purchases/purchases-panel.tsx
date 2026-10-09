@@ -1,5 +1,5 @@
 "use client";
-import { LoadingLabel } from "../components/ui";
+import { LoadingLabel, ContextHelp } from "../components/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -686,6 +686,14 @@ export default function PurchasesPanel({
               canReceive && (
                 <section className="card">
                   <h2>Recibir mercancía</h2>
+                  <ContextHelp
+                    label="Recepción parcial"
+                    href="/help/purchase-reception"
+                    keepPage
+                  >
+                    No necesitas recibir toda la orden de una vez. Registra sólo
+                    lo que llegó; el resto permanece pendiente.
+                  </ContextHelp>
                   <p className="muted">
                     Indica sólo lo recibido ahora. No se modifica el costo de
                     compra del producto.
@@ -789,7 +797,11 @@ export default function PurchasesPanel({
             <p className="muted">Hasta 100 órdenes recientes.</p>
             {orders.length === 0 ? (
               <p>
-                Aún no hay órdenes.{" "}
+                Aún no hay órdenes. Una orden prepara la compra; las existencias
+                cambian al recibir mercancía.{" "}
+                <Link href="/help/purchase-orders">
+                  Cómo preparar una compra
+                </Link>{" "}
                 {canWrite
                   ? "Crea una con un proveedor activo y una ubicación."
                   : "Solicita a un administrador que prepare una orden."}

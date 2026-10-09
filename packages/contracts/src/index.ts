@@ -115,3 +115,4 @@ export {
   ResetPasswordSchema,
   ChangePasswordSchema,
 } from "./account";
+export * from "./support";

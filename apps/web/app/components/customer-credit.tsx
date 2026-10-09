@@ -1,4 +1,5 @@
 "use client";
+import { ContextHelp } from "./ui";
 import { useEffect, useState, type FormEvent } from "react";
 import type { CustomerDto } from "@smartretail/contracts";
 import { purchasingApi } from "./purchasing-client";
@@ -112,6 +113,15 @@ export default function CustomerCredit({
       )}
       {editing && canManage && (
         <form className="stack" onSubmit={submit}>
+          <ContextHelp
+            label="Límite de crédito"
+            href="/help/credit"
+            keepPage={saving || editing}
+          >
+            Controla cuánto puede adeudar el cliente en nuevas ventas. Si lo
+            dejas vacío, no hay límite configurado; los adeudos anteriores se
+            conservan.
+          </ContextHelp>
           <label>
             <input
               type="checkbox"

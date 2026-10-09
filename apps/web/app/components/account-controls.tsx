@@ -9,10 +9,12 @@ export default function AccountControls({
   blocked = false,
   compact = false,
   identity,
+  role,
 }: {
   blocked?: boolean;
   compact?: boolean;
   identity?: string | undefined;
+  role?: string | undefined;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -35,6 +37,16 @@ export default function AccountControls({
     <div className="shell-account">
       {compact && <p className="account-identity">{identity ?? "Tu cuenta"}</p>}
       <ThemeToggle />
+      {!blocked && (
+        <>
+          <Link href="/help/support" prefetch={false}>
+            Ayuda y soporte
+          </Link>
+          <Link href={`/help/roles${role ? `#${role}` : ""}`} prefetch={false}>
+            Ver qué puedo hacer
+          </Link>
+        </>
+      )}
       {!blocked && (
         <Link href="/settings/account" prefetch={false}>
           Cambiar contraseña

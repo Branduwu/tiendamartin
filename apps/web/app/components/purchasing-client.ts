@@ -58,7 +58,7 @@ export type PurchasingTenant = {
   permissions: readonly string[];
 };
 export function usePurchasingCompany(
-  permission:
+  permission?:
     | "suppliers.read"
     | "purchases.read"
     | "customers.read"
@@ -84,8 +84,10 @@ export function usePurchasingCompany(
     )
       .then((data) => {
         if (controller.signal.aborted) return;
-        const allowed = data.tenants.filter((t) =>
-          t.permissions.includes(permission),
+        const allowed = data.tenants.filter(
+          (t) =>
+            t.tenantStatus !== "suspended" &&
+            (!permission || t.permissions.includes(permission)),
         );
         setTenants(allowed);
         setTenantId(selectCompany(allowed, preferred));

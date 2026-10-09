@@ -13,7 +13,7 @@ import { milliUnitsToDecimal } from "../../lib/quantity-input";
 import InventoryForm, { type Command, type Action } from "./inventory-form";
 import InventoryMinimumForm from "../components/inventory-minimum-form";
 import InventoryStateBadge from "../components/inventory-state-badge";
-import { ActionMenu } from "../components/ui";
+import { ActionMenu, ContextHelp } from "../components/ui";
 
 type Tenant = { tenantId: string; tenantName?: string; permissions: string[] };
 class ApiFailure extends Error {
@@ -267,6 +267,14 @@ export default function InventoryPanel() {
           <div>
             <p className="eyebrow">Operaciones</p>
             <h1>Inventario</h1>
+            <ContextHelp
+              label="Stock mínimo"
+              href="/help/minimum-stock"
+              keepPage={blocked}
+            >
+              Cuando la existencia llegue a esta cantidad o menos, SmartRetail
+              mostrará una alerta de reabastecimiento.
+            </ContextHelp>
             <p className="muted">
               Consulta existencias y registra movimientos por ubicación.
             </p>
@@ -386,7 +394,8 @@ export default function InventoryPanel() {
             </div>
             {!locations.length ? (
               <p className="muted">
-                No hay ubicaciones para mostrar. Crea la primera para comenzar.
+                No hay ubicaciones para mostrar. Crea la primera para comenzar.{" "}
+                <Link href="/help/branches">Cómo configurar sucursales</Link>
               </p>
             ) : (
               <>
@@ -408,7 +417,10 @@ export default function InventoryPanel() {
                 {!stock.some((row) => row.locationId === locationId) ? (
                   <p className="muted">
                     No hay productos para mostrar. Crea productos en el
-                    catálogo.
+                    catálogo.{" "}
+                    <Link href="/help/inventory">
+                      Cómo registrar inventario inicial
+                    </Link>
                   </p>
                 ) : (
                   <div

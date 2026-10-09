@@ -1,4 +1,5 @@
 "use client";
+import { ContextHelp } from "../../components/ui";
 import { LoadingLabel } from "../../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -100,6 +101,14 @@ export default function TaxesPanel() {
           <div>
             <p className="eyebrow">Configuración</p>
             <h1>Impuestos</h1>
+            <ContextHelp
+              label="Impuestos sin CFDI"
+              href="/help/taxes"
+              keepPage={busy || editing !== undefined}
+            >
+              El perfil calcula impuestos con la tasa configurada por tu
+              negocio. No genera CFDI ni timbrado.
+            </ContextHelp>
             <p className="muted">
               SmartRetail usa este perfil para calcular impuestos en la venta.
               Esto no genera una factura fiscal.

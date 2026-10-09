@@ -1,4 +1,5 @@
 "use client";
+import InitialSetupPanel from "../help/initial-setup";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type {
@@ -259,6 +260,7 @@ export default function DashboardPanel() {
             </p>
           </div>
         </div>
+        <InitialSetupPanel compact preferred={company.tenantId} />
         {company.tenants.length > 1 && (
           <label hidden>
             Empresa

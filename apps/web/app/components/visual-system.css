@@ -1319,17 +1319,120 @@ body.retail-ui:has(.app-sidebar) main.workspace {
   width: 100%;
 }
 .context-help-content {
-  display: block;
-  padding: 12px;
-  max-width: 40ch;
+  position: fixed;
+  margin: 0;
+  padding: 16px;
+  width: min(320px, calc(100vw - 32px));
+  max-height: 70dvh;
+  overflow: auto;
+  z-index: 50;
+  color: var(--text);
   font-size: 14px;
   border: 1px solid var(--border);
-  background: var(--elevated-surface);
+  background: var(--surface);
   border-radius: 8px;
 }
-.context-help:not([open]):hover .context-help-content,
-.context-help:focus-within .context-help-content {
-  display: block;
+.context-help-trigger {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+}
+.context-help-content p {
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.context-help-content::backdrop {
+  background: #0f172a99;
+}
+.help-layout {
+  max-width: 1120px;
+}
+.help-categories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.help-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.help-articles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.help-articles li {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.help-articles li:last-child {
+  border-bottom: 0;
+}
+.help-articles p {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0 0;
+}
+.help-article {
+  width: min(100%, 72ch);
+  margin: 0 auto;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.help-article h2 {
+  margin-top: 28px;
+}
+.help-article li {
+  margin: 10px 0;
+}
+.help-article section {
+  scroll-margin-top: 100px;
+}
+.setup-checklist {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.setup-checklist li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.setup-compact summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 12px;
+}
+.support-form {
+  max-width: 72ch;
+}
+.support-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pos-help nav {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.pos-help summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .help-categories,
+  .setup-checklist {
+    grid-template-columns: 1fr;
+  }
+  .context-help-content:modal {
+    inset: auto 16px 16px !important;
+    width: calc(100vw - 32px);
+    max-height: 70dvh;
+  }
 }
 .ui-dialog {
   width: min(640px, calc(100% - 32px));

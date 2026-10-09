@@ -102,3 +102,9 @@ export const platformForUser = (userId: string) =>
   new PostgresPlatform(databasePool(), userId);
 export const onboardingForUser = (userId: string) =>
   new PostgresOnboarding(databasePool(), userId);
+import { PostgresSupport } from "@smartretail/database";
+export const supportForUser = (
+  userId: string,
+  tenantId?: string,
+  platform = false,
+) => new PostgresSupport(databasePool(), userId, tenantId, platform);

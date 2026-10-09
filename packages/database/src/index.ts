@@ -44,3 +44,4 @@ export {
   InvitationUnavailableError,
 } from "./onboarding";
 export type { Invitation } from "./onboarding";
+export * from "./support";

@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -251,28 +252,146 @@ export function Toast({
 export function ContextHelp({
   label,
   children,
+  href,
+  keepPage = false,
 }: {
   label: string;
   children: ReactNode;
+  href?: string;
+  keepPage?: boolean;
 }) {
   const id = useId();
+  const button = useRef<HTMLButtonElement>(null),
+    dialog = useRef<HTMLDialogElement>(null),
+    timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
+    suppressFocus = useRef(false);
+  const [open, setOpen] = useState(false);
+  const close = (restore = false) => {
+    suppressFocus.current = true;
+    dialog.current?.close();
+    setOpen(false);
+    if (restore) {
+      button.current?.focus();
+    }
+    queueMicrotask(() => {
+      suppressFocus.current = false;
+    });
+  };
+  const show = (modal = false) => {
+    clearTimeout(timer.current);
+    const d = dialog.current,
+      b = button.current;
+    if (!d || !b || d.open) return;
+    if (modal && window.matchMedia("(max-width: 640px)").matches) d.showModal();
+    else {
+      const r = b.getBoundingClientRect();
+      d.style.top = `${Math.min(r.bottom + 8, window.innerHeight - 240)}px`;
+      d.style.left = `${Math.max(16, Math.min(r.left, window.innerWidth - 336))}px`;
+      // Declarative non-modal opening preserves focus during hover/focus help.
+      d.open = true;
+    }
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      const node = e.target as Node;
+      if (!dialog.current?.contains(node) && !button.current?.contains(node))
+        close();
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close(true);
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <details
+    <span
       className="context-help"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.currentTarget.open = false;
-          e.currentTarget.querySelector("summary")?.focus();
-        }
+      onMouseEnter={() => {
+        if (window.matchMedia("(hover: hover)").matches) show();
+      }}
+      onMouseLeave={() => {
+        timer.current = setTimeout(() => {
+          if (
+            !dialog.current?.contains(document.activeElement) &&
+            document.activeElement !== button.current
+          )
+            close();
+        }, 180);
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close();
       }}
     >
-      <summary aria-label={`Ayuda: ${label}`} aria-describedby={id}>
+      <button
+        ref={button}
+        type="button"
+        className="context-help-trigger"
+        aria-label={`Ayuda: ${label}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={id}
+        onFocus={() => {
+          if (
+            !suppressFocus.current &&
+            window.matchMedia("(hover: hover)").matches
+          )
+            show();
+        }}
+        onClick={() => {
+          if (
+            dialog.current?.open &&
+            window.matchMedia("(max-width: 640px)").matches
+          )
+            close(true);
+          else show(true);
+        }}
+      >
         ?
-      </summary>
-      <span id={id} className="context-help-content">
-        {children}
-      </span>
-    </details>
+      </button>
+      <dialog
+        ref={dialog}
+        id={id}
+        className="context-help-content"
+        aria-labelledby={`${id}-title`}
+        onCancel={(e) => {
+          e.preventDefault();
+          close(true);
+        }}
+        onClose={() => setOpen(false)}
+      >
+        <div className="dialog-heading">
+          <strong id={`${id}-title`}>{label}</strong>
+          <button
+            type="button"
+            className="ghost"
+            aria-label="Cerrar ayuda"
+            onClick={() => close(true)}
+          >
+            ×
+          </button>
+        </div>
+        <p>{children}</p>
+        {href && (
+          <a
+            href={href}
+            target={keepPage ? "_blank" : undefined}
+            rel={keepPage ? "noopener noreferrer" : undefined}
+          >
+            Más información{keepPage && " (abre otra pestaña)"}
+          </a>
+        )}
+      </dialog>
+    </span>
   );
 }
 export function PageHeader({ children }: { children: ReactNode }) {
@@ -282,16 +401,29 @@ export function EmptyState({
   title,
   children,
   action,
+  helpHref,
+  keepPage = false,
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  helpHref?: string;
+  keepPage?: boolean;
 }) {
   return (
     <div className="empty-state">
       <h3>{title}</h3>
       <p>{children}</p>
       {action}
+      {helpHref && (
+        <a
+          href={helpHref}
+          target={keepPage ? "_blank" : undefined}
+          rel={keepPage ? "noopener noreferrer" : undefined}
+        >
+          Cómo hacerlo{keepPage && " (abre otra pestaña)"}
+        </a>
+      )}
     </div>
   );
 }

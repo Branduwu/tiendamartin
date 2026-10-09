@@ -307,6 +307,8 @@ export default function ProductsPanel() {
             {!products.length ? (
               <EmptyState
                 title="Aún no tienes productos"
+                helpHref="/help/products"
+                keepPage={saving || editor !== undefined}
                 action={
                   canWrite ? (
                     <Button

@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import { PostgresSupport } from "../src/support";
+import {
+  SupportUnavailableError,
+  SupportConflictError,
+  SupportRateLimitError,
+} from "@smartretail/application";
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
 import {
   productId,
@@ -561,6 +567,17 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         ),
       );
     }
+    if (
+      !(await admin.query("SELECT to_regclass('retail.support_requests') t"))
+        .rows[0].t
+    ) {
+      await admin.query(
+        await readFile(
+          new URL("../migrations/026_help_support.sql", import.meta.url),
+          "utf8",
+        ),
+      );
+    }
     // Reproduce the managed schema restriction, independently of column grants.
     await admin.query(
       "REVOKE USAGE ON SCHEMA auth FROM smartretail_platform_guard",
@@ -586,7 +603,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.onboarding_audit,retail.invitation_locations,retail.tenant_invitations,retail.onboarding_commands,retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.support_audit,retail.support_requests,retail.onboarding_audit,retail.invitation_locations,retail.tenant_invitations,retail.onboarding_commands,retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -620,6 +637,280 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     await receiveInventory(db, receipt());
   });
 
+  describe("UX03C support and setup", () => {
+    it("denies revoked platform authority and replay of another actor's ID", async () => {
+      const v = input();
+      await own().create(v, randomUUID());
+      await expect(
+        own(clerkUser).create(v, randomUUID()),
+      ).rejects.toBeInstanceOf(SupportUnavailableError);
+      await enablePlatform();
+      await admin.query(
+        "UPDATE retail.platform_admins SET active=false WHERE user_id=$1",
+        [outsiderUser],
+      );
+      await expect(platform().list()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        platform().changeStatus(v.id, "closed", randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("requires READ COMMITTED even through direct SQL", async () => {
+      const c = await apiPool.connect();
+      try {
+        await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await c.query(
+          "SELECT set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true)",
+          [tenantA, ownerUser],
+        );
+        await expect(
+          c.query(
+            "SELECT retail.support_create($1,'error','Prueba','Texto','/cash',$2)",
+            [randomUUID(), randomUUID()],
+          ),
+        ).rejects.toHaveProperty("code", "23514");
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+      }
+    });
+    const input = () => ({
+      id: randomUUID(),
+      category: "error" as const,
+      subject: "SMOKE Caja",
+      description: "<script>alert(1)</script>\nNo puedo abrir caja",
+      pagePath: "/cash",
+    });
+    const own = (u = ownerUser, t = tenantA) =>
+      new PostgresSupport(apiPool, u, t);
+    const platform = () =>
+      new PostgresSupport(apiPool, outsiderUser, undefined, true);
+    const enablePlatform = () =>
+      admin.query("INSERT INTO retail.platform_admins(user_id) VALUES($1)", [
+        outsiderUser,
+      ]);
+    it("creates durable own request and minimal audit without description", async () => {
+      const v = input(),
+        r = await own().create(v, randomUUID());
+      expect(r).toMatchObject({
+        ...v,
+        status: "open",
+        tenantId: tenantA,
+        createdByUserId: ownerUser,
+      });
+      const a = await admin.query(
+        "SELECT * FROM retail.support_audit WHERE request_id=$1",
+        [v.id],
+      );
+      expect(a.rows).toHaveLength(1);
+      expect(JSON.stringify(a.rows)).not.toContain("<script>");
+      expect((await own().list()).requests[0]?.id).toBe(v.id);
+    });
+    it("isolates two actors in the same tenant and arbitrary foreign IDs", async () => {
+      const r = await own().create(input(), randomUUID());
+      expect((await own(clerkUser).list()).requests).toEqual([]);
+      await expect(own(clerkUser).detail(r.id)).rejects.toBeInstanceOf(
+        SupportUnavailableError,
+      );
+      await expect(own().detail(randomUUID())).rejects.toBeInstanceOf(
+        SupportUnavailableError,
+      );
+    });
+    it("isolates A/B including forged tenant selectors", async () => {
+      const r = await own().create(input(), randomUUID());
+      expect((await own(ownerUser, tenantB).list()).requests).toEqual([]);
+      await expect(own(ownerUser, tenantB).detail(r.id)).rejects.toBeInstanceOf(
+        SupportUnavailableError,
+      );
+      await expect(own(clerkUser, tenantB).list()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+    it("denies inactive memberships on create, list and replay", async () => {
+      const v = input();
+      await own().create(v, randomUUID());
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, ownerUser],
+      );
+      await expect(own().create(v, randomUUID())).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(own().list()).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("denies suspended tenant while authorized platform can resolve requests", async () => {
+      const r = await own().create(input(), randomUUID());
+      await enablePlatform();
+      await admin.query(
+        "UPDATE retail.tenants SET status='suspended' WHERE tenant_id=$1",
+        [tenantA],
+      );
+      await expect(own().detail(r.id)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      expect(
+        (await platform().changeStatus(r.id, "resolved", randomUUID())).status,
+      ).toBe("resolved");
+    });
+    it("separates platform authority from owner and denies ordinary status changes", async () => {
+      const r = await own().create(input(), randomUUID());
+      await expect(
+        new PostgresSupport(apiPool, ownerUser, undefined, true).list(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        own().changeStatus(r.id, "closed", randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await enablePlatform();
+      expect((await platform().list()).requests[0]?.id).toBe(r.id);
+      expect((await platform().detail(r.id)).description).toContain("<script>");
+    });
+    it("replays concurrent submissions exactly once with immutable payload", async () => {
+      const v = input();
+      const results = await Promise.all([
+        own().create(v, randomUUID()),
+        own().create(v, randomUUID()),
+      ]);
+      expect(results[0]?.id).toBe(results[1]?.id);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.support_audit WHERE request_id=$1",
+            [v.id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      await expect(
+        own().create({ ...v, subject: "Otro asunto" }, randomUUID()),
+      ).rejects.toBeInstanceOf(SupportConflictError);
+    });
+    it("conflicting concurrent submissions produce one conflict", async () => {
+      const v = input();
+      const results = await Promise.allSettled([
+        own().create(v, randomUUID()),
+        own().create({ ...v, description: "Otra intención" }, randomUUID()),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(
+        results.some(
+          (r) =>
+            r.status === "rejected" && r.reason instanceof SupportConflictError,
+        ),
+      ).toBe(true);
+    });
+    it("replay after platform status change preserves status and audit", async () => {
+      const v = input();
+      await own().create(v, randomUUID());
+      await enablePlatform();
+      for (const status of ["in_progress", "resolved", "closed"] as const)
+        await platform().changeStatus(v.id, status, randomUUID());
+      expect((await own().create(v, randomUUID())).status).toBe("closed");
+      await platform().changeStatus(v.id, "closed", randomUUID());
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.support_audit WHERE request_id=$1",
+            [v.id],
+          )
+        ).rows[0].n,
+      ).toBe(4);
+    });
+    it("database enforces text bounds, path whitelist and hourly limit", async () => {
+      await expect(
+        own().create(
+          { ...input(), description: "x".repeat(4001) },
+          randomUUID(),
+        ),
+      ).rejects.toBeInstanceOf(TypeError);
+      await expect(
+        own().create(
+          { ...input(), pagePath: "/cash?token=secret" },
+          randomUUID(),
+        ),
+      ).rejects.toBeInstanceOf(TypeError);
+      const v = input();
+      await own().create(v, randomUUID());
+      for (let n = 0; n < 18; n++) await own().create(input(), randomUUID());
+      const boundary = await Promise.allSettled([
+        own().create(input(), randomUUID()),
+        own().create(input(), randomUUID()),
+      ]);
+      expect(boundary.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(
+        boundary.some(
+          (r) =>
+            r.status === "rejected" &&
+            r.reason instanceof SupportRateLimitError,
+        ),
+      ).toBe(true);
+      await expect(own().create(input(), randomUUID())).rejects.toBeInstanceOf(
+        SupportRateLimitError,
+      );
+      expect((await own().create(v, randomUUID())).id).toBe(v.id);
+    });
+    it("RLS FORCE and direct runtime privileges cannot mutate or bypass support", async () => {
+      const r = await own().create(input(), randomUUID());
+      const c = await apiPool.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query(
+          "SELECT set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true)",
+          [tenantA, clerkUser],
+        );
+        expect(
+          (await c.query("SELECT id FROM retail.support_requests")).rows,
+        ).toEqual([]);
+        await expect(
+          c.query(
+            "UPDATE retail.support_requests SET status='closed' WHERE id=$1",
+            [r.id],
+          ),
+        ).rejects.toHaveProperty("code", "42501");
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+      }
+      const a = await admin.query(
+        "SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid IN('retail.support_requests'::regclass,'retail.support_audit'::regclass)",
+      );
+      for (const statement of [
+        "INSERT INTO retail.support_requests DEFAULT VALUES",
+        "DELETE FROM retail.support_requests",
+        "TRUNCATE retail.support_requests",
+        "SELECT * FROM retail.support_audit",
+      ])
+        await expect(apiPool.query(statement)).rejects.toHaveProperty(
+          "code",
+          "42501",
+        );
+      expect(
+        a.rows.every((x) => x.relrowsecurity && x.relforcerowsecurity),
+      ).toBe(true);
+      expect(
+        (
+          await admin.query(
+            "SELECT has_function_privilege('smartretail_api','retail.support_summary(retail.support_requests)','EXECUTE') allowed",
+          )
+        ).rows[0].allowed,
+      ).toBe(false);
+    });
+    it("derives setup progress from real server records and restricts operational roles", async () => {
+      const r = await own().initialSetup();
+      expect(r).toMatchObject({
+        company: true,
+        branch: true,
+        product: true,
+        inventory: true,
+        cash: true,
+        sale: false,
+        team: true,
+        taxes: false,
+      });
+      await expect(own(clerkUser).initialSetup()).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+    });
+  });
   describe("TASK-032 onboarding and invitations", () => {
     const newUser = "550e8400-e29b-41d4-a716-446655440090",
       unverified = "550e8400-e29b-41d4-a716-446655440091";
@@ -3527,7 +3818,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(53);
+    expect(tables.rows).toHaveLength(55);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);

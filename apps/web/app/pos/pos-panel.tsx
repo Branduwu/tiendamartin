@@ -161,6 +161,7 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [recoveryBlocked, setRecoveryBlocked] = useState(false);
   const locked =
     sending || pending !== null || pendingSuspend !== null || recoveryBlocked;
+  const helpTarget = locked || !!draft?.lines.length ? "_blank" : undefined;
   useEffect(() => {
     const controller = new AbortController();
     api<{
@@ -766,6 +767,62 @@ export default function PosPanel({ userId }: { userId: string }) {
         <div className="heading">
           <div>
             <h1>Punto de venta</h1>
+            <details className="pos-help">
+              <summary>Ayuda del POS</summary>
+              <nav aria-label="Guías del punto de venta">
+                {helpTarget && (
+                  <p>
+                    Las guías se abren en otra pestaña para conservar tu venta.
+                  </p>
+                )}
+                <Link
+                  href="/help/cash"
+                  target={helpTarget}
+                  rel="noopener noreferrer"
+                >
+                  Cómo abrir caja
+                </Link>
+                <Link
+                  href="/help/scan"
+                  target={helpTarget}
+                  rel="noopener noreferrer"
+                >
+                  Cómo escanear
+                </Link>
+                <Link
+                  href="/help/checkout"
+                  target={helpTarget}
+                  rel="noopener noreferrer"
+                >
+                  Cómo cobrar
+                </Link>
+                <Link
+                  href="/help/suspend"
+                  target={helpTarget}
+                  rel="noopener noreferrer"
+                >
+                  Cómo suspender una venta
+                </Link>
+                {tenants
+                  .find((t) => t.tenantId === tenant)
+                  ?.permissions.includes("sales.return") && (
+                  <Link
+                    href="/help/returns"
+                    target={helpTarget}
+                    rel="noopener noreferrer"
+                  >
+                    Cómo devolver
+                  </Link>
+                )}
+                <Link
+                  href="/help/support"
+                  target={helpTarget}
+                  rel="noopener noreferrer"
+                >
+                  Contactar SmartRetail
+                </Link>
+              </nav>
+            </details>
             <BusinessContext
               tenantId={tenant}
               locationId={location}
@@ -804,7 +861,15 @@ export default function PosPanel({ userId }: { userId: string }) {
         {!pending && shift?.status !== "open" && (
           <p role="status" className="notice">
             No hay un turno abierto. <Link href="/cash">Abre caja</Link> antes
-            de completar la venta.
+            de completar la venta.{" "}
+            <Link
+              href="/help/cash"
+              target={helpTarget}
+              rel="noopener noreferrer"
+            >
+              ¿Por qué necesito abrir caja?
+              {helpTarget && " (abre otra pestaña)"}
+            </Link>
           </p>
         )}
         {loading ? (
