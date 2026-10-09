@@ -14,6 +14,7 @@ import {
   usePurchasingCompany,
 } from "./purchasing-client";
 import { formatDateTime } from "./presentation";
+import { LoadingLabel } from "./ui";
 import {
   decimalToMinorUnits,
   minorUnitsToDecimal,
@@ -310,7 +311,7 @@ export default function FinancialPanel({
           </div>
         </div>
         {company.tenants.length > 1 ? (
-          <label>
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}
@@ -766,6 +767,15 @@ function FinancialForm({
       )}
       <form className="stack" onSubmit={submit}>
         <fieldset disabled={busy || !!pending || !storageReady}>
+          <label className="money-field">
+            Importe (MXN)
+            <input
+              name="amount"
+              inputMode="decimal"
+              placeholder="0.00"
+              required
+            />
+          </label>
           {mode === "expenses" ? (
             <>
               <label>
@@ -796,6 +806,11 @@ function FinancialForm({
               <option value="bank">Banco (registro)</option>
               <option value="cash">Efectivo</option>
             </select>
+            <small>
+              {method === "cash"
+                ? "El pago en efectivo registra una salida en la caja abierta de la sucursal."
+                : "Tarjeta y banco se registran sin modificar el efectivo de caja."}
+            </small>
           </label>
           {mode === "expenses" && (
             <label>
@@ -816,15 +831,6 @@ function FinancialForm({
               </select>
             </label>
           )}
-          <label>
-            Importe (MXN)
-            <input
-              name="amount"
-              inputMode="decimal"
-              placeholder="0.00"
-              required
-            />
-          </label>
           {method === "cash" && (
             <p>
               {shift
@@ -838,11 +844,11 @@ function FinancialForm({
             busy || !storageReady || (!pending && method === "cash" && !shift)
           }
         >
-          {busy
-            ? "Registrando…"
-            : pending
+          <LoadingLabel busy={busy} label="Registrando…">
+            {pending
               ? "Reintentar mismo registro"
               : "Confirmar " + (mode === "expenses" ? "gasto" : "pago")}
+          </LoadingLabel>
         </button>
       </form>
     </section>

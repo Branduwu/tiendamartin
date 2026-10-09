@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import "./components/visual-system.css";
 import { appOrigin } from "../lib/app-origin";
 import Script from "next/script";
 import { THEME_BOOTSTRAP } from "../lib/theme";
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {THEME_BOOTSTRAP}
         </Script>
       </head>
-      <body>
+      <body className="retail-ui">
         <PublicThemeControl />
         {children}
       </body>

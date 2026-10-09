@@ -1,12 +1,17 @@
 "use client";
+import { LoadingLabel } from "./ui";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { browserAuth } from "../../lib/supabase/client";
 import ThemeToggle from "./theme-toggle";
 export default function AccountControls({
   blocked = false,
+  compact = false,
+  identity,
 }: {
   blocked?: boolean;
+  compact?: boolean;
+  identity?: string | undefined;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -25,8 +30,9 @@ export default function AccountControls({
       setBusy(false);
     }
   }
-  return (
+  const controls = (
     <div className="shell-account">
+      {compact && <p className="account-identity">{identity ?? "Tu cuenta"}</p>}
       <ThemeToggle />
       <button
         type="button"
@@ -34,7 +40,9 @@ export default function AccountControls({
         disabled={blocked || busy}
         onClick={logout}
       >
-        {busy ? "Cerrando sesión…" : "Cerrar sesión"}
+        <LoadingLabel busy={busy} label="Cerrando sesión…">
+          Cerrar sesión
+        </LoadingLabel>
       </button>
       {error && (
         <p role="alert" className="error">
@@ -42,5 +50,23 @@ export default function AccountControls({
         </p>
       )}
     </div>
+  );
+  return compact ? (
+    <details
+      className="pilot-account-menu"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.currentTarget.open = false;
+          event.currentTarget.querySelector("summary")?.focus();
+        }
+      }}
+    >
+      <summary aria-label="Menú de usuario">
+        Cuenta <span aria-hidden="true">⌄</span>
+      </summary>
+      {controls}
+    </details>
+  ) : (
+    controls
   );
 }

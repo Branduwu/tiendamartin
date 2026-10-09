@@ -1,4 +1,6 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
+import PilotSalePanel from "../components/pilot-sale-panel";
 import BusinessContext from "../components/business-context";
 import PosCustomerSelector from "../components/pos-customer-selector";
 import PosCredit from "../components/pos-credit";
@@ -176,7 +178,7 @@ export default function PosPanel({ userId }: { userId: string }) {
           t.permissions.includes("sales.create"),
         );
         setTenants(data.tenants);
-        let selected = data.tenants[0]?.tenantId ?? "";
+        let selected = selectCompany(data.tenants);
         try {
           const recovery = recoverPendingSale(
             sessionStorage.getItem(pendingKey),
@@ -238,7 +240,7 @@ export default function PosPanel({ userId }: { userId: string }) {
           );
         }
         setTenant(selected);
-        if (!data.tenants.length) setLoading(false);
+        if (!selected) setLoading(false);
       })
       .catch((e) => {
         if (!controller.signal.aborted) {
@@ -744,12 +746,14 @@ export default function PosPanel({ userId }: { userId: string }) {
     }
   }
   return (
-    <>
+    <div className="visual-pilot pilot-pos">
       <header className="topbar">
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
         <AppNavigation
+          compact
+          blocked={loading || locked || !!draft?.lines.length}
           tenantId={tenant}
           branchName={locations.find((l) => l.id === location)?.name}
           current="/pos"
@@ -770,9 +774,6 @@ export default function PosPanel({ userId }: { userId: string }) {
                 "Cajero registrado"
               }
             />
-            <p className="muted">
-              Selecciona productos, revisa el pago y confirma la venta.
-            </p>
           </div>
         </div>
         {notice ? (
@@ -786,7 +787,7 @@ export default function PosPanel({ userId }: { userId: string }) {
           </p>
         ) : null}
         {confirmed ? (
-          <section className="pos-confirmation" role="status">
+          <section className="pos-confirmation" role="status" tabIndex={-1}>
             <h2>Venta confirmada</h2>
             <p>{mxn(confirmed.sale.total.minorUnits)}</p>
             <p>Cliente: {confirmed.customerName ?? "Público general"}</p>
@@ -806,11 +807,6 @@ export default function PosPanel({ userId }: { userId: string }) {
             de completar la venta.
           </p>
         )}
-        {shift?.status === "open" && (
-          <p className="company-context">
-            Caja abierta en la ubicación seleccionada.
-          </p>
-        )}
         {loading ? (
           <p role="status" className="notice">
             Cargando punto de venta…
@@ -819,263 +815,161 @@ export default function PosPanel({ userId }: { userId: string }) {
           <p>No tienes una empresa activa.</p>
         ) : (
           <>
-            <PosCustomerSelector
-              key={tenant}
-              tenantId={tenant}
-              value={draft?.customerId}
-              locked={locked}
-              canRead={
-                tenants
-                  .find((t) => t.tenantId === tenant)
-                  ?.permissions.includes("customers.read") ?? false
-              }
-              canWrite={
-                tenants
-                  .find((t) => t.tenantId === tenant)
-                  ?.permissions.includes("customers.write") ?? false
-              }
-              onSelect={(id) => {
-                if (method.includes("credit")) setMethod("cash");
-                setCreditCustomer(null);
-                setDraft((current) =>
-                  assignSaleCustomer(
-                    current ?? createSaleDraft(crypto.randomUUID()),
-                    id,
-                  ),
-                );
-                setConfirmed(null);
-              }}
-            />
-            <a className="mobile-cart-jump" href="#cart-title">
-              Ver venta actual <strong>{mxn(total.toString())}</strong>
-            </a>
-            <div className="pos-selectors">
-              <label>
-                Empresa
-                <select
-                  value={tenant}
-                  disabled={locked || !!draft?.lines.length}
-                  onChange={(e) => {
-                    if (e.target.value === tenant) return;
-                    setDraft(null);
-                    setTenant(e.target.value);
-                    setLocation("");
-                    setShift(null);
-                    setProducts([]);
-                    setStock([]);
-                    setConfirmed(null);
-                    setShowSuspended(false);
-                    setSuspended([]);
-                    setScanProduct(null);
-                  }}
-                >
-                  {tenants.map((t, index) => (
-                    <option key={t.tenantId} value={t.tenantId}>
-                      {companyLabel(t.tenantId, index, t.tenantName)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Ubicación
-                <select
-                  value={location}
-                  disabled={locked || associated !== null}
-                  onChange={(e) => {
-                    if (e.target.value === location) return;
-                    setLocation(e.target.value);
-                    setShift(null);
-                    setStock([]);
-                  }}
-                >
-                  <option value="">Selecciona una ubicación</option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <section
-              className="pos-cart scan-panel"
-              aria-labelledby="scan-title"
-            >
-              <h2 id="scan-title">Escanear producto</h2>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void scan();
-                }}
-              >
-                <label>
-                  Código de barras
-                  <input
-                    ref={scannerRef}
-                    aria-label="Código de barras"
-                    autoComplete="off"
-                    value={barcode}
-                    maxLength={128}
-                    disabled={locked || !location}
-                    onChange={(e) => setBarcode(e.target.value)}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={locked || !location || !barcode}
-                >
-                  Buscar código
-                </button>
-              </form>
-              {scanProduct && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!locked) {
-                      try {
-                        scanAdd(
-                          scanProduct,
-                          BigInt(decimalToMilliUnits(scanQuantity)),
-                        );
-                      } catch {
-                        setError("Revisa la cantidad.");
-                      }
-                    }
-                  }}
-                >
-                  <p>
-                    {scanProduct.name} · {mxn(scanProduct.salePrice.minorUnits)}{" "}
-                    / {scanProduct.unit}
-                  </p>
-                  <label>
-                    Cantidad a agregar ({scanProduct.unit})
-                    <input
-                      ref={scanQuantityRef}
-                      inputMode="decimal"
-                      value={scanQuantity}
-                      onChange={(e) => setScanQuantity(e.target.value)}
-                      disabled={locked}
-                    />
-                  </label>
-                  <button disabled={locked || !scanQuantity}>
-                    Agregar cantidad
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={locked}
-                    onClick={() => setScanProduct(null)}
-                  >
-                    Descartar lectura
-                  </button>
-                </form>
-              )}
-            </section>
-            <section className="stack suspended-panel">
-              <div className="actions">
-                <button
-                  type="button"
-                  disabled={
-                    sending ||
-                    recoveryBlocked ||
-                    !!pending ||
-                    !!associated ||
-                    (!pendingSuspend && !draft?.lines.length)
-                  }
-                  onClick={() => void suspendCart()}
-                >
-                  {pendingSuspend
-                    ? "Reintentar la misma suspensi\u00f3n"
-                    : "Suspender venta"}
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={locked}
-                  onClick={() => {
-                    void listSuspended().catch((e) => setError(e.message));
-                  }}
-                >
-                  Ventas suspendidas
-                </button>
-                {associated && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={locked}
-                    onClick={() => {
-                      setDraft(null);
-                      setTexts({});
-                      setAssociated(null);
-                      setNotice(
-                        "El carrito original sigue suspendido. Los cambios sin guardar se descartaron.",
-                      );
-                    }}
-                  >
-                    Dejar original en espera
-                  </button>
-                )}
-              </div>
-              {associated && (
-                <p>
-                  Recuperada: {associated.slice(0, 8)}. Precio actual; el
-                  checkout vuelve a validar stock y precio.
-                </p>
-              )}
-              {showSuspended && (
-                <div aria-label="Ventas suspendidas">
-                  <h2>Ventas suspendidas</h2>
-                  <p className="muted">
-                    Hasta 50 pendientes recientes. Para recuperar o cancelar,
-                    termina o suspende primero el carrito actual.
-                  </p>
-                  {!suspended.length && <p>No hay ventas suspendidas.</p>}
-                  {suspended.map((record) => (
-                    <article className="pos-product" key={record.id}>
-                      <div>
-                        <strong>{record.id.slice(0, 8)}</strong>
-                        <small>
-                          {new Date(record.createdAt).toLocaleString()} ?{" "}
-                          {locations.find((l) => l.id === record.locationId)
-                            ?.name ?? record.locationId}
-                        </small>
-                        <small>{record.lines.length} líneas</small>
-                      </div>
-                      <div className="actions">
-                        <button
-                          type="button"
-                          disabled={locked || !!draft?.lines.length}
-                          onClick={() =>
-                            void suspendedAction(record, "recover")
-                          }
-                        >
-                          Recuperar
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary"
-                          disabled={locked || !!draft?.lines.length}
-                          onClick={() => void suspendedAction(record, "cancel")}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
             <div className="pos-layout">
               <section aria-labelledby="catalog-title">
-                <h2 id="catalog-title">Productos</h2>
+                <div className="pos-session">
+                  <div className="pos-selectors">
+                    {tenants.length > 1 && (
+                      <label hidden>
+                        Empresa
+                        <select
+                          value={tenant}
+                          disabled={locked || !!draft?.lines.length}
+                          onChange={(e) => {
+                            if (e.target.value === tenant) return;
+                            setDraft(null);
+                            setTenant(e.target.value);
+                            setLocation("");
+                            setShift(null);
+                            setProducts([]);
+                            setStock([]);
+                            setConfirmed(null);
+                            setShowSuspended(false);
+                            setSuspended([]);
+                            setScanProduct(null);
+                          }}
+                        >
+                          {tenants.map((t, index) => (
+                            <option key={t.tenantId} value={t.tenantId}>
+                              {companyLabel(t.tenantId, index, t.tenantName)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {locations.length === 1 ? (
+                      <p className="branch-context">{locations[0]?.name}</p>
+                    ) : (
+                      <label>
+                        Sucursal
+                        <select
+                          value={location}
+                          disabled={locked || associated !== null}
+                          onChange={(e) => {
+                            if (e.target.value === location) return;
+                            setLocation(e.target.value);
+                            setShift(null);
+                            setStock([]);
+                          }}
+                        >
+                          <option value="">Selecciona una ubicación</option>
+                          {locations.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+
+                  {shift?.status === "open" && (
+                    <p className="badge active shift-status">Caja abierta</p>
+                  )}
+                </div>
+                <section
+                  className="pos-cart scan-panel"
+                  aria-labelledby="scan-title"
+                >
+                  <h2 id="scan-title">Buscar o escanear</h2>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void scan();
+                    }}
+                  >
+                    <label>
+                      Código de barras
+                      <input
+                        ref={scannerRef}
+                        aria-label="Código de barras"
+                        placeholder="Escanea o escribe el código"
+                        autoComplete="off"
+                        value={barcode}
+                        maxLength={128}
+                        disabled={locked || !location}
+                        onChange={(e) => setBarcode(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      className="secondary"
+                      type="submit"
+                      disabled={locked || !location || !barcode}
+                    >
+                      Buscar código
+                    </button>
+                  </form>
+                  {scanProduct && (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!locked) {
+                          try {
+                            scanAdd(
+                              scanProduct,
+                              BigInt(decimalToMilliUnits(scanQuantity)),
+                            );
+                          } catch {
+                            setError("Revisa la cantidad.");
+                          }
+                        }
+                      }}
+                    >
+                      <p>
+                        {scanProduct.name} ·{" "}
+                        {mxn(scanProduct.salePrice.minorUnits)} /{" "}
+                        {scanProduct.unit === "piece"
+                          ? "pza"
+                          : scanProduct.unit}
+                      </p>
+                      <label>
+                        Cantidad a agregar (
+                        {scanProduct.unit === "piece"
+                          ? "pza"
+                          : scanProduct.unit}
+                        )
+                        <input
+                          ref={scanQuantityRef}
+                          inputMode="decimal"
+                          value={scanQuantity}
+                          onChange={(e) => setScanQuantity(e.target.value)}
+                          disabled={locked}
+                        />
+                      </label>
+                      <button disabled={locked || !scanQuantity}>
+                        Agregar cantidad
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={locked}
+                        onClick={() => setScanProduct(null)}
+                      >
+                        Descartar lectura
+                      </button>
+                    </form>
+                  )}
+                </section>
+                <h2 id="catalog-title" tabIndex={-1}>
+                  Productos
+                </h2>
                 <label>
                   Buscar por nombre o SKU
                   <input
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Busca un producto"
+                    placeholder="Nombre o SKU"
                   />
                 </label>
                 <div className="pos-catalog">
@@ -1107,13 +1001,16 @@ export default function PosPanel({ userId }: { userId: string }) {
                           <div>
                             <strong>{p.name}</strong>
                             <small>
-                              {p.sku} · {p.unit}
+                              {p.sku} · {p.unit === "piece" ? "pza" : p.unit}
                             </small>
                             <small>
                               Disponible:{" "}
                               {current
                                 ? milliUnitsToDecimal(
                                     current.quantity.milliUnits,
+                                  ).replace(
+                                    p.unit === "piece" ? /\.000$/ : /$^/,
+                                    "",
                                   )
                                 : "—"}
                             </small>
@@ -1123,6 +1020,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                             <button
                               type="button"
                               disabled={locked || !location}
+                              className="secondary"
                               onClick={() => add(p)}
                               aria-label={`Agregar ${p.name}`}
                             >
@@ -1134,229 +1032,408 @@ export default function PosPanel({ userId }: { userId: string }) {
                     })}
                 </div>
               </section>
-              <section className="pos-cart" aria-labelledby="cart-title">
-                <h2 id="cart-title" tabIndex={-1}>
-                  Venta actual
-                </h2>
-                {!draft?.lines.length ? (
-                  <p className="muted">Agrega un producto para comenzar.</p>
-                ) : (
-                  draft.lines.map((l) => (
-                    <article className="pos-line" key={l.productId}>
-                      <div>
-                        <strong>{l.name}</strong>
-                        <small>
-                          {l.sku} · {mxn(l.unitPrice.minorUnits.toString())} /{" "}
-                          {l.unit}
-                        </small>
-                      </div>
-                      <label>
-                        Cantidad ({l.unit})
-                        <input
-                          inputMode="decimal"
-                          value={
-                            texts[l.productId] ??
-                            milliUnitsToDecimal(
-                              l.quantity.milliUnits.toString(),
-                            )
-                          }
-                          disabled={locked}
-                          onChange={(e) =>
-                            setTexts({
-                              ...texts,
-                              [l.productId]: e.target.value,
-                            })
-                          }
-                          onBlur={(e) => adjust(l.productId, e.target.value)}
-                        />
-                      </label>
-                      <div className="actions">
-                        <strong>
-                          {mxn(l.lineTotal.minorUnits.toString())}
-                        </strong>
-                        <button
-                          className="secondary"
-                          type="button"
-                          disabled={locked}
-                          onClick={() => {
-                            setDraft(removeSaleLine(draft, l.productId));
-                            setError("");
-                          }}
-                          aria-label={`Eliminar ${l.name}`}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                )}
-                <dl className="pos-totals">
-                  {!pending && (
-                    <>
-                      <div>
-                        <dt>Subtotal</dt>
-                        <dd>
-                          {mxn((draft?.total.minorUnits ?? 0n).toString())}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Descuento</dt>
-                        <dd>
-                          {mxn(
-                            (
-                              currentQuote?.sale.lines.reduce(
-                                (sum, line) =>
-                                  sum +
-                                  BigInt(line.discount?.minorUnits ?? "0"),
-                                0n,
-                              ) ?? 0n
-                            ).toString(),
-                          )}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Impuestos</dt>
-                        <dd>
-                          {mxn(
-                            (
-                              currentQuote?.sale.lines.reduce(
-                                (sum, line) =>
-                                  sum +
-                                  BigInt(line.tax?.amount.minorUnits ?? "0"),
-                                0n,
-                              ) ?? 0n
-                            ).toString(),
-                          )}
-                        </dd>
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <dt>{pending ? "Total pendiente original" : "Total"}</dt>
-                    <dd>{mxn(total.toString())}</dd>
-                  </div>
-                </dl>
-                {!pending &&
-                  currentQuote &&
-                  !currentQuote.sale.lines.some((l) => l.tax) && (
-                    <p className="muted">Sin impuesto configurado.</p>
-                  )}
-                {base && base.lines.length > 0 && (
-                  <PosDiscounts
-                    key={`${tenant}/${base.id}`}
-                    tenantId={tenant}
-                    disabled={locked}
-                    refreshRevision={quoteRevision}
-                    recovering={pending !== null}
-                    initialIntent={pending?.discounts}
-                    locationId={location}
-                    draft={base}
-                    canDiscount={
-                      tenants
-                        .find((t) => t.tenantId === tenant)
-                        ?.permissions.includes("sales.discount") ?? false
-                    }
-                    onQuote={setPriceQuote}
-                  />
-                )}
-                <label>
-                  Método de pago
-                  <select
-                    value={method}
-                    disabled={locked}
-                    onChange={(e) => setMethod(e.target.value as typeof method)}
-                  >
-                    <option value="cash">Efectivo</option>
-                    <option value="card">Tarjeta</option>
-                    <option value="mixed">Mixto</option>
-                    {draft?.customerId === creditCustomer?.id &&
-                      creditCustomer?.enabled && (
+              <PilotSalePanel
+                count={draft?.lines.length ?? 0}
+                total={mxn(total.toString())}
+              >
+                <section className="pos-cart" aria-labelledby="cart-title">
+                  <h2 id="cart-title" tabIndex={-1}>
+                    Venta actual
+                  </h2>
+                  <div className="sale-panel-body">
+                    <div className="sale-panel-feedback">
+                      {error && (
+                        <p role="alert" className="error">
+                          {error}
+                        </p>
+                      )}
+                      {notice && (
+                        <p role="status" className="notice">
+                          {notice}
+                        </p>
+                      )}
+                    </div>
+                    <details
+                      className="pos-customer-disclosure"
+                      open={!!draft?.customerId}
+                    >
+                      <summary>
+                        Cliente ·{" "}
+                        {draft?.customerId
+                          ? "Cliente seleccionado"
+                          : "Público general"}
+                      </summary>
+                      <PosCustomerSelector
+                        key={tenant}
+                        tenantId={tenant}
+                        value={draft?.customerId}
+                        locked={locked}
+                        canRead={
+                          tenants
+                            .find((t) => t.tenantId === tenant)
+                            ?.permissions.includes("customers.read") ?? false
+                        }
+                        canWrite={
+                          tenants
+                            .find((t) => t.tenantId === tenant)
+                            ?.permissions.includes("customers.write") ?? false
+                        }
+                        onSelect={(id) => {
+                          if (method.includes("credit")) setMethod("cash");
+                          setCreditCustomer(null);
+                          setDraft((current) =>
+                            assignSaleCustomer(
+                              current ?? createSaleDraft(crypto.randomUUID()),
+                              id,
+                            ),
+                          );
+                          setConfirmed(null);
+                        }}
+                      />
+                    </details>
+                    {!draft?.lines.length ? (
+                      <p className="muted">Agrega un producto para comenzar.</p>
+                    ) : (
+                      draft.lines.map((l) => (
+                        <article className="pos-line" key={l.productId}>
+                          <div>
+                            <strong>{l.name}</strong>
+                            <small>
+                              {l.sku} · {mxn(l.unitPrice.minorUnits.toString())}{" "}
+                              / {l.unit === "piece" ? "pza" : l.unit}
+                            </small>
+                          </div>
+                          <label>
+                            Cantidad ({l.unit === "piece" ? "pza" : l.unit})
+                            <input
+                              inputMode="decimal"
+                              value={(
+                                texts[l.productId] ??
+                                milliUnitsToDecimal(
+                                  l.quantity.milliUnits.toString(),
+                                )
+                              ).replace(
+                                l.unit === "piece" ? /\.000$/ : /$^/,
+                                "",
+                              )}
+                              disabled={locked}
+                              onChange={(e) =>
+                                setTexts({
+                                  ...texts,
+                                  [l.productId]: e.target.value,
+                                })
+                              }
+                              onBlur={(e) =>
+                                adjust(l.productId, e.target.value)
+                              }
+                            />
+                          </label>
+                          <div className="actions">
+                            <strong>
+                              {mxn(l.lineTotal.minorUnits.toString())}
+                            </strong>
+                            <button
+                              className="secondary"
+                              type="button"
+                              disabled={locked}
+                              onClick={() => {
+                                setDraft(removeSaleLine(draft, l.productId));
+                                setError("");
+                              }}
+                              aria-label={`Eliminar ${l.name}`}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                    <dl className="pos-totals">
+                      {!pending && (
                         <>
-                          <option value="credit">Crédito</option>
-                          <option value="cash-credit">
-                            Efectivo + crédito
-                          </option>
-                          <option value="card-credit">Tarjeta + crédito</option>
+                          <div>
+                            <dt>Subtotal</dt>
+                            <dd>
+                              {mxn((draft?.total.minorUnits ?? 0n).toString())}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Descuento</dt>
+                            <dd>
+                              {mxn(
+                                (
+                                  currentQuote?.sale.lines.reduce(
+                                    (sum, line) =>
+                                      sum +
+                                      BigInt(line.discount?.minorUnits ?? "0"),
+                                    0n,
+                                  ) ?? 0n
+                                ).toString(),
+                              )}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Impuestos</dt>
+                            <dd>
+                              {mxn(
+                                (
+                                  currentQuote?.sale.lines.reduce(
+                                    (sum, line) =>
+                                      sum +
+                                      BigInt(
+                                        line.tax?.amount.minorUnits ?? "0",
+                                      ),
+                                    0n,
+                                  ) ?? 0n
+                                ).toString(),
+                              )}
+                            </dd>
+                          </div>
                         </>
                       )}
-                    {method === "mixed-credit" && (
-                      <option value="mixed-credit">
-                        Efectivo + tarjeta + crédito (pendiente)
-                      </option>
-                    )}
-                  </select>
-                </label>
-                {draft?.customerId && (
-                  <PosCredit
-                    key={tenant + draft.customerId}
-                    tenant={tenant}
-                    customerId={draft.customerId}
-                    onStatus={creditStatus}
-                  />
-                )}
-                {method === "mixed" ||
-                method === "cash-credit" ||
-                method === "card-credit" ? (
-                  <div className="stack">
-                    <label>
-                      {method === "card-credit"
-                        ? "Tarjeta (MXN)"
-                        : "Efectivo (MXN)"}
-                      <input
-                        inputMode="decimal"
-                        value={cash}
+                      <div>
+                        <dt>
+                          {pending ? "Total pendiente original" : "Total"}
+                        </dt>
+                        <dd>{mxn(total.toString())}</dd>
+                      </div>
+                    </dl>
+                    {!pending &&
+                      currentQuote &&
+                      !currentQuote.sale.lines.some((l) => l.tax) && (
+                        <p className="muted">Sin impuesto configurado.</p>
+                      )}
+                    {base && base.lines.length > 0 && (
+                      <PosDiscounts
+                        key={`${tenant}/${base.id}`}
+                        tenantId={tenant}
                         disabled={locked}
-                        onChange={(e) => setCash(e.target.value)}
+                        refreshRevision={quoteRevision}
+                        recovering={pending !== null}
+                        initialIntent={pending?.discounts}
+                        locationId={location}
+                        draft={base}
+                        canDiscount={
+                          tenants
+                            .find((t) => t.tenantId === tenant)
+                            ?.permissions.includes("sales.discount") ?? false
+                        }
+                        onQuote={setPriceQuote}
                       />
+                    )}
+                    <label>
+                      Método de pago
+                      <select
+                        value={method}
+                        disabled={locked}
+                        onChange={(e) =>
+                          setMethod(e.target.value as typeof method)
+                        }
+                      >
+                        <option value="cash">Efectivo</option>
+                        <option value="card">Tarjeta</option>
+                        <option value="mixed">Mixto</option>
+                        {draft?.customerId === creditCustomer?.id &&
+                          creditCustomer?.enabled && (
+                            <>
+                              <option value="credit">Crédito</option>
+                              <option value="cash-credit">
+                                Efectivo + crédito
+                              </option>
+                              <option value="card-credit">
+                                Tarjeta + crédito
+                              </option>
+                            </>
+                          )}
+                        {method === "mixed-credit" && (
+                          <option value="mixed-credit">
+                            Efectivo + tarjeta + crédito (pendiente)
+                          </option>
+                        )}
+                      </select>
                     </label>
-                    <p>
-                      {method === "mixed" ? "Tarjeta" : "Crédito pendiente"}:{" "}
-                      <strong>{cardAmount}</strong>
-                    </p>
+                    {draft?.customerId && (
+                      <PosCredit
+                        key={tenant + draft.customerId}
+                        tenant={tenant}
+                        customerId={draft.customerId}
+                        onStatus={creditStatus}
+                      />
+                    )}
+                    {method === "mixed" ||
+                    method === "cash-credit" ||
+                    method === "card-credit" ? (
+                      <div className="stack">
+                        <label>
+                          {method === "card-credit"
+                            ? "Tarjeta (MXN)"
+                            : "Efectivo (MXN)"}
+                          <input
+                            inputMode="decimal"
+                            value={cash}
+                            disabled={locked}
+                            onChange={(e) => setCash(e.target.value)}
+                          />
+                        </label>
+                        <p>
+                          {method === "mixed" ? "Tarjeta" : "Crédito pendiente"}
+                          : <strong>{cardAmount}</strong>
+                        </p>
+                      </div>
+                    ) : (
+                      <p>
+                        {method === "credit"
+                          ? "Crédito pendiente"
+                          : method === "cash"
+                            ? "Pago en efectivo"
+                            : method === "mixed-credit"
+                              ? "Pago conservado"
+                              : "Pago con tarjeta"}
+                        : <strong>{mxn(total.toString())}</strong>
+                      </p>
+                    )}
                   </div>
-                ) : (
+                  <div className="sale-checkout-total">
+                    <span>
+                      {pending ? "Total pendiente original" : "Total"}
+                    </span>
+                    <strong>{mxn(total.toString())}</strong>
+                  </div>
+                  <button
+                    className="pos-checkout"
+                    type="button"
+                    disabled={
+                      sending ||
+                      recoveryBlocked ||
+                      pendingSuspend !== null ||
+                      !draft?.lines.length ||
+                      !location ||
+                      (!pending && shift?.status !== "open") ||
+                      (!pending && !currentQuote)
+                    }
+                    onClick={checkout}
+                  >
+                    {sending
+                      ? "Confirmando venta…"
+                      : pending
+                        ? "Reintentar la misma venta"
+                        : "Cobrar"}
+                  </button>
+                  {pending ? (
+                    <p role="status" className="notice">
+                      Conservamos esta venta para reintentar sin duplicarla. No
+                      cierres esta página hasta confirmar el resultado.
+                    </p>
+                  ) : null}
+                </section>
+              </PilotSalePanel>
+            </div>
+            <details
+              className="pos-tools"
+              open={!!pendingSuspend || !!associated || showSuspended}
+            >
+              <summary>Ventas en espera</summary>
+              <section className="stack suspended-panel">
+                <div className="actions">
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={
+                      sending ||
+                      recoveryBlocked ||
+                      !!pending ||
+                      !!associated ||
+                      (!pendingSuspend && !draft?.lines.length)
+                    }
+                    onClick={() => void suspendCart()}
+                  >
+                    {pendingSuspend
+                      ? "Reintentar la misma suspensi\u00f3n"
+                      : "Suspender venta"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={locked}
+                    onClick={() => {
+                      void listSuspended().catch((e) => setError(e.message));
+                    }}
+                  >
+                    Ventas suspendidas
+                  </button>
+                  {associated && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={locked}
+                      onClick={() => {
+                        setDraft(null);
+                        setTexts({});
+                        setAssociated(null);
+                        setNotice(
+                          "El carrito original sigue suspendido. Los cambios sin guardar se descartaron.",
+                        );
+                      }}
+                    >
+                      Dejar original en espera
+                    </button>
+                  )}
+                </div>
+                {associated && (
                   <p>
-                    {method === "credit"
-                      ? "Crédito pendiente"
-                      : method === "cash"
-                        ? "Pago en efectivo"
-                        : method === "mixed-credit"
-                          ? "Pago conservado"
-                          : "Pago con tarjeta"}
-                    : <strong>{mxn(total.toString())}</strong>
+                    Recuperada: {associated.slice(0, 8)}. Precio actual; el
+                    checkout vuelve a validar stock y precio.
                   </p>
                 )}
-                <button
-                  className="pos-checkout"
-                  type="button"
-                  disabled={
-                    sending ||
-                    recoveryBlocked ||
-                    pendingSuspend !== null ||
-                    !draft?.lines.length ||
-                    !location ||
-                    (!pending && shift?.status !== "open") ||
-                    (!pending && !currentQuote)
-                  }
-                  onClick={checkout}
-                >
-                  {sending
-                    ? "Confirmando venta…"
-                    : pending
-                      ? "Reintentar la misma venta"
-                      : "Completar venta"}
-                </button>
-                {pending ? (
-                  <p role="status" className="notice">
-                    Conservamos esta venta para reintentar sin duplicarla. No
-                    cierres esta página hasta confirmar el resultado.
-                  </p>
-                ) : null}
+                {showSuspended && (
+                  <div aria-label="Ventas suspendidas">
+                    <h2>Ventas suspendidas</h2>
+                    <p className="muted">
+                      Hasta 50 pendientes recientes. Para recuperar o cancelar,
+                      termina o suspende primero el carrito actual.
+                    </p>
+                    {!suspended.length && <p>No hay ventas suspendidas.</p>}
+                    {suspended.map((record) => (
+                      <article className="pos-product" key={record.id}>
+                        <div>
+                          <strong>{record.id.slice(0, 8)}</strong>
+                          <small>
+                            {new Date(record.createdAt).toLocaleString()} ?{" "}
+                            {locations.find((l) => l.id === record.locationId)
+                              ?.name ?? record.locationId}
+                          </small>
+                          <small>{record.lines.length} líneas</small>
+                        </div>
+                        <div className="actions">
+                          <button
+                            type="button"
+                            disabled={locked || !!draft?.lines.length}
+                            onClick={() =>
+                              void suspendedAction(record, "recover")
+                            }
+                          >
+                            Recuperar
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={locked || !!draft?.lines.length}
+                            onClick={() =>
+                              void suspendedAction(record, "cancel")
+                            }
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </section>
-            </div>
+            </details>
           </>
         )}
       </main>
-    </>
+    </div>
   );
 }

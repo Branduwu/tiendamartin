@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   CreateProductSchema,
@@ -228,7 +229,9 @@ export default function ProductForm({
         )}
         <div className="actions">
           <button disabled={busy || !loaded} type="submit">
-            {busy ? "Guardando…" : "Guardar producto"}
+            <LoadingLabel busy={busy} label="Guardando…">
+              Guardar producto
+            </LoadingLabel>
           </button>
           <button
             type="button"

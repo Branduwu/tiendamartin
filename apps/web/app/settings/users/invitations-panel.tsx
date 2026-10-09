@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../../components/ui";
 import { useEffect, useRef, useState } from "react";
 import type { InventoryLocationDto } from "@smartretail/contracts";
 import { purchasingApi } from "../../components/purchasing-client";
@@ -14,7 +15,7 @@ type Invitation = {
 const roles: Record<string, string> = {
   admin: "Administrador",
   cashier: "Cajero",
-  inventory_clerk: "Personal de inventario",
+  inventory_clerk: "Almacén",
 };
 export default function InvitationsPanel({
   tenantId,
@@ -177,6 +178,13 @@ export default function InvitationsPanel({
                       </option>
                     ))}
                   </select>
+                  <small>
+                    {role === "admin"
+                      ? "Administra el negocio y todas sus sucursales."
+                      : role === "cashier"
+                        ? "Vende y opera caja en las sucursales asignadas."
+                        : "Consulta y opera existencias en las sucursales asignadas."}
+                  </small>
                 </label>
                 <label>
                   Vigencia en días
@@ -226,7 +234,11 @@ export default function InvitationsPanel({
                   </>
                 )}
               </fieldset>
-              <button>{busy ? "Creando…" : "Crear invitación"}</button>
+              <button>
+                <LoadingLabel busy={busy} label="Creando…">
+                  Crear invitación
+                </LoadingLabel>
+              </button>
             </fieldset>
           </form>
           {link && (

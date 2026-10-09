@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
@@ -109,7 +110,9 @@ export function CustomerForm({
       )}
       <div className="actions">
         <button disabled={saving}>
-          {saving ? "Guardando…" : "Guardar cliente"}
+          <LoadingLabel busy={saving} label="Guardando…">
+            Guardar cliente
+          </LoadingLabel>
         </button>
         <button
           type="button"
@@ -251,7 +254,7 @@ export default function CustomersPanel({
           </div>
         </div>
         {!!company.tenants.length && (
-          <label>
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}

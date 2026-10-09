@@ -1,4 +1,6 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
+import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -52,6 +54,15 @@ export default function ProductsPanel() {
     undefined,
   );
   const [reload, setReload] = useState(0);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const visibleProducts = products.filter(
+    (product) =>
+      (statusFilter === "all" || product.status === statusFilter) &&
+      `${product.name} ${product.sku} ${product.barcode ?? ""}`
+        .toLocaleLowerCase()
+        .includes(search.trim().toLocaleLowerCase()),
+  );
   useEffect(() => {
     const controller = new AbortController();
     api<{ tenants: Tenant[] }>(router, "/api/v1/tenants", {
@@ -60,8 +71,9 @@ export default function ProductsPanel() {
       .then((data) => {
         if (controller.signal.aborted) return;
         setTenants(data.tenants);
-        setTenantId(data.tenants[0]?.tenantId ?? "");
-        if (!data.tenants.length) setLoading(false);
+        const selected = selectCompany(data.tenants);
+        setTenantId(selected);
+        if (!selected) setLoading(false);
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -148,12 +160,13 @@ export default function ProductsPanel() {
     }
   }
   return (
-    <>
+    <div className="visual-pilot pilot-products">
       <header className="topbar">
         <a className="brand" href="/products">
           SmartRetail
         </a>
         <AppNavigation
+          compact
           tenantId={tenantId}
           blocked={saving || loggingOut}
           current="/products"
@@ -166,13 +179,14 @@ export default function ProductsPanel() {
           disabled={saving || loggingOut}
           onClick={logout}
         >
-          {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+          <LoadingLabel busy={loggingOut} label="Cerrando sesión…">
+            Cerrar sesión
+          </LoadingLabel>
         </button>
       </header>
       <main id="workspace-content" tabIndex={-1} className="workspace">
         <PageHeader>
           <div>
-            <p className="eyebrow">Catálogo</p>
             <h1>Productos</h1>
             <p className="muted">
               Administra los datos y precios de tus productos.
@@ -192,7 +206,7 @@ export default function ProductsPanel() {
           )}
         </PageHeader>
         {tenants.length > 1 && (
-          <label className="tenant-selector">
+          <label hidden className="tenant-selector">
             Empresa
             <select
               value={tenantId}
@@ -246,11 +260,13 @@ export default function ProductsPanel() {
             No tienes empresas activas asignadas. Contacta al administrador.
           </p>
         ) : (
-          <section className="card" aria-label="Lista de productos">
+          <section className="product-register" aria-label="Lista de productos">
             <div className="list-heading">
-              <h2>Catálogo de la empresa</h2>
+              <h2>
+                Catálogo <span className="result-count">{products.length}</span>
+              </h2>
               <button
-                className="secondary"
+                className="ghost"
                 disabled={saving || editor !== undefined}
                 onClick={() => {
                   setLoading(true);
@@ -261,6 +277,33 @@ export default function ProductsPanel() {
                 Actualizar
               </button>
             </div>
+            {!!products.length && (
+              <div className="catalog-toolbar">
+                <label>
+                  Buscar productos
+                  <input
+                    type="search"
+                    placeholder="Nombre, SKU o código de barras"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Estado
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Todos</option>
+                    <option value="active">Activos</option>
+                    <option value="inactive">Inactivos</option>
+                  </select>
+                </label>
+                <p role="status">
+                  {visibleProducts.length} de {products.length} productos
+                </p>
+              </div>
+            )}
             {!products.length ? (
               <EmptyState
                 title="Aún no tienes productos"
@@ -284,6 +327,23 @@ export default function ProductsPanel() {
                   ? "Agrega tu primer producto para comenzar a vender y controlar inventario."
                   : "Cuando tu equipo agregue productos, aparecerán aquí."}
               </EmptyState>
+            ) : !visibleProducts.length ? (
+              <EmptyState
+                title="No encontramos productos"
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("all");
+                    }}
+                  >
+                    Limpiar búsqueda
+                  </Button>
+                }
+              >
+                Prueba otro nombre, SKU o código de barras, o cambia el estado.
+              </EmptyState>
             ) : (
               <div
                 className="table-scroll responsive-table"
@@ -295,10 +355,8 @@ export default function ProductsPanel() {
                   <thead>
                     <tr>
                       {[
-                        "Nombre",
-                        "SKU",
+                        "Producto",
                         "Código de barras",
-                        "Unidad",
                         "Costo MXN",
                         "Precio MXN",
                         "Estado",
@@ -311,14 +369,18 @@ export default function ProductsPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((product) => (
+                    {visibleProducts.map((product) => (
                       <tr key={product.id}>
-                        <th scope="row">{product.name}</th>
-                        <td data-label="SKU">{product.sku}</td>
+                        <th scope="row">
+                          <strong>{product.name}</strong>
+                          <span className="product-meta">
+                            {product.sku} ·{" "}
+                            {product.unit === "piece" ? "pza" : product.unit}
+                          </span>
+                        </th>
                         <td data-label="Código de barras">
                           {product.barcode ?? "—"}
                         </td>
-                        <td data-label="Unidad">{product.unit}</td>
                         <td className="amount" data-label="Costo MXN">
                           $
                           {minorUnitsToDecimal(product.purchaseCost.minorUnits)}
@@ -334,32 +396,73 @@ export default function ProductsPanel() {
                           </span>
                         </td>
                         <td data-label="Acciones" className="row-actions">
-                          {saving || editor !== undefined ? (
-                            <span aria-disabled="true">Imprimir etiqueta</span>
-                          ) : (
-                            <Link
-                              href={`/labels?${new URLSearchParams({ tenantId, productId: product.id })}`}
-                              aria-label={`Imprimir etiqueta de ${product.name}`}
+                          <div className="desktop-product-edit">
+                            {" "}
+                            {canWrite ? (
+                              <button
+                                className="secondary"
+                                disabled={saving || editor !== undefined}
+                                aria-label={`Editar ${product.name}`}
+                                onClick={() => {
+                                  setEditor(product);
+                                  setError("");
+                                  setNotice("");
+                                }}
+                              >
+                                Editar
+                              </button>
+                            ) : (
+                              "Solo lectura"
+                            )}
+                          </div>
+                          <details className="product-more">
+                            <summary
+                              aria-label={`Más opciones de ${product.name}`}
                             >
-                              Imprimir etiqueta
-                            </Link>
-                          )}
-                          {canWrite ? (
-                            <button
-                              className="secondary"
-                              disabled={saving || editor !== undefined}
-                              aria-label={`Editar ${product.name}`}
-                              onClick={() => {
-                                setEditor(product);
-                                setError("");
-                                setNotice("");
-                              }}
-                            >
-                              Editar
-                            </button>
-                          ) : (
-                            "Solo lectura"
-                          )}
+                              ⋯
+                            </summary>
+                            <div className="product-more-content">
+                              <p className="mobile-product-detail">
+                                Código: {product.barcode ?? "Sin código"}
+                                <br />
+                                Costo: $
+                                {minorUnitsToDecimal(
+                                  product.purchaseCost.minorUnits,
+                                )}
+                              </p>{" "}
+                              {saving || editor !== undefined ? (
+                                <span aria-disabled="true">
+                                  Imprimir etiqueta
+                                </span>
+                              ) : (
+                                <Link
+                                  href={`/labels?${new URLSearchParams({ tenantId, productId: product.id })}`}
+                                  aria-label={`Imprimir etiqueta de ${product.name}`}
+                                >
+                                  Imprimir etiqueta
+                                </Link>
+                              )}
+                              <div className="mobile-product-edit">
+                                {" "}
+                                {canWrite ? (
+                                  <button
+                                    className="secondary"
+                                    disabled={saving || editor !== undefined}
+                                    aria-label={`Editar ${product.name}`}
+                                    onClick={() => {
+                                      setEditor(product);
+                                      setError("");
+                                      setNotice("");
+                                    }}
+                                  >
+                                    Editar
+                                  </button>
+                                ) : (
+                                  "Solo lectura"
+                                )}
+                              </div>
+                            </div>
+                          </details>
                         </td>
                       </tr>
                     ))}
@@ -370,6 +473,6 @@ export default function ProductsPanel() {
           </section>
         )}
       </main>
-    </>
+    </div>
   );
 }

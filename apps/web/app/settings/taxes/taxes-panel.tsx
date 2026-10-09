@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   TaxProfileFieldsSchema,
@@ -100,8 +101,8 @@ export default function TaxesPanel() {
             <p className="eyebrow">Configuración</p>
             <h1>Impuestos</h1>
             <p className="muted">
-              Tasas del negocio añadidas al precio después de descuentos. Sin
-              CFDI.
+              SmartRetail usa este perfil para calcular impuestos en la venta.
+              Esto no genera una factura fiscal.
             </p>
           </div>
           {ready && editing === undefined && (
@@ -125,7 +126,7 @@ export default function TaxesPanel() {
           <p className="card">No tienes permiso para administrar impuestos.</p>
         )}
         {!!company.tenants.length && (
-          <label>
+          <label hidden>
             Empresa
             <select
               disabled={busy || editing !== undefined}
@@ -199,7 +200,9 @@ export default function TaxesPanel() {
               )}
               <div className="actions">
                 <button disabled={busy} type="submit">
-                  {busy ? "Guardando…" : "Guardar impuesto"}
+                  <LoadingLabel busy={busy} label="Guardando…">
+                    Guardar impuesto
+                  </LoadingLabel>
                 </button>
                 <button
                   className="secondary"

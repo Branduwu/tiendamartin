@@ -22,10 +22,11 @@ function units(value: string): string {
   return (n / 1000n).toString() + (remainder ? "." + remainder : "");
 }
 function Trend({ days }: { days: OperationalReport["days"] }) {
-  const max = days.reduce(
+  const peak = days.reduce(
     (n, d) => (BigInt(d.gross) > n ? BigInt(d.gross) : n),
-    1n,
+    0n,
   );
+  const max = peak || 1n;
   // Money stays bigint. Only integer SVG coordinates are derived from ratios.
   const points = days
     .map(
@@ -36,6 +37,10 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
   return (
     <figure className="report-trend">
       <figcaption>Ventas completadas por día · MXN</figcaption>
+      <div className="trend-scale">
+        <span>Máximo diario {mxn(peak.toString())}</span>
+        <span>Base $0.00 MXN</span>
+      </div>
       <svg
         role="img"
         aria-label="Tendencia de ventas; cifras exactas en el reporte diario"
@@ -57,6 +62,18 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
         <span>{days.at(-1)?.date}</span>
       </div>
     </figure>
+  );
+}
+function humanPeriod(from: string, to: string) {
+  const format = new Intl.DateTimeFormat("es-MX", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return format.formatRange(
+    new Date(from + "T12:00:00Z"),
+    new Date(to + "T12:00:00Z"),
   );
 }
 export default function DashboardPanel() {
@@ -166,8 +183,8 @@ export default function DashboardPanel() {
   const metrics: [string, string][] = report
     ? [
         ["Ventas de hoy", mxn(report.todaySales.gross)],
-        ["Ventas del periodo", mxn(report.sales.gross)],
-        ["Número de ventas", report.sales.count],
+        ["Ventas", mxn(report.sales.gross)],
+        ["Ventas realizadas", report.sales.count],
         ["Ticket promedio", mxn(report.sales.average)],
         ["Efectivo", mxn(report.sales.cash)],
         ["Tarjeta", mxn(report.sales.card)],
@@ -190,9 +207,9 @@ export default function DashboardPanel() {
         ...(report.financial
           ? ([
               ["Cuentas por pagar (actual)", mxn(report.financial.outstanding)],
-              ["Gastos registrados (per?odo)", mxn(report.financial.expenses)],
+              ["Gastos registrados (periodo)", mxn(report.financial.expenses)],
               [
-                "Pagos a proveedores (per?odo)",
+                "Pagos a proveedores (periodo)",
                 mxn(report.financial.supplierPayments),
               ],
               ["Efectivo por gastos", mxn(report.financial.expenseCashOut)],
@@ -203,22 +220,26 @@ export default function DashboardPanel() {
             ] as [string, string][])
           : []),
         ["Impuestos devueltos", mxn(report.sales.taxRefunded)],
-        [
-          "Venta comercial neta (sin impuestos)",
-          mxn(report.sales.netCommercial),
-        ],
+        ["Neto sin impuestos", mxn(report.sales.netCommercial)],
         ["Compras recibidas", mxn(report.purchases.receivedAmount)],
         ["Stock bajo", report.inventory.low],
         ["Agotados", report.inventory.empty],
       ]
     : [];
+  const primaryLabels = [
+    "Ventas",
+    "Ventas realizadas",
+    "Ticket promedio",
+    "Neto sin impuestos",
+  ];
   return (
-    <>
+    <div className="visual-pilot pilot-dashboard">
       <header className="topbar">
         <Link className="brand" href="/dashboard">
           SmartRetail
         </Link>
         <AppNavigation
+          compact
           tenantId={company.tenantId}
           current="/dashboard"
           permissions={company.permissions}
@@ -238,8 +259,8 @@ export default function DashboardPanel() {
             </p>
           </div>
         </div>
-        {!!company.tenants.length && (
-          <label>
+        {company.tenants.length > 1 && (
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}
@@ -269,10 +290,19 @@ export default function DashboardPanel() {
           <p>No tienes permiso para consultar reportes.</p>
         ) : (
           <>
-            <section className="card" aria-labelledby="filters-title">
-              <h2 id="filters-title">Periodo y filtros</h2>
-              <form className="stack" key={company.tenantId} onSubmit={apply}>
-                <div className="form-grid">
+            <section
+              className="dashboard-filters"
+              aria-labelledby="filters-title"
+            >
+              <h2 id="filters-title" className="sr-only">
+                Periodo y filtros
+              </h2>
+              <form
+                className="dashboard-filter-form"
+                key={company.tenantId}
+                onSubmit={apply}
+              >
+                <div className="dashboard-period">
                   <label>
                     Periodo
                     <select name="period" defaultValue="today">
@@ -282,30 +312,31 @@ export default function DashboardPanel() {
                       <option value="custom">Rango personalizado</option>
                     </select>
                   </label>
-                  <label>
-                    Desde
-                    <input
-                      name="from"
-                      type="date"
-                      min="2000-01-01"
-                      max="2099-12-31"
-                      defaultValue={today}
-                    />
-                  </label>
-                  <label>
-                    Hasta
-                    <input
-                      name="to"
-                      type="date"
-                      min="2000-01-01"
-                      max="2099-12-31"
-                      defaultValue={today}
-                    />
-                  </label>
                 </div>
-                <details>
-                  <summary>Filtros operativos</summary>
+                <details className="dashboard-advanced">
+                  <summary>Fechas y filtros</summary>
                   <div className="form-grid">
+                    <label>
+                      Desde
+                      <input
+                        name="from"
+                        type="date"
+                        min="2000-01-01"
+                        max="2099-12-31"
+                        defaultValue={today}
+                      />
+                    </label>
+                    <label>
+                      Hasta
+                      <input
+                        name="to"
+                        type="date"
+                        min="2000-01-01"
+                        max="2099-12-31"
+                        defaultValue={today}
+                      />
+                    </label>
+
                     {(
                       [
                         ["locationId", "Ubicación", "locations"],
@@ -342,10 +373,9 @@ export default function DashboardPanel() {
                   </p>
                 </details>
                 <div className="actions">
-                  <button disabled={exporting}>Aplicar filtros</button>
-                  <span className="muted">
-                    Fechas de la zona configurada · máximo 366 días
-                  </span>
+                  <button className="secondary" disabled={exporting}>
+                    Aplicar filtros
+                  </button>
                 </div>
               </form>
             </section>
@@ -355,17 +385,33 @@ export default function DashboardPanel() {
               report && (
                 <>
                   <p role="status" className="muted">
-                    Periodo aplicado: {report.filters.from} al{" "}
-                    {report.filters.to} · {report.timezone}
+                    {humanPeriod(report.filters.from, report.filters.to)}
                   </p>
                   <dl className="report-kpis">
-                    {metrics.map(([label, value]) => (
-                      <div key={label}>
-                        <dt>{label}</dt>
-                        <dd>{value}</dd>
-                      </div>
-                    ))}
+                    {metrics
+                      .filter(([label]) => primaryLabels.includes(label))
+                      .map(([label, value]) => (
+                        <div key={label}>
+                          <dt>{label}</dt>
+                          <dd>{value}</dd>
+                        </div>
+                      ))}
                   </dl>
+                  <details className="dashboard-breakdown">
+                    <summary>
+                      Ver desglose completo de ventas y operación
+                    </summary>
+                    <dl className="metric-rows">
+                      {metrics
+                        .filter(([label]) => !primaryLabels.includes(label))
+                        .map(([label, value]) => (
+                          <div key={label}>
+                            <dt>{label}</dt>
+                            <dd>{value}</dd>
+                          </div>
+                        ))}
+                    </dl>
+                  </details>
                   {report.credit && (
                     <p className="muted">
                       Las ventas incluyen crédito pendiente. Los abonos son
@@ -379,236 +425,267 @@ export default function DashboardPanel() {
                         Sin ventas ni devoluciones en este periodo.
                       </p>
                     )}
-                  <section className="card" aria-labelledby="sales-title">
-                    <div className="heading">
-                      <h2 id="sales-title">Reporte de ventas</h2>
-                      <button
-                        className="secondary"
-                        disabled={exporting}
-                        onClick={() => void download("sales")}
-                      >
-                        Exportar ventas CSV
-                      </button>
-                    </div>
-                    <p className="muted">
-                      Ventas netas = ventas completadas − devoluciones
-                      completadas, incluidos impuestos. Venta comercial neta
-                      excluye impuestos de ventas y devueltos. Las devoluciones
-                      se cuentan en su fecha; puede resultar negativa. por fecha
-                      de registro. Ticket promedio redondeado al centavo más
-                      cercano. Producto y método seleccionan ventas completas
-                      que los contienen; no prorratean pagos.
-                    </p>
-                    <Trend days={report.days} />
-                    <div
-                      className="report-scroll"
-                      tabIndex={0}
-                      role="region"
-                      aria-label="Resumen diario desplazable"
+                  <div className="dashboard-sections">
+                    <section
+                      className="card dashboard-trend"
+                      aria-labelledby="sales-title"
                     >
-                      <table className="data-table">
-                        <caption>Resumen diario local</caption>
-                        <thead>
-                          <tr>
-                            {[
-                              "Fecha",
-                              "Ventas",
-                              "Cantidad",
-                              "Promedio",
-                              "Cash",
-                              "Card",
-                              "Devoluciones",
-                              "Neta",
-                            ].map((x) => (
-                              <th key={x} scope="col">
-                                {x}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {report.days.map((d) => (
-                            <tr key={d.date}>
-                              <th scope="row">{d.date}</th>
+                      <div className="heading">
+                        <h2 id="sales-title">Reporte de ventas</h2>
+                        <button
+                          className="ghost"
+                          disabled={exporting}
+                          onClick={() => void download("sales")}
+                        >
+                          Exportar ventas CSV
+                        </button>
+                      </div>
+                      <Trend days={report.days} />
+                      <details className="daily-detail">
+                        <summary>Ver reporte diario y criterios</summary>
+                        <p className="muted">
+                          Ventas netas = ventas completadas − devoluciones
+                          completadas, incluidos impuestos. Venta comercial neta
+                          excluye impuestos de ventas y devueltos. Las
+                          devoluciones se cuentan en su fecha; puede resultar
+                          negativa. Ticket promedio redondeado al centavo más
+                          cercano. Producto y método seleccionan ventas
+                          completas que los contienen; no prorratean pagos.
+                        </p>
+                        <div
+                          className="report-scroll"
+                          tabIndex={0}
+                          role="region"
+                          aria-label="Resumen diario desplazable"
+                        >
+                          <table className="data-table">
+                            <caption>Resumen diario local</caption>
+                            <thead>
+                              <tr>
+                                {[
+                                  "Fecha",
+                                  "Ventas",
+                                  "Cantidad",
+                                  "Promedio",
+                                  "Cash",
+                                  "Card",
+                                  "Devoluciones",
+                                  "Neta",
+                                ].map((x) => (
+                                  <th key={x} scope="col">
+                                    {x}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {report.days.map((d) => (
+                                <tr key={d.date}>
+                                  <th scope="row">{d.date}</th>
+                                  {[
+                                    ["Ventas", mxn(d.gross)],
+                                    ["Cantidad", d.count],
+                                    ["Promedio", mxn(d.average)],
+                                    ["Cash", mxn(d.cash)],
+                                    ["Card", mxn(d.card)],
+                                    ["Devoluciones", mxn(d.refunds)],
+                                    ["Neta", mxn(d.net)],
+                                  ].map(([label, value]) => (
+                                    <td key={label} data-label={label}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    </section>
+                    <section
+                      className="card dashboard-stock"
+                      aria-labelledby="stock-title"
+                    >
+                      <h2 id="stock-title">
+                        {new Set(report.inventory.alerts.map((p) => p.id)).size}{" "}
+                        {new Set(report.inventory.alerts.map((p) => p.id))
+                          .size === 1
+                          ? "producto necesita"
+                          : "productos necesitan"}{" "}
+                        atención
+                      </h2>
+                      <p className="muted">
+                        Stock actual · Mínimos configurados
+                      </p>
+                      <Link
+                        href={`/inventory/alerts?tenantId=${company.tenantId}`}
+                        className="button secondary"
+                      >
+                        Ver alertas y reabastecimiento
+                      </Link>
+                      {!report.inventory.alerts.length ? (
+                        <p>No hay productos agotados ni con stock bajo.</p>
+                      ) : (
+                        <ul className="report-alerts">
+                          {report.inventory.alerts.map((p) => (
+                            <li key={p.id + p.locationId}>
+                              <strong>{p.name}</strong>
+                              <span>
+                                {p.state === "out" ? "Agotado" : "Stock bajo"} ·{" "}
+                                {units(p.stock)}{" "}
+                                {p.unit === "piece" ? "pza" : p.unit} ·{" "}
+                                {p.locationName} · Mínimo {units(p.minimum)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                    <section
+                      className="card dashboard-products"
+                      aria-labelledby="products-title"
+                    >
+                      <div className="heading">
+                        <h2 id="products-title">Productos más vendidos</h2>
+                        <button
+                          className="secondary"
+                          disabled={exporting}
+                          onClick={() => void download("products")}
+                        >
+                          Exportar productos CSV
+                        </button>
+                      </div>
+                      <p className="muted">
+                        Top 20 por ingresos brutos del periodo; cantidades por
+                        unidad. Stock actual en la ubicación elegida o sumado en
+                        todas.
+                      </p>
+                      {!report.products.length ? (
+                        <p>Sin productos vendidos en este periodo.</p>
+                      ) : (
+                        <table className="data-table">
+                          <thead>
+                            <tr>
                               {[
-                                ["Ventas", mxn(d.gross)],
-                                ["Cantidad", d.count],
-                                ["Promedio", mxn(d.average)],
-                                ["Cash", mxn(d.cash)],
-                                ["Card", mxn(d.card)],
-                                ["Devoluciones", mxn(d.refunds)],
-                                ["Neta", mxn(d.net)],
-                              ].map(([label, value]) => (
-                                <td key={label} data-label={label}>
-                                  {value}
-                                </td>
+                                "Producto",
+                                "Unidades vendidas",
+                                "Ingresos",
+                                "Stock actual",
+                              ].map((x) => (
+                                <th scope="col" key={x}>
+                                  {x}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                  <section className="card" aria-labelledby="products-title">
-                    <div className="heading">
-                      <h2 id="products-title">Productos más vendidos</h2>
-                      <button
-                        className="secondary"
-                        disabled={exporting}
-                        onClick={() => void download("products")}
-                      >
-                        Exportar productos CSV
-                      </button>
-                    </div>
-                    <p className="muted">
-                      Top 20 por ingresos brutos del periodo; cantidades por
-                      unidad. Stock actual en la ubicación elegida o sumado en
-                      todas.
-                    </p>
-                    {!report.products.length ? (
-                      <p>Sin productos vendidos en este periodo.</p>
-                    ) : (
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            {[
-                              "Producto",
-                              "Unidades vendidas",
-                              "Ingresos",
-                              "Stock actual",
-                            ].map((x) => (
-                              <th scope="col" key={x}>
-                                {x}
-                              </th>
+                          </thead>
+                          <tbody>
+                            {report.products.map((p) => (
+                              <tr key={p.id}>
+                                <th scope="row">{p.name}</th>
+                                <td data-label="Unidades vendidas">
+                                  {units(p.quantity)}{" "}
+                                  {p.unit === "piece" ? "pza" : p.unit}
+                                </td>
+                                <td data-label="Ingresos">{mxn(p.revenue)}</td>
+                                <td data-label="Stock actual">
+                                  {units(p.stock)}{" "}
+                                  {p.unit === "piece" ? "pza" : p.unit}
+                                </td>
+                              </tr>
                             ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {report.products.map((p) => (
-                            <tr key={p.id}>
-                              <th scope="row">{p.name}</th>
-                              <td data-label="Unidades vendidas">
-                                {units(p.quantity)} {p.unit}
-                              </td>
-                              <td data-label="Ingresos">{mxn(p.revenue)}</td>
-                              <td data-label="Stock actual">
-                                {units(p.stock)} {p.unit}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </section>
-                  <section className="card" aria-labelledby="stock-title">
-                    <h2 id="stock-title">Alertas de inventario actual</h2>
-                    <p className="muted">
-                      Productos y ubicaciones activos con mínimo configurado.
-                      Primeras 100 alertas por ubicación; los contadores
-                      incluyen productos distintos en cada estado. No dependen
-                      del periodo de ventas.
-                    </p>
-                    <Link
-                      href={`/inventory/alerts?tenantId=${company.tenantId}`}
-                      className="button secondary"
-                    >
-                      Ver alertas y reabastecimiento
-                    </Link>
-                    {!report.inventory.alerts.length ? (
-                      <p>No hay productos agotados ni con stock bajo.</p>
-                    ) : (
-                      <ul className="report-alerts">
-                        {report.inventory.alerts.map((p) => (
-                          <li key={p.id + p.locationId}>
-                            <strong>{p.name}</strong>
-                            <span>
-                              {p.state === "out" ? "Agotado" : "Stock bajo"} ·{" "}
-                              {units(p.stock)} {p.unit} · {p.locationName} ·
-                              Mínimo {units(p.minimum)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                  <div className="report-sections">
-                    <section className="card">
-                      <h2>Compras</h2>
-                      <p className="muted">
-                        Órdenes por fecha de creación y estado actual. Recibido
-                        por fecha de recepción, con costo guardado; no es venta.
-                      </p>
-                      <dl className="cash-summary">
-                        {[
-                          ["Órdenes creadas", report.purchases.created],
-                          ["Pendientes (ordered)", report.purchases.pending],
-                          ["Parcialmente recibidas", report.purchases.partial],
-                          ["Recibidas", report.purchases.received],
-                          [
-                            "Importe ordenado/estimado",
-                            mxn(report.purchases.orderedAmount),
-                          ],
-                          [
-                            "Importe recibido",
-                            mxn(report.purchases.receivedAmount),
-                          ],
-                        ].map(([l, v]) => (
-                          <div key={l}>
-                            <dt>{l}</dt>
-                            <dd>{v}</dd>
-                          </div>
-                        ))}
-                      </dl>
+                          </tbody>
+                        </table>
+                      )}
                     </section>
-                    <section className="card">
-                      <h2>Caja</h2>
-                      <p className="muted">
-                        Turnos por fecha de apertura; esperado actual para
-                        abiertos, snapshot para cerrados. Entradas/salidas por
-                        fecha de movimiento, incluye reembolsos. Sólo fecha y
-                        ubicación.
-                      </p>
-                      <dl className="cash-summary">
-                        {[
-                          ["Turnos abiertos", report.cash.open],
-                          ["Turnos cerrados", report.cash.closed],
-                          ["Efectivo esperado", mxn(report.cash.expected)],
-                          ["Faltantes", mxn(report.cash.shortage)],
-                          ["Sobrantes", mxn(report.cash.surplus)],
-                          ["Cash in", mxn(report.cash.cashIn)],
-                          ["Cash out", mxn(report.cash.cashOut)],
-                        ].map(([l, v]) => (
-                          <div key={l}>
-                            <dt>{l}</dt>
-                            <dd>{v}</dd>
+                    <details className="dashboard-operations">
+                      <summary>Compras, caja y clientes</summary>
+                      <div className="report-sections">
+                        <section className="card">
+                          <h2>Compras</h2>
+                          <p className="muted">
+                            Órdenes por fecha de creación y estado actual.
+                            Recibido por fecha de recepción, con costo guardado;
+                            no es venta.
+                          </p>
+                          <dl className="cash-summary">
+                            {[
+                              ["Órdenes creadas", report.purchases.created],
+                              [
+                                "Pendientes (ordered)",
+                                report.purchases.pending,
+                              ],
+                              [
+                                "Parcialmente recibidas",
+                                report.purchases.partial,
+                              ],
+                              ["Recibidas", report.purchases.received],
+                              [
+                                "Importe ordenado/estimado",
+                                mxn(report.purchases.orderedAmount),
+                              ],
+                              [
+                                "Importe recibido",
+                                mxn(report.purchases.receivedAmount),
+                              ],
+                            ].map(([l, v]) => (
+                              <div key={l}>
+                                <dt>{l}</dt>
+                                <dd>{v}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </section>
+                        <section className="card">
+                          <h2>Caja</h2>
+                          <p className="muted">
+                            Turnos por fecha de apertura; esperado actual para
+                            abiertos, snapshot para cerrados. Entradas/salidas
+                            por fecha de movimiento, incluye reembolsos. Sólo
+                            fecha y ubicación.
+                          </p>
+                          <dl className="cash-summary">
+                            {[
+                              ["Turnos abiertos", report.cash.open],
+                              ["Turnos cerrados", report.cash.closed],
+                              ["Efectivo esperado", mxn(report.cash.expected)],
+                              ["Faltantes", mxn(report.cash.shortage)],
+                              ["Sobrantes", mxn(report.cash.surplus)],
+                              ["Cash in", mxn(report.cash.cashIn)],
+                              ["Cash out", mxn(report.cash.cashOut)],
+                            ].map(([l, v]) => (
+                              <div key={l}>
+                                <dt>{l}</dt>
+                                <dd>{v}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </section>
+                      </div>
+                      <section className="card">
+                        <h2>Clientes</h2>
+                        <dl className="cash-summary">
+                          <div>
+                            <dt>Clientes con compras</dt>
+                            <dd>{report.sales.customers}</dd>
                           </div>
-                        ))}
-                      </dl>
-                    </section>
+                          <div>
+                            <dt>Ventas asociadas a cliente</dt>
+                            <dd>{report.sales.associated}</dd>
+                          </div>
+                          <div>
+                            <dt>Ventas Público general</dt>
+                            <dd>{report.sales.general}</dd>
+                          </div>
+                        </dl>
+                      </section>
+                    </details>
                   </div>
-                  <section className="card">
-                    <h2>Clientes</h2>
-                    <dl className="cash-summary">
-                      <div>
-                        <dt>Clientes con compras</dt>
-                        <dd>{report.sales.customers}</dd>
-                      </div>
-                      <div>
-                        <dt>Ventas asociadas a cliente</dt>
-                        <dd>{report.sales.associated}</dd>
-                      </div>
-                      <div>
-                        <dt>Ventas Público general</dt>
-                        <dd>{report.sales.general}</dd>
-                      </div>
-                    </dl>
-                  </section>
                 </>
               )
             )}
           </>
         )}
       </main>
-    </>
+    </div>
   );
 }

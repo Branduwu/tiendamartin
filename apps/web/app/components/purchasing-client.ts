@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { selectCompany } from "../../lib/company-selection";
 export class PurchasingApiError extends Error {
   constructor(
     message: string,
@@ -87,11 +88,7 @@ export function usePurchasingCompany(
           t.permissions.includes(permission),
         );
         setTenants(allowed);
-        setTenantId(
-          allowed.some((t) => t.tenantId === preferred)
-            ? (preferred ?? "")
-            : (allowed[0]?.tenantId ?? ""),
-        );
+        setTenantId(selectCompany(allowed, preferred));
         setLoading(false);
       })
       .catch(() => {

@@ -1,4 +1,5 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -12,6 +13,7 @@ import { milliUnitsToDecimal } from "../../lib/quantity-input";
 import InventoryForm, { type Command, type Action } from "./inventory-form";
 import InventoryMinimumForm from "../components/inventory-minimum-form";
 import InventoryStateBadge from "../components/inventory-state-badge";
+import { ActionMenu } from "../components/ui";
 
 type Tenant = { tenantId: string; tenantName?: string; permissions: string[] };
 class ApiFailure extends Error {
@@ -81,8 +83,9 @@ export default function InventoryPanel() {
         if (controller.signal.aborted) return;
         setTenants(data.tenants);
         setLoadFailed(undefined);
-        setTenantId(data.tenants[0]?.tenantId ?? "");
-        if (!data.tenants.length) setLoading(false);
+        const selected = selectCompany(data.tenants);
+        setTenantId(selected);
+        if (!selected) setLoading(false);
       })
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -275,7 +278,7 @@ export default function InventoryPanel() {
           )}
         </div>
         {tenants.length > 1 ? (
-          <label className="tenant-selector">
+          <label hidden className="tenant-selector">
             Empresa
             <select
               value={tenantId}
@@ -449,8 +452,12 @@ export default function InventoryPanel() {
                                 className="amount stock-quantity"
                                 data-label="Cantidad"
                               >
-                                {milliUnitsToDecimal(row.quantity.milliUnits)}{" "}
-                                {row.quantity.unit}
+                                {milliUnitsToDecimal(
+                                  row.quantity.milliUnits,
+                                ).replace(/\.?0+$/, "")}{" "}
+                                {row.quantity.unit === "piece"
+                                  ? "pza"
+                                  : row.quantity.unit}
                               </td>
                               <td data-label="Mínimo / estado">
                                 <InventoryStateBadge
@@ -458,12 +465,14 @@ export default function InventoryPanel() {
                                 />
                                 <small className="row-location">
                                   {row.minimumStock
-                                    ? `Mínimo: ${milliUnitsToDecimal(row.minimumStock.milliUnits)} ${row.minimumStock.unit}`
+                                    ? `Mínimo: ${milliUnitsToDecimal(row.minimumStock.milliUnits).replace(/\.?0+$/, "")} ${row.minimumStock.unit === "piece" ? "pza" : row.minimumStock.unit}`
                                     : "Sin mínimo configurado"}
                                 </small>
                               </td>
                               <td data-label="Acciones" className="row-actions">
-                                <div className="actions">
+                                <ActionMenu
+                                  label={`Acciones de ${row.productName}`}
+                                >
                                   {permissions.includes(
                                     "inventory.minimum.write",
                                   ) && (
@@ -519,7 +528,7 @@ export default function InventoryPanel() {
                                         {label}
                                       </button>
                                     ))}
-                                </div>
+                                </ActionMenu>
                               </td>
                             </tr>
                           ))}

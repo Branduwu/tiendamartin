@@ -267,14 +267,17 @@ export default function CompanyList({ actor }: { actor: string }) {
           </button>
         </p>
       )}
-      <CreateCompany
-        actor={actor}
-        onSaved={() => {
-          setNotice("Empresa creada con su propietario y perfil inicial.");
-          setPage(1);
-          setRevision((n) => n + 1);
-        }}
-      />
+      <details className="platform-create">
+        <summary className="button-link">Nueva empresa</summary>
+        <CreateCompany
+          actor={actor}
+          onSaved={() => {
+            setNotice("Empresa creada con su propietario y perfil inicial.");
+            setPage(1);
+            setRevision((n) => n + 1);
+          }}
+        />
+      </details>
       {data ? (
         <>
           <section className="stack" aria-label="Empresas registradas">

@@ -1,4 +1,5 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -66,7 +67,7 @@ export default function InventoryAlertsPanel({
         );
         setTenants(allowed);
         // A supplied company is never silently replaced for a deep link.
-        setTenantId(initialTenantId ?? allowed[0]?.tenantId ?? "");
+        setTenantId(selectCompany(allowed, initialTenantId));
         setAccessLoading(false);
       })
       .catch((e) => {
@@ -128,14 +129,15 @@ export default function InventoryAlertsPanel({
             <p className="eyebrow">Operaciones</p>
             <h1>Alertas de inventario</h1>
             <p className="muted">
-              Revisa mínimos por ubicación y prepara el reabastecimiento.
+              Necesita reabastecimiento: compara existencia y mínimo por
+              sucursal.
             </p>
           </div>
           <Link href="/inventory">Volver a inventario</Link>
         </div>
         {!!tenants.length && (
           <div className="form-grid">
-            <label>
+            <label hidden>
               Empresa
               <select
                 value={tenantId}
@@ -225,11 +227,17 @@ export default function InventoryAlertsPanel({
             </dl>
             <section className="card" aria-label="Productos con alerta">
               <p className="muted">
-                Sin mínimo configurado no se generan alertas automáticas. Se
-                muestran las primeras 100 alertas del filtro seleccionado; los
-                contadores incluyen todos los productos distintos en cada
-                estado. La sugerencia se consulta de nuevo al abrir compras.
+                Configura un mínimo para detectar qué productos reabastecer.
               </p>
+              <details>
+                <summary>Cómo se calculan las alertas</summary>
+                <p className="muted">
+                  Sin mínimo configurado no se generan alertas automáticas. Se
+                  muestran las primeras 100 alertas del filtro seleccionado; los
+                  contadores incluyen todos los productos distintos en cada
+                  estado. La sugerencia se consulta de nuevo al abrir compras.
+                </p>
+              </details>
               {!alerts.alerts.length ? (
                 <p role="status">No hay alertas para esta ubicación.</p>
               ) : (

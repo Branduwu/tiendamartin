@@ -426,7 +426,7 @@ export default function ReceivablesPanel({
           </p>
         )}
         {company.tenants.length > 1 && (
-          <label>
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}

@@ -1,4 +1,5 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -56,7 +57,7 @@ export default function LabelsPanel({
             );
           }
         } else if (!queryError) {
-          setTenantId(allowed[0]?.tenantId ?? "");
+          setTenantId(selectCompany(allowed));
         }
         setLoading(false);
       })
@@ -96,7 +97,7 @@ export default function LabelsPanel({
           <Link href="/products">Volver a productos</Link>
         </div>
         <div className="labels-controls">
-          <label className="tenant-selector">
+          <label hidden className="tenant-selector">
             Empresa
             <select
               value={tenantId}
@@ -281,6 +282,9 @@ function CompanyLabels({
             Actualizar productos
           </button>
         </div>
+        <p className="muted">
+          Producto → cantidad → tamaño → vista previa → imprimir
+        </p>
         {loading && <p role="status">Cargando productos…</p>}
         {error && (
           <p role="alert" className="error">
@@ -393,7 +397,7 @@ function CompanyLabels({
             })}
           </ul>
         )}
-        <div className="labels-print-actions">
+        <div className="labels-print-actions" hidden={!selections.length}>
           <label>
             Tamaño de etiqueta
             <select

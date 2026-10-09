@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import { useEffect, useState } from "react";
 import type {
   CouponDto,
@@ -155,7 +156,7 @@ export default function PromotionsPanel() {
           </p>
         )}
         {company.tenants.length > 0 && (
-          <label>
+          <label hidden>
             Empresa
             <select
               aria-label="Empresa"
@@ -356,7 +357,23 @@ export default function PromotionsPanel() {
                 después de los descuentos de línea y venta.
               </p>
               <div className="row-actions">
-                <button>{busy ? "Guardando…" : "Guardar"}</button>
+                <p className="notice promotion-preview" role="status">
+                  Vista previa:{" "}
+                  {name.trim() || (kind === "coupons" ? "Cupón" : "Promoción")}{" "}
+                  · {value || "0"}
+                  {type === "percentage"
+                    ? "% de descuento"
+                    : " MXN de descuento"}
+                  {kind === "promotions" &&
+                    ` para ${products.find((p) => p.id === productId)?.name ?? "el producto que selecciones"}`}
+                  .{starts ? " Con inicio programado." : " Desde ahora."}
+                  {ends ? " Hasta la fecha indicada." : " Sin fecha de fin."}
+                </p>
+                <button>
+                  <LoadingLabel busy={busy} label="Guardando…">
+                    Guardar
+                  </LoadingLabel>
+                </button>
                 <button
                   type="button"
                   className="secondary"

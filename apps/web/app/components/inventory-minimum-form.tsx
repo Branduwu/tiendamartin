@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "./ui";
 import { useState, type FormEvent } from "react";
 import { QuantitySchema, type InventoryStockDto } from "@smartretail/contracts";
 import {
@@ -86,7 +87,9 @@ export default function InventoryMinimumForm({
         </p>
         <div className="actions">
           <button disabled={busy}>
-            {busy ? "Guardando…" : "Guardar mínimo"}
+            <LoadingLabel busy={busy} label="Guardando…">
+              Guardar mínimo
+            </LoadingLabel>
           </button>
           <button
             type="button"

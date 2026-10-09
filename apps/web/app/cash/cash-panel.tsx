@@ -1,4 +1,5 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,6 +15,8 @@ import {
   minorUnitsToDecimal,
 } from "../../lib/money-input";
 import { formatCashMxn } from "../../lib/cash-display";
+import { ContextHelp, LoadingLabel } from "../components/ui";
+import { formatDateTime } from "../components/presentation";
 type Pending = {
   tenantId: string;
   locationId: string;
@@ -75,7 +78,11 @@ export default function CashPanel({ userId }: { userId: string }) {
         if (controller.signal.aborted) return;
         setMemberships(b.tenants);
         setTenants(allowed);
-        let selected = allowed[0] ?? "";
+        let selected = selectCompany(
+          b.tenants.filter((t: { tenantId: string }) =>
+            allowed.includes(t.tenantId),
+          ),
+        );
         try {
           const saved = sessionStorage.getItem(key);
           if (saved !== null) {
@@ -292,6 +299,7 @@ export default function CashPanel({ userId }: { userId: string }) {
       <header className="topbar no-print">
         <strong>SmartRetail</strong>
         <AppNavigation
+          blocked={locked || loading}
           tenantId={tenant}
           branchName={locations.find((l) => l.id === location)?.name}
           current="/cash"
@@ -326,7 +334,7 @@ export default function CashPanel({ userId }: { userId: string }) {
         ) : (
           <>
             <div className="pos-selectors">
-              <label>
+              <label hidden>
                 Empresa
                 <select
                   aria-label="Empresa"
@@ -384,7 +392,9 @@ export default function CashPanel({ userId }: { userId: string }) {
                   disabled={busy || blocked}
                   onClick={() => submit(pending.operation)}
                 >
-                  Reintentar operación
+                  <LoadingLabel busy={busy} label="Procesando…">
+                    Reintentar operación
+                  </LoadingLabel>
                 </button>
               </section>
             )}
@@ -406,6 +416,7 @@ export default function CashPanel({ userId }: { userId: string }) {
                         <summary>Referencia del turno</summary>
                         <p className="sale-id">{shift.id}</p>
                       </details>
+                      <p>Inicio: {formatDateTime(shift.openedAt)}</p>
                       <p>
                         Abierto por:{" "}
                         {"openedByName" in shift &&
@@ -497,7 +508,11 @@ export default function CashPanel({ userId }: { userId: string }) {
                           onChange={(e) => setOpening(e.target.value)}
                         />
                       </label>
-                      <button disabled={locked || !location}>Abrir caja</button>
+                      <button disabled={locked || !location} aria-busy={busy}>
+                        <LoadingLabel busy={busy} label="Abriendo…">
+                          Abrir caja
+                        </LoadingLabel>
+                      </button>
                     </form>
                   ) : (
                     <>
@@ -542,7 +557,11 @@ export default function CashPanel({ userId }: { userId: string }) {
                             onChange={(e) => setReason(e.target.value)}
                           />
                         </label>
-                        <button disabled={locked}>Registrar movimiento</button>
+                        <button disabled={locked} aria-busy={busy}>
+                          <LoadingLabel busy={busy} label="Registrando…">
+                            Registrar movimiento
+                          </LoadingLabel>
+                        </button>
                       </form>
                       <form
                         onSubmit={(e) => {
@@ -560,12 +579,19 @@ export default function CashPanel({ userId }: { userId: string }) {
                             onChange={(e) => setCounted(e.target.value)}
                           />
                         </label>
-                        <p>
-                          Se conservará la diferencia; no se ajustarán
-                          movimientos automáticamente.
-                        </p>
-                        <button className="danger" disabled={locked}>
-                          Cerrar caja
+                        <ContextHelp label="Diferencia al cerrar caja">
+                          Se conserva la diferencia entre efectivo esperado y
+                          contado. Los movimientos registrados no se ajustan
+                          automáticamente.
+                        </ContextHelp>
+                        <button
+                          className="danger"
+                          disabled={locked}
+                          aria-busy={busy}
+                        >
+                          <LoadingLabel busy={busy} label="Cerrando…">
+                            Cerrar caja
+                          </LoadingLabel>
                         </button>
                       </form>
                     </>

@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -113,7 +114,7 @@ export default function SuppliersPanel() {
           </button>
         </div>
         {company.tenants.length > 1 ? (
-          <label>
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}
@@ -353,7 +354,9 @@ function SupplierForm({
       )}
       <div className="actions">
         <button disabled={saving}>
-          {saving ? "Guardando…" : "Guardar proveedor"}
+          <LoadingLabel busy={saving} label="Guardando…">
+            Guardar proveedor
+          </LoadingLabel>
         </button>
         <button
           type="button"

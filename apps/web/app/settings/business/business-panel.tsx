@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import type {
   BusinessProfileDto,
@@ -80,7 +81,7 @@ function ProfileEditor({
   }
   return (
     <form className="panel stack" onSubmit={submit}>
-      <h2>Negocio</h2>
+      <h2>Datos de empresa</h2>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -115,42 +116,53 @@ function ProfileEditor({
           value={profile.website}
           max={500}
         />
-        <label>
-          Zona horaria
-          <select name="timezone" defaultValue={profile.timezone}>
-            <option value="America/Mexico_City">Ciudad de México</option>
-            <option value="America/Tijuana">Tijuana</option>
-            <option value="America/Cancun">Cancun</option>
-            <option value="America/Hermosillo">Hermosillo</option>
-          </select>
-        </label>
-        <label>
-          Formato regional
-          <select name="locale" defaultValue={profile.locale}>
-            <option value="es-MX">Español (México)</option>
-            <option value="en-US">English (US)</option>
-          </select>
-        </label>
-        <p>Moneda: MXN. Los importes existentes conservan su moneda.</p>
-        <h2>Ticket</h2>
-        <Field
-          name="ticketFooter"
-          label="Pie del ticket (opcional)"
-          value={profile.ticketFooter}
-          max={500}
-        />
-        <p className="muted">
-          El nombre comercial aparece en el ticket; si está vacío se usa el
-          nombre del negocio. Los datos de identidad impresos usan la
-          configuración actual; importes e historial comercial no cambian.
-        </p>
-        <p className="muted">
-          Logo opcional: pendiente de almacenamiento seguro. No se suben
-          archivos en esta pantalla.
-        </p>
+        <details className="settings-group">
+          <summary>Preferencias</summary>
+          <div className="stack">
+            <label>
+              Zona horaria
+              <select name="timezone" defaultValue={profile.timezone}>
+                <option value="America/Mexico_City">Ciudad de México</option>
+                <option value="America/Tijuana">Tijuana</option>
+                <option value="America/Cancun">Cancun</option>
+                <option value="America/Hermosillo">Hermosillo</option>
+              </select>
+            </label>
+            <label>
+              Formato regional
+              <select name="locale" defaultValue={profile.locale}>
+                <option value="es-MX">Español (México)</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </label>
+            <p>Moneda: MXN. Los importes existentes conservan su moneda.</p>
+          </div>
+        </details>
+        <details className="settings-group">
+          <summary>Ticket</summary>
+          <div className="stack">
+            <Field
+              name="ticketFooter"
+              label="Pie del ticket (opcional)"
+              value={profile.ticketFooter}
+              max={500}
+            />
+            <p className="muted">
+              El nombre comercial aparece en el ticket; si está vacío se usa el
+              nombre del negocio. Los datos de identidad impresos usan la
+              configuración actual; importes e historial comercial no cambian.
+            </p>
+            <p className="muted">
+              Logo opcional: pendiente de almacenamiento seguro. No se suben
+              archivos en esta pantalla.
+            </p>
+          </div>
+        </details>
       </fieldset>
       <button disabled={busy}>
-        {busy ? "Guardando..." : "Guardar negocio y ticket"}
+        <LoadingLabel busy={busy} label="Guardando...">
+          Guardar negocio y ticket
+        </LoadingLabel>
       </button>
     </form>
   );
@@ -246,7 +258,9 @@ function BranchEditor({
         y compras.
       </p>
       <button disabled={busy}>
-        {busy ? "Guardando..." : "Guardar sucursal"}
+        <LoadingLabel busy={busy} label="Guardando...">
+          Guardar sucursal
+        </LoadingLabel>
       </button>
     </form>
   );
@@ -343,7 +357,7 @@ export default function BusinessPanel() {
           <p role="status">Cargando empresas...</p>
         ) : company.tenants.length ? (
           <>
-            <label>
+            <label hidden>
               Empresa
               <select
                 value={company.tenantId}

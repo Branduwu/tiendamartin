@@ -140,7 +140,7 @@ export function roleLabel(role?: string) {
         owner: "Propietario",
         admin: "Administrador",
         cashier: "Cajero",
-        inventory_clerk: "Inventario",
+        inventory_clerk: "Almacén",
       } as Record<string, string>
     )[role ?? ""] ?? "Usuario"
   );

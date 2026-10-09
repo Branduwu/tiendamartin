@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import Link from "next/link";
 import { useState, useRef, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -89,7 +90,9 @@ export default function RegisterForm({ configured }: { configured: boolean }) {
             </p>
           )}
           <button disabled={busy || !configured}>
-            {busy ? "Creando cuenta…" : "Crear cuenta"}
+            <LoadingLabel busy={busy} label="Creando cuenta…">
+              Crear cuenta
+            </LoadingLabel>
           </button>
         </form>
       )}

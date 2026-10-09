@@ -1,4 +1,5 @@
 "use client";
+import { selectCompany } from "../../lib/company-selection";
 import SaleDiscountSummary from "../components/sale-discount-summary";
 import { formatDateTime } from "../components/presentation";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
@@ -39,8 +40,13 @@ export default function SalesPanel() {
           .map((t: { tenantId: string }) => t.tenantId);
         setMemberships(b.tenants);
         setTenants(allowed);
-        setTenant(allowed[0] ?? "");
-        if (!allowed.length) setLoading(false);
+        const selected = selectCompany(
+          b.tenants.filter((t: { tenantId: string }) =>
+            allowed.includes(t.tenantId),
+          ),
+        );
+        setTenant(selected);
+        if (!selected) setLoading(false);
       })
       .catch((e) => {
         if (!c.signal.aborted) {
@@ -102,7 +108,7 @@ export default function SalesPanel() {
             {error}
           </p>
         )}
-        <label>
+        <label hidden>
           Empresa
           <select
             aria-label="Empresa"
@@ -138,15 +144,16 @@ export default function SalesPanel() {
           </p>
         ) : (
           <div className="table-scroll responsive-table">
-            <table className="data-table">
+            <table className="data-table sales-table">
               <thead>
                 <tr>
                   <th scope="col">Fecha</th>
                   <th scope="col">Venta</th>
+                  <th scope="col">Cliente</th>
                   <th scope="col">Ubicación</th>
                   <th scope="col">Total MXN</th>
                   <th scope="col">Pago</th>
-                  <th scope="col">Usuario</th>
+                  <th scope="col">Cajero</th>
                   <th scope="col">Turno</th>
                   <th scope="col">Devoluciones</th>
                   <th scope="col">Ticket</th>
@@ -165,6 +172,9 @@ export default function SalesPanel() {
                         <summary>{s.sale.id.slice(0, 8)}</summary>
                         <span className="sale-id">{s.sale.id}</span>
                       </details>
+                    </td>
+                    <td data-label="Cliente">
+                      {s.customerName ?? "Público general"}
                     </td>
                     <td data-label="Ubicación">
                       {locations.find((l) => l.id === s.locationId)?.name ??
@@ -193,7 +203,7 @@ export default function SalesPanel() {
                         )
                         .join(" + ") || "Sin pago (total cero)"}
                     </td>
-                    <td data-label="Usuario">
+                    <td data-label="Cajero">
                       <details className="reference">
                         <summary>
                           {"createdByName" in s &&

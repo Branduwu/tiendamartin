@@ -1,4 +1,5 @@
 "use client";
+import { LoadingLabel } from "../components/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -460,7 +461,7 @@ export default function PurchasesPanel({
           </div>
         </div>
         {company.tenants.length > 1 ? (
-          <label>
+          <label hidden>
             Empresa
             <select
               value={company.tenantId}
@@ -569,6 +570,10 @@ export default function PurchasesPanel({
         {!loading && detail && (
           <>
             <section className="card">
+              <p className="purchase-flow" aria-label="Progreso de compra">
+                Borrador → Ordenada → Recibida parcialmente → Recibida
+                <strong> · Actual: {statusText[detail.status]}</strong>
+              </p>
               <div className="section-heading">
                 <h2>
                   {suppliers.find((s) => s.id === detail.supplierId)?.name ??
@@ -1095,7 +1100,9 @@ function DraftForm({
             saving || !supplierId || !locationId || !activeProducts.length
           }
         >
-          {saving ? "Guardando…" : "Guardar borrador"}
+          <LoadingLabel busy={saving} label="Guardando…">
+            Guardar borrador
+          </LoadingLabel>
         </button>
         <button
           type="button"

@@ -1,4 +1,6 @@
 "use client";
+import { LoadingLabel } from "../../components/ui";
+import { selectCompany } from "../../../lib/company-selection";
 import { useEffect, useRef, useState } from "react";
 import type { InventoryLocationDto } from "@smartretail/contracts";
 import AppNavigation from "../../components/app-navigation";
@@ -23,7 +25,7 @@ const roles = {
   owner: "Propietario",
   admin: "Administrador",
   cashier: "Cajero",
-  inventory_clerk: "Personal de inventario",
+  inventory_clerk: "Almacén",
 };
 
 function MemberEditor({
@@ -107,8 +109,15 @@ function MemberEditor({
             >
               <option value="admin">Administrador</option>
               <option value="cashier">Cajero</option>
-              <option value="inventory_clerk">Personal de inventario</option>
+              <option value="inventory_clerk">Almacén</option>
             </select>
+            <small>
+              {role === "admin"
+                ? "Administra el negocio y todas sus sucursales."
+                : role === "cashier"
+                  ? "Vende y opera caja en las sucursales asignadas."
+                  : "Consulta y opera existencias en las sucursales asignadas."}
+            </small>
           </label>
           <label>
             Estado
@@ -160,7 +169,11 @@ function MemberEditor({
           )}
         </fieldset>
         <div className="row-actions">
-          <button>{busy ? "Guardando…" : "Guardar cambios"}</button>
+          <button>
+            <LoadingLabel busy={busy} label="Guardando…">
+              Guardar cambios
+            </LoadingLabel>
+          </button>
           <button type="button" className="secondary" onClick={onCancel}>
             Cancelar
           </button>
@@ -343,7 +356,7 @@ export default function UsersPanel() {
             t.permissions.includes("members.manage"),
           );
           setCompanies(allowed);
-          setTenantId(allowed[0]?.tenantId ?? "");
+          setTenantId(selectCompany(allowed));
           setLoading(false);
         }
       })
@@ -361,6 +374,7 @@ export default function UsersPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          blocked={editing || inviting}
           tenantId={tenantId}
           current="/settings/users"
           permissions={company?.permissions ?? []}
@@ -382,7 +396,7 @@ export default function UsersPanel() {
           <p>No tienes permiso para administrar usuarios.</p>
         ) : (
           <>
-            <label>
+            <label hidden>
               Empresa
               <select
                 aria-label="Empresa"
