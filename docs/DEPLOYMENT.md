@@ -1,5 +1,13 @@
 # Primer despliegue: Supabase y Vercel
 
+## Dominio productivo (TASK-033)
+
+Aplicación: https://app.smartretailapp.live, en el proyecto Vercel existente. El dominio raíz smartretailapp.live queda reservado para marca/futura landing; sin cambios de nameservers ni del correo Resend. Sólo se añadió el CNAME de app indicado por Vercel. APP_ORIGIN configura el origen público del lado servidor; no contiene secretos.
+
+Supabase Site URL apunta al dominio app, con redirects exactos /login, /products, /inventory y /auth/callback. Se conserva únicamente el callback técnico https://smartretail-sepia.vercel.app/auth/callback durante la transición. Confirm email continúa activado y SMTP permanece intacto.
+
+Tras activar APP_ORIGIN en el despliegue, las visitas anónimas GET/HEAD al host técnico redirigen a app. Sesiones verificadas antiguas conservan su host, cookies y almacenamiento hasta cerrar sesión; las cookies no se transfieren entre dominios. Callback/API y mutaciones no se redirigen. Para pasar a app, terminar o recuperar primero cualquier operación pendiente en la pestaña antigua y luego iniciar sesión en app. Cookies nuevas Secure sobre HTTPS y SameSite=Lax, sin Domain compartido con el raíz. Las referencias técnicas que siguen abajo documentan el despliegue histórico.
+
 Estado TASK-014B: producción verificada en https://smartretail-sepia.vercel.app. Supabase SmartRetail (`kffmliytjcbbsfefbupc`, us-east-1) pertenece a una organización Free; Vercel `smartretail` pertenece al equipo `branduwus-projects`, plan Hobby. Migraciones001–005 aplicadas tras dry-run y comprobación de hashes. No recrear recursos ni repetir el bootstrap de smoke para utilizar este despliegue.
 
 ## Sesiones y recursos gratuitos

@@ -6,7 +6,7 @@ Sistema de gestion para tiendas con catalogo, inventario multiubicacion, punto d
 
 ## Demo
 
-[smartretail-sepia.vercel.app](https://smartretail-sepia.vercel.app) es un deployment funcional de la aplicacion web. No se publican credenciales de acceso.
+[app.smartretailapp.live](https://app.smartretailapp.live) es la aplicacion web productiva. El dominio raiz queda reservado para la marca y una futura landing. No se publican credenciales de acceso.
 
 ## Funciones actuales
 

@@ -8,6 +8,11 @@ export async function serverAuth() {
   if (!config) return null;
   const store = await cookies();
   return createServerClient(config.url, config.key, {
+    cookieOptions: {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    },
     cookies: {
       getAll: () => store.getAll(),
       setAll(values) {

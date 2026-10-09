@@ -14,7 +14,7 @@ corepack pnpm e2e:update-snapshots
 Por defecto se inicia la web local en `http://127.0.0.1:3000`. Para producción usa sólo pruebas read-only:
 
 ```powershell
-$env:E2E_BASE_URL = "https://smartretail-sepia.vercel.app"
+$env:E2E_BASE_URL = "https://app.smartretailapp.live"
 corepack pnpm e2e login.spec.ts --project desktop --project mobile-small --grep "labelled form"
 ```
 

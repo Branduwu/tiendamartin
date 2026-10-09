@@ -4,12 +4,19 @@ import { UuidSchema } from "@smartretail/contracts";
 import { SUSPENDED_COMPANY_MESSAGE } from "@smartretail/application";
 import { platformForUser, tenantsForUser } from "./lib/database";
 import { authConfiguration } from "./lib/supabase/config";
+import { canonicalPageRedirect } from "./lib/app-origin";
 
 export async function proxy(request: NextRequest) {
+  let authenticated = false;
   let response = NextResponse.next({ request });
   const config = authConfiguration();
   if (config) {
     const client = createServerClient(config.url, config.key, {
+      cookieOptions: {
+        secure: request.nextUrl.protocol === "https:",
+        sameSite: "lax",
+        path: "/",
+      },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(values) {
@@ -25,6 +32,7 @@ export async function proxy(request: NextRequest) {
       const { data, error } = await client.auth.getClaims();
       const actor = UuidSchema.safeParse(data?.claims.sub),
         tenant = UuidSchema.safeParse(request.headers.get("x-tenant-id"));
+      authenticated = !error && actor.success;
       const operationalPage =
         /^\/(products|inventory|pos|cash|sales|customers|suppliers|purchases|promotions|dashboard|labels|receivables|payables|expenses|settings)(\/|$)/.test(
           request.nextUrl.pathname,
@@ -66,11 +74,18 @@ export async function proxy(request: NextRequest) {
       /* Each protected handler verifies again and denies access. */
     }
   }
+  const canonical = canonicalPageRedirect(request, authenticated);
+  if (canonical)
+    return NextResponse.redirect(canonical, {
+      status: 307,
+      headers: { "Cache-Control": "private, no-store" },
+    });
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
 export const config = {
   matcher: [
+    "/",
     "/login",
     "/register",
     "/onboarding",
