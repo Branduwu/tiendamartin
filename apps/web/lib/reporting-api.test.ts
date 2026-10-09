@@ -88,6 +88,58 @@ beforeEach(() => {
   m.query.mockResolvedValue(report);
   m.options.mockResolvedValue({ locations: [] });
 });
+it.each(
+  ["=", "+", "-", "@"].flatMap((prefix) =>
+    ["", " \t\r\n"].map((space) => ({ prefix, space })),
+  ),
+)(
+  "CSV neutralizes $prefix with bounded whitespace across both exports ($space)",
+  ({ prefix, space }) => {
+    const name = space + prefix + 'HYPERLINK("bad"),\nnext';
+    for (const kind of ["sales", "products"] as const) {
+      const csv = reportingCsv(
+        {
+          ...report,
+          context: {
+            businessName: name,
+            branchName: name,
+            locale: "es-MX",
+            currency: "MXN",
+          },
+          products: [
+            {
+              id: tenant,
+              name,
+              unit: "piece",
+              quantity: "1000",
+              revenue: "100",
+              stock: "1000",
+            },
+          ],
+        },
+        kind,
+      );
+      expect(csv).toContain("\"'" + name.replaceAll('"', '""') + '"');
+      expect(csv.startsWith("\uFEFF")).toBe(true);
+    }
+  },
+);
+it("CSV preserves legitimate Unicode/quotes and escapes fields without ASCII conversion", () => {
+  const name = 'José Muñoz Café Niño O\'Connor "El Centro" 😊';
+  const csv = reportingCsv(
+    {
+      ...report,
+      context: {
+        businessName: name,
+        branchName: "Centro",
+        locale: "es-MX",
+        currency: "MXN",
+      },
+    },
+    "sales",
+  );
+  expect(csv).toContain('"' + name.replaceAll('"', '""') + '"');
+});
 it("exports escaped business, branch and period context without spreadsheet formulas", () => {
   const csv = reportingCsv(
     {

@@ -41,6 +41,7 @@ export async function proxy(request: NextRequest) {
         !error &&
         actor.success &&
         operationalPage &&
+        request.nextUrl.pathname !== "/settings/account" &&
         (await tenantsForUser(actor.data)).length === 0
       ) {
         const handoff = NextResponse.redirect(
@@ -88,6 +89,8 @@ export const config = {
     "/",
     "/login",
     "/register",
+    "/forgot-password",
+    "/reset-password",
     "/onboarding",
     "/invite",
     "/customers/:path*",

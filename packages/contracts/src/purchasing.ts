@@ -11,6 +11,7 @@ const text = (max: number) =>
     .refine(
       (v) =>
         v.trim().length > 0 &&
+        !/\p{Cs}/u.test(v) &&
         !Array.from(v).some(
           (char) =>
             char.charCodeAt(0) < 32 &&
@@ -50,7 +51,11 @@ const cost = MoneySchema.refine(
 const draft = z.strictObject({
   supplierId: UuidSchema,
   locationId: UuidSchema,
-  notes: z.string().max(2000).optional(),
+  notes: z
+    .string()
+    .max(2000)
+    .refine((v) => !v.includes("\u0000") && !/\p{Cs}/u.test(v))
+    .optional(),
   lines: z
     .array(
       z.strictObject({

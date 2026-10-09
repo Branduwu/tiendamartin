@@ -77,7 +77,15 @@ export default function ThemeToggle() {
 }
 export function PublicThemeControl() {
   const path = usePathname();
-  return ["/login", "/register", "/onboarding", "/invite"].includes(path) ? (
+  return [
+    "/login",
+    "/register",
+    "/onboarding",
+    "/invite",
+    "/forgot-password",
+    "/reset-password",
+    "/settings/account",
+  ].includes(path) ? (
     <header className="public-theme no-print">
       <ThemeToggle />
     </header>

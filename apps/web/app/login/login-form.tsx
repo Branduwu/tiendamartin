@@ -77,6 +77,7 @@ export default function LoginForm({
         {busy ? "Iniciando sesión…" : "Iniciar sesión"}
       </button>
       <Link href="/register">Crear una cuenta</Link>
+      <Link href="/forgot-password">¿Olvidaste tu contraseña?</Link>
     </form>
   );
 }

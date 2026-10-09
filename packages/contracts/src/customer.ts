@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { UuidSchema } from "./identifiers";
 import { MoneySchema } from "./money";
 const text = (max: number) =>
@@ -9,6 +9,7 @@ const text = (max: number) =>
     .refine(
       (v) =>
         v.trim().length > 0 &&
+        !/\p{Cs}/u.test(v) &&
         !Array.from(v).some(
           (c) => c.charCodeAt(0) < 32 && ![9, 10, 13].includes(c.charCodeAt(0)),
         ),
@@ -49,6 +50,7 @@ export const CustomerSchema = CustomerFieldsSchema.extend({
 export const CustomerSearchSchema = z
   .string()
   .max(200)
+  .refine((v) => !v.includes("\u0000") && !/\p{Cs}/u.test(v))
   .transform((v) => v.trim());
 export const CustomerSaleSchema = z.strictObject({
   id: UuidSchema,

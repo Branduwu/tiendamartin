@@ -31,7 +31,7 @@ export const ExpenseSchema = z
       .string()
       .min(1)
       .max(500)
-      .refine((v) => v.trim() === v && !/\p{Cc}/u.test(v)),
+      .refine((v) => v.trim() === v && !/[\p{Cc}\p{Cs}]/u.test(v)),
     amount: PositiveMoney,
     method: z.enum(["cash", "card", "bank"]),
     locationId: UuidSchema.optional(),

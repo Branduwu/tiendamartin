@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { browserAuth } from "../../lib/supabase/client";
 import ThemeToggle from "./theme-toggle";
+import Link from "next/link";
 export default function AccountControls({
   blocked = false,
   compact = false,
@@ -34,6 +35,11 @@ export default function AccountControls({
     <div className="shell-account">
       {compact && <p className="account-identity">{identity ?? "Tu cuenta"}</p>}
       <ThemeToggle />
+      {!blocked && (
+        <Link href="/settings/account" prefetch={false}>
+          Cambiar contraseña
+        </Link>
+      )}
       <button
         type="button"
         className="ghost"
