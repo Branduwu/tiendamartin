@@ -428,12 +428,13 @@ export default function PurchasesPanel({
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/purchases"
           blocked={saving || !!pending}
           permissions={company.permissions}
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="page-heading">
           <div>
             <p className="eyebrow">Abastecimiento</p>
@@ -475,7 +476,7 @@ export default function PurchasesPanel({
             >
               {company.tenants.map((t, i) => (
                 <option value={t.tenantId} key={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

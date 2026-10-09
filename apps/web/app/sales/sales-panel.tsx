@@ -11,7 +11,12 @@ import type {
 import { minorUnitsToDecimal } from "../../lib/money-input";
 export default function SalesPanel() {
   const [memberships, setMemberships] = useState<
-    { tenantId: string; permissions: string[]; displayName?: string }[]
+    {
+      tenantId: string;
+      tenantName?: string;
+      permissions: string[];
+      displayName?: string;
+    }[]
   >([]);
   const [tenants, setTenants] = useState<string[]>([]),
     [tenant, setTenant] = useState(""),
@@ -79,13 +84,14 @@ export default function SalesPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={tenant}
           current="/sales"
           permissions={
             memberships.find((t) => t.tenantId === tenant)?.permissions ?? []
           }
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <h1>Historial de ventas</h1>
         <p>
           Últimas 50 ventas. Los importes y productos corresponden al momento de
@@ -110,7 +116,11 @@ export default function SalesPanel() {
           >
             {tenants.map((t, index) => (
               <option key={t} value={t}>
-                {companyLabel(t, index)}
+                {companyLabel(
+                  t,
+                  index,
+                  memberships.find((m) => m.tenantId === t)?.tenantName,
+                )}
               </option>
             ))}
           </select>

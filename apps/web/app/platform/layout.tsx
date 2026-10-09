@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { verifiedUserId } from "../../lib/auth";
-import { platformForUser } from "../../lib/database";
+import { platformForUser, tenantsForUser } from "../../lib/database";
+import { roleLanding } from "../../lib/navigation";
+import AccountControls from "../components/account-controls";
 export const dynamic = "force-dynamic";
 export default async function PlatformLayout({
   children,
@@ -19,15 +21,26 @@ export default async function PlatformLayout({
         <Link href="/products">Volver a mi empresa</Link>
       </main>
     );
+  const members = await tenantsForUser(user);
+  const company = members.find((m) => m.tenantStatus !== "suspended");
   return (
     <>
-      <header className="topbar">
+      <header className="topbar platform-header">
         <strong>Administración de SmartRetail</strong>
         <nav className="app-nav" aria-label="Plataforma">
-          <Link href="/platform">Resumen</Link>
-          <Link href="/platform/companies">Empresas</Link>
-          <Link href="/products">Ir a mi empresa</Link>
+          <Link href="/platform" prefetch={false}>
+            Resumen
+          </Link>
+          <Link href="/platform/companies" prefetch={false}>
+            Empresas
+          </Link>
+          {company && (
+            <Link href={roleLanding(company)} prefetch={false}>
+              Mi empresa
+            </Link>
+          )}
         </nav>
+        <AccountControls />
       </header>
       <main className="workspace stack" style={{ overflowWrap: "anywhere" }}>
         {children}

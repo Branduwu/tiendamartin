@@ -118,12 +118,13 @@ export default function PromotionsPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/promotions"
           permissions={company.permissions}
           blocked={busy}
         />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <div className="page-heading">
           <div>
             <p className="eyebrow">Precios</p>
@@ -169,7 +170,7 @@ export default function PromotionsPanel() {
             >
               {company.tenants.map((t, i) => (
                 <option key={t.tenantId} value={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

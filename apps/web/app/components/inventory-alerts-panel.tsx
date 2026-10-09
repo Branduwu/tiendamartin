@@ -115,13 +115,14 @@ export default function InventoryAlertsPanel({
           SmartRetail
         </Link>
         <AppNavigation
-          current="/inventory"
+          tenantId={tenantId}
+          current="/inventory/alerts"
           permissions={
             tenants.find((t) => t.tenantId === tenantId)?.permissions ?? []
           }
         />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <div className="heading">
           <div>
             <p className="eyebrow">Operaciones</p>
@@ -150,7 +151,7 @@ export default function InventoryAlertsPanel({
                 )}
                 {tenants.map((t, i) => (
                   <option key={t.tenantId} value={t.tenantId}>
-                    {companyLabel(t.tenantId, i)}
+                    {companyLabel(t.tenantId, i, t.tenantName)}
                   </option>
                 ))}
               </select>

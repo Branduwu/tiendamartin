@@ -218,12 +218,16 @@ export default function DashboardPanel() {
         <Link className="brand" href="/dashboard">
           SmartRetail
         </Link>
-        <AppNavigation current="/dashboard" permissions={company.permissions} />
+        <AppNavigation
+          tenantId={company.tenantId}
+          current="/dashboard"
+          permissions={company.permissions}
+        />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <div className="heading">
           <div>
-            <h1>Dashboard</h1>
+            <h1>Inicio</h1>
             {report?.context && (
               <p className="company-context">
                 {report.context.businessName} · {report.context.branchName}
@@ -248,7 +252,7 @@ export default function DashboardPanel() {
             >
               {company.tenants.map((t, i) => (
                 <option key={t.tenantId} value={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

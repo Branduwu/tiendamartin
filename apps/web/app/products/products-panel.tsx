@@ -11,8 +11,10 @@ import type {
 import { browserAuth } from "../../lib/supabase/client";
 import { minorUnitsToDecimal } from "../../lib/money-input";
 import ProductForm from "./product-form";
+import { Button, EmptyState, PageHeader } from "../components/ui";
 type Tenant = {
   tenantId: string;
+  tenantName?: string;
   canWriteProducts: boolean;
   permissions: string[];
 };
@@ -152,6 +154,8 @@ export default function ProductsPanel() {
           SmartRetail
         </a>
         <AppNavigation
+          tenantId={tenantId}
+          blocked={saving || loggingOut}
           current="/products"
           permissions={
             tenants.find((t) => t.tenantId === tenantId)?.permissions ?? []
@@ -165,8 +169,8 @@ export default function ProductsPanel() {
           {loggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
         </button>
       </header>
-      <main className="workspace">
-        <div className="heading">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
+        <PageHeader>
           <div>
             <p className="eyebrow">Catálogo</p>
             <h1>Productos</h1>
@@ -186,7 +190,7 @@ export default function ProductsPanel() {
               Nuevo producto
             </button>
           )}
-        </div>
+        </PageHeader>
         {tenants.length > 1 && (
           <label className="tenant-selector">
             Empresa
@@ -204,7 +208,7 @@ export default function ProductsPanel() {
             >
               {tenants.map((tenant, index) => (
                 <option key={tenant.tenantId} value={tenant.tenantId}>
-                  {companyLabel(tenant.tenantId, index)}
+                  {companyLabel(tenant.tenantId, index, tenant.tenantName)}
                 </option>
               ))}
             </select>
@@ -258,10 +262,28 @@ export default function ProductsPanel() {
               </button>
             </div>
             {!products.length ? (
-              <p className="muted">
-                No hay productos para mostrar.
-                {canWrite ? " Crea el primero para comenzar." : ""}
-              </p>
+              <EmptyState
+                title="Aún no tienes productos"
+                action={
+                  canWrite ? (
+                    <Button
+                      variant="secondary"
+                      disabled={saving || editor !== undefined}
+                      onClick={() => {
+                        setEditor(null);
+                        setError("");
+                        setNotice("");
+                      }}
+                    >
+                      Agregar producto
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {canWrite
+                  ? "Agrega tu primer producto para comenzar a vender y controlar inventario."
+                  : "Cuando tu equipo agregue productos, aparecerán aquí."}
+              </EmptyState>
             ) : (
               <div
                 className="table-scroll responsive-table"

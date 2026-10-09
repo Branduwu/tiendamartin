@@ -86,12 +86,13 @@ export default function SuppliersPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/suppliers"
           blocked={saving}
           permissions={company.permissions}
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="page-heading">
           <div>
             <p className="eyebrow">Abastecimiento</p>
@@ -121,7 +122,7 @@ export default function SuppliersPanel() {
             >
               {company.tenants.map((t, i) => (
                 <option key={t.tenantId} value={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

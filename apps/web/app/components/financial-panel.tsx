@@ -281,11 +281,12 @@ export default function FinancialPanel({
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current={supplierId ? "/suppliers" : "/" + mode}
           permissions={company.permissions}
         />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <div className="page-heading">
           <div>
             <p className="eyebrow">Operación financiera</p>

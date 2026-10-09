@@ -399,11 +399,12 @@ export default function ReceivablesPanel({
           SmartRetail
         </Link>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/receivables"
           permissions={company.permissions}
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="heading">
           <div>
             <h1>{id ? "Cuenta por cobrar" : "Cuentas por cobrar"}</h1>

@@ -73,7 +73,9 @@ export default function InviteForm({
       }
       clearInvitationToken();
       // Membership changed: discard prefetched redirects from before acceptance.
-      window.location.assign(new URL("/products", window.location.origin).href);
+      window.location.assign(
+        new URL("/onboarding", window.location.origin).href,
+      );
     } catch (e) {
       setError(
         e instanceof InvitationResponseError

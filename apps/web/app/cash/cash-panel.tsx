@@ -24,7 +24,12 @@ const mxn = formatCashMxn;
 export default function CashPanel({ userId }: { userId: string }) {
   const key = `smartretail.pending-cash.${userId}`;
   const [memberships, setMemberships] = useState<
-    { tenantId: string; permissions: string[]; displayName?: string }[]
+    {
+      tenantId: string;
+      tenantName?: string;
+      permissions: string[];
+      displayName?: string;
+    }[]
   >([]);
   const [tenants, setTenants] = useState<string[]>([]),
     [tenant, setTenant] = useState(""),
@@ -287,13 +292,15 @@ export default function CashPanel({ userId }: { userId: string }) {
       <header className="topbar no-print">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={tenant}
+          branchName={locations.find((l) => l.id === location)?.name}
           current="/cash"
           permissions={
             memberships.find((t) => t.tenantId === tenant)?.permissions ?? []
           }
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <h1>Caja</h1>
         <p className="company-context">
           Cajero actual:{" "}
@@ -336,7 +343,11 @@ export default function CashPanel({ userId }: { userId: string }) {
                 >
                   {tenants.map((t, index) => (
                     <option key={t} value={t}>
-                      {companyLabel(t, index)}
+                      {companyLabel(
+                        t,
+                        index,
+                        memberships.find((m) => m.tenantId === t)?.tenantName,
+                      )}
                     </option>
                   ))}
                 </select>

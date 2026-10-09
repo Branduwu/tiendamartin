@@ -88,12 +88,13 @@ export default function TaxesPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/settings/taxes"
           permissions={company.permissions}
           blocked={busy}
         />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <div className="page-heading">
           <div>
             <p className="eyebrow">Configuración</p>
@@ -138,7 +139,7 @@ export default function TaxesPanel() {
             >
               {company.tenants.map((t, i) => (
                 <option key={t.tenantId} value={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

@@ -222,9 +222,13 @@ export default function CustomersPanel({
         <Link className="brand" href="/products">
           SmartRetail
         </Link>
-        <AppNavigation current="/customers" permissions={company.permissions} />
+        <AppNavigation
+          tenantId={company.tenantId}
+          current="/customers"
+          permissions={company.permissions}
+        />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="heading">
           <div>
             <h1>{id ? "Cliente" : "Clientes"}</h1>
@@ -260,7 +264,7 @@ export default function CustomersPanel({
             >
               {company.tenants.map((t, i) => (
                 <option key={t.tenantId} value={t.tenantId}>
-                  {companyLabel(t.tenantId, i)}
+                  {companyLabel(t.tenantId, i, t.tenantName)}
                 </option>
               ))}
             </select>

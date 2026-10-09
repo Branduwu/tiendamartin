@@ -83,7 +83,12 @@ export default function PosPanel({ userId }: { userId: string }) {
   const scannerRef = useRef<HTMLInputElement>(null);
   const scanQuantityRef = useRef<HTMLInputElement>(null);
   const [tenants, setTenants] = useState<
-      { tenantId: string; permissions: string[]; displayName?: string }[]
+      {
+        tenantId: string;
+        tenantName?: string;
+        permissions: string[];
+        displayName?: string;
+      }[]
     >([]),
     [tenant, setTenant] = useState("");
   const [products, setProducts] = useState<ProductDto[]>([]),
@@ -745,13 +750,15 @@ export default function PosPanel({ userId }: { userId: string }) {
           SmartRetail
         </Link>
         <AppNavigation
+          tenantId={tenant}
+          branchName={locations.find((l) => l.id === location)?.name}
           current="/pos"
           permissions={
             tenants.find((t) => t.tenantId === tenant)?.permissions ?? []
           }
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="heading">
           <div>
             <h1>Punto de venta</h1>
@@ -864,7 +871,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                 >
                   {tenants.map((t, index) => (
                     <option key={t.tenantId} value={t.tenantId}>
-                      {companyLabel(t.tenantId, index)}
+                      {companyLabel(t.tenantId, index, t.tenantName)}
                     </option>
                   ))}
                 </select>

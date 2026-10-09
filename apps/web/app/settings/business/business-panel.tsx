@@ -330,11 +330,12 @@ export default function BusinessPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={company.tenantId}
           current="/settings/business"
           permissions={company.permissions}
         />
       </header>
-      <main className="workspace stack">
+      <main id="workspace-content" tabIndex={-1} className="workspace stack">
         <h1>Configuración del negocio</h1>
         <p>Identidad comercial, sucursales y datos del ticket.</p>
         {company.error && <p role="alert">{company.error}</p>}

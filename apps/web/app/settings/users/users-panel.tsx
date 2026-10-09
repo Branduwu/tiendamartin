@@ -361,12 +361,13 @@ export default function UsersPanel() {
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          tenantId={tenantId}
           current="/settings/users"
           permissions={company?.permissions ?? []}
         />
       </header>
-      <main className="workspace">
-        <h1>Usuarios y ubicaciones</h1>
+      <main id="workspace-content" tabIndex={-1} className="workspace">
+        <h1>Equipo y sucursales</h1>
         <p className="muted">
           Administra roles, estado y ubicaciones de los usuarios de tu empresa.
         </p>

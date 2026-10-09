@@ -5,6 +5,7 @@ import Link from "next/link";
 import { OnboardingSchema, type OnboardingInput } from "@smartretail/contracts";
 import { purchasingApi } from "../components/purchasing-client";
 import { readInvitationToken } from "../../lib/invitation-handoff";
+import { roleLanding, type NavigationMembership } from "../../lib/navigation";
 export default function OnboardingForm({ actor }: { actor: string }) {
   const router = useRouter(),
     key = "smartretail.onboarding." + actor,
@@ -40,15 +41,33 @@ export default function OnboardingForm({ actor }: { actor: string }) {
             setEmail(p.data.email ?? "");
             setBranch(p.data.branchName);
           }
-          const state = await purchasingApi<{ completed: boolean }>(
-            "/api/v1/onboarding",
-            undefined,
-            { signal: c.signal },
-          );
+          const state = await purchasingApi<{
+            completed: boolean;
+            tenants: NavigationMembership[];
+          }>("/api/v1/onboarding", undefined, { signal: c.signal });
           if (!c.signal.aborted) {
             if (state.completed && !p?.success) {
-              router.replace("/products");
+              const company =
+                state.tenants.find((t) => t.tenantStatus !== "suspended") ??
+                state.tenants[0];
+              const landing = roleLanding(company);
+              if (landing !== "/onboarding") {
+                router.replace(landing);
+                return;
+              }
+              setExisting(true);
+              setReady(true);
               return;
+            }
+            if (!state.completed && !p?.success) {
+              const platform = await fetch("/api/v1/platform", {
+                signal: c.signal,
+                cache: "no-store",
+              });
+              if (platform.ok && !c.signal.aborted) {
+                router.replace("/platform");
+                return;
+              }
             }
             setExisting(state.completed);
             setReady(true);

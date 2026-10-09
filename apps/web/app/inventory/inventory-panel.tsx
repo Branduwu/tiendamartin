@@ -13,7 +13,7 @@ import InventoryForm, { type Command, type Action } from "./inventory-form";
 import InventoryMinimumForm from "../components/inventory-minimum-form";
 import InventoryStateBadge from "../components/inventory-state-badge";
 
-type Tenant = { tenantId: string; permissions: string[] };
+type Tenant = { tenantId: string; tenantName?: string; permissions: string[] };
 class ApiFailure extends Error {
   constructor(
     message: string,
@@ -234,6 +234,8 @@ export default function InventoryPanel() {
           </Link>
         )}
         <AppNavigation
+          tenantId={tenantId}
+          branchName={locations.find((l) => l.id === locationId)?.name}
           current="/inventory"
           blocked={!!(saving || pending)}
           permissions={permissions}
@@ -257,7 +259,7 @@ export default function InventoryPanel() {
           Cerrar sesión
         </button>
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="heading">
           <div>
             <p className="eyebrow">Operaciones</p>
@@ -290,7 +292,7 @@ export default function InventoryPanel() {
             >
               {tenants.map((tenant, index) => (
                 <option key={tenant.tenantId} value={tenant.tenantId}>
-                  {companyLabel(tenant.tenantId, index)}
+                  {companyLabel(tenant.tenantId, index, tenant.tenantName)}
                 </option>
               ))}
             </select>

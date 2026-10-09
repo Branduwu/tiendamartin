@@ -12,7 +12,9 @@ export async function login(page: Page): Promise<void> {
   await page.getByLabel("Correo electrónico").fill(process.env.E2E_EMAIL!);
   await page.getByLabel("Contraseña").fill(process.env.E2E_PASSWORD!);
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
-  await expect(page).toHaveURL(/\/products$/);
+  await expect(page).toHaveURL(
+    /\/(products|dashboard|pos|inventory|platform)$/,
+  );
 }
 
 export async function assertUsableViewport(page: Page): Promise<void> {

@@ -77,13 +77,14 @@ export default function LabelsPanel({
           SmartRetail
         </Link>
         <AppNavigation
+          tenantId={tenantId}
           current="/labels"
           permissions={
             companies.find((c) => c.tenantId === tenantId)?.permissions ?? []
           }
         />
       </header>
-      <main className="workspace">
+      <main id="workspace-content" tabIndex={-1} className="workspace">
         <div className="heading labels-controls">
           <div>
             <p className="eyebrow">Catálogo</p>
