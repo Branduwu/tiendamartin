@@ -104,3 +104,9 @@ export {
   PlatformPageSchema,
   PlatformUsersQuerySchema,
 } from "./platform";
+export {
+  OnboardingSchema,
+  CreateInvitationSchema,
+  AcceptInvitationSchema,
+} from "./onboarding";
+export type { OnboardingInput, CreateInvitationInput } from "./onboarding";

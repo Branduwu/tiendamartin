@@ -2,7 +2,15 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { browserAuth } from "../../lib/supabase/client";
-export default function LoginForm({ configured }: { configured: boolean }) {
+import Link from "next/link";
+import { readInvitationToken } from "../../lib/invitation-handoff";
+export default function LoginForm({
+  configured,
+  destination = "/onboarding",
+}: {
+  configured: boolean;
+  destination?: "/onboarding" | "/invite";
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +30,7 @@ export default function LoginForm({ configured }: { configured: boolean }) {
         setBusy(false);
         return;
       }
-      router.replace("/products");
+      router.replace(readInvitationToken() ? "/invite" : destination);
       router.refresh();
     } catch {
       setError("No pudimos conectar. Inténtalo de nuevo.");
@@ -68,6 +76,7 @@ export default function LoginForm({ configured }: { configured: boolean }) {
       <button disabled={busy || !configured} type="submit">
         {busy ? "Iniciando sesión…" : "Iniciar sesión"}
       </button>
+      <Link href="/register">Crear una cuenta</Link>
     </form>
   );
 }

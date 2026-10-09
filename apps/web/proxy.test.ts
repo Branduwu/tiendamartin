@@ -4,9 +4,13 @@ const m = vi.hoisted(() => ({
   claims: vi.fn(),
   status: vi.fn(),
   repo: vi.fn(),
+  tenants: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
-vi.mock("./lib/database", () => ({ platformForUser: m.repo }));
+vi.mock("./lib/database", () => ({
+  platformForUser: m.repo,
+  tenantsForUser: m.tenants,
+}));
 vi.mock("./lib/supabase/config", () => ({
   authConfiguration: () => ({ url: "https://example.test", key: "public-key" }),
 }));
@@ -21,9 +25,23 @@ beforeEach(() => {
   m.claims.mockResolvedValue({ data: { claims: { sub: actor } }, error: null });
   m.repo.mockReturnValue({ tenantStatus: m.status });
   m.status.mockResolvedValue(undefined);
+  m.tenants.mockResolvedValue([{ tenantId: tenant }]);
 });
 
 describe("private session refresh routes", () => {
+  it("sends authenticated people without a company to onboarding", async () => {
+    m.tenants.mockResolvedValue([]);
+    const r = await proxy(new NextRequest("https://example.test/pos"));
+    expect(r.status).toBe(307);
+    expect(r.headers.get("location")).toBe("https://example.test/onboarding");
+    expect(m.tenants).toHaveBeenCalledWith(actor);
+  });
+  it("does not redirect existing users or invitation/platform handoffs", async () => {
+    for (const path of ["/products", "/onboarding", "/invite", "/platform"])
+      expect(
+        (await proxy(new NextRequest("https://example.test" + path))).status,
+      ).toBe(200);
+  });
   it("covers private pages and their mutation APIs", () => {
     expect(config.matcher).toEqual(
       expect.arrayContaining([

@@ -82,6 +82,12 @@ export default function CompanyDetail({
     <>
       <Link href="/platform/companies">Volver a empresas</Link>
       <h1>{company.displayName}</h1>
+      <p>
+        Origen:{" "}
+        {company.origin === "self-service"
+          ? "Registro de empresa"
+          : "Administración de plataforma"}
+      </p>
       <p>Estado: {company.status === "active" ? "Activa" : "Suspendida"}</p>
       <p>
         Alta en plataforma:{" "}

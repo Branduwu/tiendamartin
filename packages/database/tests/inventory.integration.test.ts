@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from "vitest";
 import {
@@ -67,6 +67,9 @@ import {
   PostgresInventory,
   PostgresBusiness,
   PostgresPlatform,
+  PostgresOnboarding,
+  OnboardingConflictError,
+  InvitationUnavailableError,
   PostgresMembers,
   PostgresInventoryMinimum,
   PostgresPurchasing,
@@ -541,6 +544,23 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         "utf8",
       ),
     );
+    await admin.query(
+      "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz DEFAULT clock_timestamp()",
+    );
+    if (
+      !(await admin.query("SELECT to_regclass('retail.onboarding_commands') t"))
+        .rows[0].t
+    ) {
+      await admin.query(
+        await readFile(
+          new URL(
+            "../migrations/025_onboarding_invitations.sql",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      );
+    }
     // Reproduce the managed schema restriction, independently of column grants.
     await admin.query(
       "REVOKE USAGE ON SCHEMA auth FROM smartretail_platform_guard",
@@ -566,7 +586,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.onboarding_audit,retail.invitation_locations,retail.tenant_invitations,retail.onboarding_commands,retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -598,6 +618,530 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       userId: ownerUser,
     }).openShift({ id: shiftId, locationId: source, openingCash: money(0n) });
     await receiveInventory(db, receipt());
+  });
+
+  describe("TASK-032 onboarding and invitations", () => {
+    const newUser = "550e8400-e29b-41d4-a716-446655440090",
+      unverified = "550e8400-e29b-41d4-a716-446655440091";
+    const repo = (user = ownerUser) => new PostgresOnboarding(apiPool, user);
+    const intent = () => ({
+      commandId: randomUUID(),
+      businessName: "SMOKE Empresa",
+      tradeName: "Mi tienda",
+      phone: null,
+      email: null,
+      branchName: "Sucursal Centro",
+    });
+    const hash = () => createHash("sha256").update(randomUUID()).digest("hex");
+    const create = async (
+      address = "new@example.test",
+      locations: string[] = [source],
+      role = "cashier",
+    ) => {
+      const tokenHash = hash();
+      const invitation = await repo().create(
+        tenantA,
+        { email: address, role, locationIds: locations, expiresInDays: 7 },
+        tokenHash,
+        randomUUID(),
+      );
+      return { tokenHash, invitation };
+    };
+    beforeEach(async () => {
+      await admin.query(
+        "INSERT INTO auth.users(id,email,email_confirmed_at) VALUES($1,'owner@example.test',clock_timestamp()),($2,'admin@example.test',clock_timestamp()),($3,'new@example.test',clock_timestamp()),($4,'unverified@example.test',NULL),($5,'clerk@example.test',clock_timestamp()) ON CONFLICT(id) DO UPDATE SET email=excluded.email,email_confirmed_at=excluded.email_confirmed_at",
+        [ownerUser, adminUser, newUser, unverified, clerkUser],
+      );
+    });
+    it("creates owner, profile, active first branch and audit atomically without commercial data", async () => {
+      const result = await repo(newUser).onboard(intent(), randomUUID());
+      const members = await listTenantMemberships(apiPool, newUser);
+      expect(members).toHaveLength(1);
+      expect(members[0]).toMatchObject({
+        tenantId: result.tenantId,
+        role: "owner",
+        allLocations: true,
+      });
+      expect(
+        (
+          await admin.query(
+            "SELECT business_name,trade_name,currency FROM retail.business_profiles WHERE tenant_id=$1",
+            [result.tenantId],
+          )
+        ).rows[0],
+      ).toMatchObject({
+        business_name: "SMOKE Empresa",
+        trade_name: "Mi tienda",
+        currency: "MXN",
+      });
+      expect(
+        (
+          await admin.query(
+            "SELECT name,status FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2",
+            [result.tenantId, result.locationId],
+          )
+        ).rows[0],
+      ).toEqual({ name: "Sucursal Centro", status: "active" });
+      expect(
+        await new PostgresInventory(apiPool, {
+          userId: newUser,
+          tenantId: result.tenantId,
+        }).listProducts(),
+      ).toEqual([]);
+    });
+    it("requires verified Auth email for onboarding", async () => {
+      await expect(
+        repo(unverified).onboard(intent(), randomUUID()),
+      ).rejects.toThrow(PermissionDeniedError);
+    });
+    it("rejects unknown Auth identity and forged actor context", async () => {
+      await expect(
+        repo(randomUUID()).onboard(intent(), randomUUID()),
+      ).rejects.toThrow(PermissionDeniedError);
+    });
+    it("existing members cannot self-create another company including inactive memberships", async () => {
+      await expect(repo().onboard(intent(), randomUUID())).rejects.toThrow(
+        OnboardingConflictError,
+      );
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE user_id=$1",
+        [ownerUser],
+      );
+      await expect(repo().onboard(intent(), randomUUID())).rejects.toThrow(
+        OnboardingConflictError,
+      );
+    });
+    it("replays identical onboarding without duplicate company or audit", async () => {
+      const body = intent(),
+        first = await repo(newUser).onboard(body, randomUUID());
+      expect(await repo(newUser).onboard(body, randomUUID())).toEqual(first);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.onboarding_audit WHERE tenant_id=$1",
+            [first.tenantId],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+    });
+    it("same command with changed intent conflicts", async () => {
+      const body = intent();
+      await repo(newUser).onboard(body, randomUUID());
+      await expect(
+        repo(newUser).onboard({ ...body, branchName: "Otra" }, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+    });
+    it("different command cannot create a second business", async () => {
+      await repo(newUser).onboard(intent(), randomUUID());
+      await expect(
+        repo(newUser).onboard(intent(), randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+    });
+    it("concurrent identical onboarding returns one durable result", async () => {
+      const body = intent(),
+        adapter = new PostgresOnboarding(pool, newUser);
+      const results = await Promise.all([
+        adapter.onboard(body, randomUUID()),
+        adapter.onboard(body, randomUUID()),
+      ]);
+      expect(results[0]).toEqual(results[1]);
+    });
+    it("concurrent different commands admit exactly one company", async () => {
+      const adapter = new PostgresOnboarding(pool, newUser);
+      const results = await Promise.allSettled([
+        adapter.onboard(intent(), randomUUID()),
+        adapter.onboard(intent(), randomUUID()),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(await listTenantMemberships(apiPool, newUser)).toHaveLength(1);
+    });
+    it("invalid profile rolls back all onboarding writes", async () => {
+      await expect(
+        repo(newUser).onboard({ ...intent(), email: "invalid" }, randomUUID()),
+      ).rejects.toThrow(TypeError);
+      expect(await listTenantMemberships(apiPool, newUser)).toEqual([]);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.onboarding_commands",
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    it("suspended company blocks onboarding replay without losing history", async () => {
+      const body = intent(),
+        first = await repo(newUser).onboard(body, randomUUID());
+      await admin.query(
+        "UPDATE retail.tenants SET status='suspended' WHERE tenant_id=$1",
+        [first.tenantId],
+      );
+      await expect(repo(newUser).onboard(body, randomUUID())).rejects.toThrow(
+        PermissionDeniedError,
+      );
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.onboarding_commands",
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("self-service company appears in platform with origin but grants no platform role", async () => {
+      const first = await repo(newUser).onboard(intent(), randomUUID());
+      await admin.query(
+        "INSERT INTO retail.platform_admins(user_id) VALUES($1)",
+        [ownerUser],
+      );
+      expect(
+        (await new PostgresPlatform(apiPool, ownerUser).detail(first.tenantId))
+          .origin,
+      ).toBe("self-service");
+      expect(await new PostgresPlatform(apiPool, newUser).access()).toBe(false);
+      await expect(
+        new PostgresPlatform(apiPool, newUser).list(),
+      ).rejects.toThrow(PermissionDeniedError);
+      await expect(
+        new PostgresInventory(apiPool, {
+          userId: newUser,
+          tenantId: tenantA,
+        }).listProducts(),
+      ).rejects.toThrow(PermissionDeniedError);
+    });
+    it("creates bounded invitation and list exposes no token hash", async () => {
+      const { tokenHash, invitation } = await create();
+      expect(invitation).toMatchObject({
+        role: "cashier",
+        locationIds: [source],
+        acceptedAt: null,
+        revokedAt: null,
+      });
+      expect(
+        JSON.stringify(await repo().list(tenantA, randomUUID())),
+      ).not.toContain(tokenHash);
+      expect(
+        (
+          await admin.query(
+            "SELECT token_hash FROM retail.tenant_invitations WHERE id=$1",
+            [invitation.id],
+          )
+        ).rows[0].token_hash,
+      ).toBe(tokenHash);
+    });
+    it("clerk and foreign scope cannot create or list invitations", async () => {
+      for (const user of [clerkUser, newUser])
+        await expect(repo(user).list(tenantA, randomUUID())).rejects.toThrow(
+          PermissionDeniedError,
+        );
+      await expect(
+        repo(adminUser).create(
+          tenantB,
+          {
+            email: "new@example.test",
+            role: "cashier",
+            locationIds: [],
+            expiresInDays: 7,
+          },
+          hash(),
+          randomUUID(),
+        ),
+      ).rejects.toThrow(PermissionDeniedError);
+    });
+    it("admin cannot grant owner even by direct SQL function", async () => {
+      await expect(
+        repo(adminUser).create(
+          tenantA,
+          {
+            email: "new@example.test",
+            role: "owner",
+            locationIds: [],
+            expiresInDays: 7,
+          },
+          hash(),
+          randomUUID(),
+        ),
+      ).rejects.toThrow(TypeError);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.tenant_invitations",
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    });
+    it("rejects foreign, inactive and duplicate location assignments", async () => {
+      const foreign = randomUUID();
+      await admin.query(
+        "INSERT INTO retail.inventory_locations(tenant_id,id,code,name,status) VALUES($1,$2,'OTHER','Other','active')",
+        [tenantB, foreign],
+      );
+      await expect(create("new@example.test", [foreign])).rejects.toThrow(
+        PermissionDeniedError,
+      );
+      await expect(
+        create("new@example.test", [source, source]),
+      ).rejects.toThrow(TypeError);
+      await admin.query(
+        "UPDATE retail.inventory_locations SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+        [tenantA, source],
+      );
+      await expect(create()).rejects.toThrow(PermissionDeniedError);
+    });
+    it("matching verified existing Auth user accepts assigned role and locations", async () => {
+      const { tokenHash } = await create();
+      expect(await repo(newUser).accept(tokenHash, randomUUID())).toEqual({
+        tenantId: tenantA,
+      });
+      expect((await listTenantMemberships(apiPool, newUser))[0]).toMatchObject({
+        role: "cashier",
+        locationIds: [source],
+        allLocations: false,
+      });
+    });
+    it("stolen token cannot be used by another verified email", async () => {
+      const { tokenHash } = await create();
+      await expect(
+        repo(adminUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(PermissionDeniedError);
+      expect(
+        (await repo().list(tenantA, randomUUID()))[0]?.acceptedAt,
+      ).toBeNull();
+    });
+    it("unverified invited email cannot accept", async () => {
+      const { tokenHash } = await create("unverified@example.test");
+      await expect(
+        repo(unverified).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(PermissionDeniedError);
+    });
+    it("single-use token rejects replay and concurrent acceptance", async () => {
+      const { tokenHash } = await create(),
+        adapter = new PostgresOnboarding(pool, newUser);
+      const results = await Promise.allSettled([
+        adapter.accept(tokenHash, randomUUID()),
+        adapter.accept(tokenHash, randomUUID()),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      await expect(
+        repo(newUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+    });
+    it("expired invitation and unknown hash are unavailable", async () => {
+      const { tokenHash } = await create();
+      await admin.query(
+        "UPDATE retail.tenant_invitations SET created_at=clock_timestamp()-interval '8 days',expires_at=clock_timestamp()-interval '1 day'",
+      );
+      await expect(
+        repo(newUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+      await expect(repo(newUser).accept(hash(), randomUUID())).rejects.toThrow(
+        InvitationUnavailableError,
+      );
+    });
+    it("revocation is idempotent, tenant scoped and prevents acceptance", async () => {
+      const { tokenHash, invitation } = await create();
+      await expect(
+        repo().revoke(tenantB, invitation.id, randomUUID()),
+      ).rejects.toThrow(InvitationUnavailableError);
+      await repo().revoke(tenantA, invitation.id, randomUUID());
+      await repo().revoke(tenantA, invitation.id, randomUUID());
+      await expect(
+        repo(newUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.onboarding_audit WHERE operation='invitation.revoked'",
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    });
+    it("acceptance supports multiple companies without replacing existing or inactive access", async () => {
+      await admin.query(
+        "INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status) VALUES($1,$2,'inventory_clerk','active')",
+        [tenantB, newUser],
+      );
+      const { tokenHash } = await create();
+      await repo(newUser).accept(tokenHash, randomUUID());
+      expect(await listTenantMemberships(apiPool, newUser)).toHaveLength(2);
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, newUser],
+      );
+      const again = await create();
+      await expect(
+        repo(newUser).accept(again.tokenHash, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+    });
+    it("suspended company and newly inactive assigned branch block acceptance", async () => {
+      const { tokenHash } = await create();
+      await admin.query(
+        "UPDATE retail.tenants SET status='suspended' WHERE tenant_id=$1",
+        [tenantA],
+      );
+      await expect(
+        repo(newUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(PermissionDeniedError);
+      await expect(create()).rejects.toThrow(PermissionDeniedError);
+      await admin.query(
+        "UPDATE retail.tenants SET status='active' WHERE tenant_id=$1",
+        [tenantA],
+      );
+      await admin.query(
+        "UPDATE retail.inventory_locations SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+        [tenantA, source],
+      );
+      await expect(
+        repo(newUser).accept(tokenHash, randomUUID()),
+      ).rejects.toThrow(OnboardingConflictError);
+    });
+    it("runtime has no direct membership, private helper, token table or audit write access", async () => {
+      for (const query of [
+        "SELECT retail.onboarding_auth_email()",
+        "SELECT * FROM retail.tenant_invitations",
+        "SELECT * FROM retail.onboarding_commands",
+        "DELETE FROM retail.onboarding_audit",
+        `INSERT INTO retail.tenant_memberships(tenant_id,user_id,role,status) VALUES('${tenantA}','${newUser}','owner','active')`,
+      ])
+        await expect(sql(tenantA, (c) => c.query(query))).rejects.toMatchObject(
+          { code: "42501" },
+        );
+      const { tokenHash } = await create();
+      await repo(newUser).accept(tokenHash, randomUUID());
+      expect(
+        (
+          await admin.query(
+            "SELECT operation FROM retail.onboarding_audit ORDER BY created_at",
+          )
+        ).rows.map((r) => r.operation),
+      ).toEqual(["invitation.created", "invitation.accepted"]);
+      await expect(
+        sql(
+          tenantA,
+          (c) =>
+            c.query(
+              "SELECT retail.create_invitation($1,'owner','{}',7,$2,$3)",
+              ["new@example.test", hash(), randomUUID()],
+            ),
+          adminUser,
+        ),
+      ).rejects.toMatchObject({ code: "23514" });
+    });
+    it("rejects stale authorization snapshots at SQL entry points", async () => {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await c.query("SELECT set_config('app.user_id',$1,true)", [newUser]);
+        await expect(
+          c.query("SELECT retail.accept_invitation($1,$2)", [
+            hash(),
+            randomUUID(),
+          ]),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await c.query("ROLLBACK");
+        c.release();
+      }
+    });
+    it("rechecks email after waiting and actually locks branches against concurrent deactivation", async () => {
+      const { tokenHash, invitation } = await create();
+      async function waitForLock() {
+        for (let attempt = 0; attempt < 150; attempt++) {
+          const result = await admin.query(
+            "SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%accept_invitation%'",
+          );
+          if (result.rows[0].n > 0) return;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error("Acceptance did not acquire the expected lock");
+      }
+      const blocker = await admin.connect();
+      try {
+        await blocker.query("BEGIN");
+        await blocker.query(
+          "SELECT id FROM retail.tenant_invitations WHERE id=$1 FOR UPDATE",
+          [invitation.id],
+        );
+        const pending = repo(newUser)
+          .accept(tokenHash, randomUUID())
+          .then(
+            () => null,
+            (e) => e as unknown,
+          );
+        await waitForLock();
+        await admin.query(
+          "UPDATE auth.users SET email='changed@example.test' WHERE id=$1",
+          [newUser],
+        );
+        await blocker.query("COMMIT");
+        expect(await pending).toBeInstanceOf(PermissionDeniedError);
+        await admin.query(
+          "UPDATE auth.users SET email='new@example.test' WHERE id=$1",
+          [newUser],
+        );
+        await blocker.query("BEGIN");
+        await blocker.query(
+          "UPDATE retail.inventory_locations SET status='inactive' WHERE tenant_id=$1 AND id=$2",
+          [tenantA, source],
+        );
+        const second = repo(newUser)
+          .accept(tokenHash, randomUUID())
+          .then(
+            () => null,
+            (e) => e as unknown,
+          );
+        await waitForLock();
+        await blocker.query("COMMIT");
+        expect(await second).toBeInstanceOf(OnboardingConflictError);
+        await admin.query(
+          "UPDATE retail.inventory_locations SET status='active' WHERE tenant_id=$1 AND id=$2",
+          [tenantA, source],
+        );
+        await blocker.query("BEGIN");
+        await blocker.query(
+          "SELECT id FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          [tenantA, source],
+        );
+        const changedEmail = repo(newUser)
+          .accept(tokenHash, randomUUID())
+          .then(
+            () => null,
+            (e) => e as unknown,
+          );
+        await waitForLock();
+        await admin.query(
+          "UPDATE auth.users SET email='changed@example.test' WHERE id=$1",
+          [newUser],
+        );
+        await blocker.query("COMMIT");
+        expect(await changedEmail).toBeInstanceOf(PermissionDeniedError);
+        await admin.query(
+          "UPDATE auth.users SET email='new@example.test' WHERE id=$1",
+          [newUser],
+        );
+        await admin.query(
+          "UPDATE retail.tenant_invitations SET expires_at=clock_timestamp()+interval '1 second' WHERE id=$1",
+          [invitation.id],
+        );
+        await blocker.query("BEGIN");
+        await blocker.query(
+          "SELECT id FROM retail.inventory_locations WHERE tenant_id=$1 AND id=$2 FOR UPDATE",
+          [tenantA, source],
+        );
+        const expired = repo(newUser)
+          .accept(tokenHash, randomUUID())
+          .then(
+            () => null,
+            (e) => e as unknown,
+          );
+        await waitForLock();
+        await admin.query("SELECT pg_sleep(1.1)");
+        await blocker.query("COMMIT");
+        expect(await expired).toBeInstanceOf(OnboardingConflictError);
+        expect(await listTenantMemberships(apiPool, newUser)).toEqual([]);
+      } finally {
+        await blocker.query("ROLLBACK");
+        blocker.release();
+      }
+    });
   });
 
   describe("TASK-028 credit and collections", () => {
@@ -2983,7 +3527,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(49);
+    expect(tables.rows).toHaveLength(53);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);

@@ -38,3 +38,9 @@ export { PostgresPayables } from "./payables";
 export { PostgresBusiness } from "./business";
 
 export { PostgresPlatform } from "./platform";
+export {
+  PostgresOnboarding,
+  OnboardingConflictError,
+  InvitationUnavailableError,
+} from "./onboarding";
+export type { Invitation } from "./onboarding";

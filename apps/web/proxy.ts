@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { UuidSchema } from "@smartretail/contracts";
 import { SUSPENDED_COMPANY_MESSAGE } from "@smartretail/application";
-import { platformForUser } from "./lib/database";
+import { platformForUser, tenantsForUser } from "./lib/database";
 import { authConfiguration } from "./lib/supabase/config";
 
 export async function proxy(request: NextRequest) {
@@ -25,6 +25,23 @@ export async function proxy(request: NextRequest) {
       const { data, error } = await client.auth.getClaims();
       const actor = UuidSchema.safeParse(data?.claims.sub),
         tenant = UuidSchema.safeParse(request.headers.get("x-tenant-id"));
+      const operationalPage =
+        /^\/(products|inventory|pos|cash|sales|customers|suppliers|purchases|promotions|dashboard|labels|receivables|payables|expenses|settings)(\/|$)/.test(
+          request.nextUrl.pathname,
+        );
+      if (
+        !error &&
+        actor.success &&
+        operationalPage &&
+        (await tenantsForUser(actor.data)).length === 0
+      ) {
+        const handoff = NextResponse.redirect(
+          new URL("/onboarding", request.url),
+        );
+        response.cookies.getAll().forEach((c) => handoff.cookies.set(c));
+        handoff.headers.set("Cache-Control", "private, no-store");
+        return handoff;
+      }
       if (
         !error &&
         actor.success &&
@@ -55,6 +72,19 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/login",
+    "/register",
+    "/onboarding",
+    "/invite",
+    "/customers/:path*",
+    "/suppliers/:path*",
+    "/purchases/:path*",
+    "/promotions/:path*",
+    "/dashboard/:path*",
+    "/labels/:path*",
+    "/receivables/:path*",
+    "/payables/:path*",
+    "/expenses/:path*",
+    "/settings/:path*",
     "/platform/:path*",
     "/api/v1/:path*",
     "/products/:path*",

@@ -1,4 +1,4 @@
-import { PostgresBusiness } from "@smartretail/database";
+import { PostgresBusiness, PostgresOnboarding } from "@smartretail/database";
 import "server-only";
 import type { InventoryMinimumRepository } from "@smartretail/application";
 import {
@@ -100,3 +100,5 @@ export const businessForUser = (userId: string, tenantId: string) =>
 import { PostgresPlatform } from "@smartretail/database";
 export const platformForUser = (userId: string) =>
   new PostgresPlatform(databasePool(), userId);
+export const onboardingForUser = (userId: string) =>
+  new PostgresOnboarding(databasePool(), userId);

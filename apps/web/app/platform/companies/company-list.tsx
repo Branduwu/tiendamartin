@@ -291,6 +291,12 @@ export default function CompanyList({ actor }: { actor: string }) {
                 </p>
                 <p>Propietario: {c.owner}</p>
                 <p>
+                  Origen:{" "}
+                  {c.origin === "self-service"
+                    ? "Registro de empresa"
+                    : "Administración de plataforma"}
+                </p>
+                <p>
                   Alta en plataforma:{" "}
                   {new Date(c.createdAt).toLocaleDateString("es-MX", {
                     timeZone: "America/Mexico_City",

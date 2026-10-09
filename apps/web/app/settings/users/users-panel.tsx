@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { InventoryLocationDto } from "@smartretail/contracts";
 import AppNavigation from "../../components/app-navigation";
 import { purchasingApi } from "../../components/purchasing-client";
+import InvitationsPanel from "./invitations-panel";
 
 type Member = {
   userId: string;
@@ -12,7 +13,12 @@ type Member = {
   locationIds: string[];
   allLocations: boolean;
 };
-type Company = { tenantId: string; userId: string; permissions: string[] };
+type Company = {
+  tenantId: string;
+  tenantName?: string;
+  userId: string;
+  permissions: string[];
+};
 const roles = {
   owner: "Propietario",
   admin: "Administrador",
@@ -320,7 +326,8 @@ function CompanyMembers({
 }
 
 export default function UsersPanel() {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false),
+    [inviting, setInviting] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]),
     [tenantId, setTenantId] = useState("");
   const [loading, setLoading] = useState(true),
@@ -378,18 +385,26 @@ export default function UsersPanel() {
               Empresa
               <select
                 aria-label="Empresa"
-                disabled={editing}
+                disabled={editing || inviting}
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
               >
                 {companies.map((c, index) => (
                   <option key={c.tenantId} value={c.tenantId}>
-                    Empresa {index + 1}
+                    {c.tenantName || `Empresa ${index + 1}`}
                   </option>
                 ))}
               </select>
             </label>
             {company && (
+              <InvitationsPanel
+                key={"invite-" + tenantId}
+                tenantId={tenantId}
+                onBusy={setInviting}
+                disabled={editing}
+              />
+            )}
+            {company && !inviting && (
               <CompanyMembers
                 key={tenantId}
                 tenantId={tenantId}

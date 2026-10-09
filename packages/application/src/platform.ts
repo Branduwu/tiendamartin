@@ -1,6 +1,7 @@
 export type PlatformCompany = Readonly<{
   id: string;
   displayName: string;
+  origin: "managed" | "self-service";
   status: "active" | "suspended";
   createdAt: string;
   owner: string;
@@ -13,6 +14,7 @@ export type PlatformOverview = Readonly<{
 export type PlatformCompanyDetail = Readonly<{
   id: string;
   displayName: string;
+  origin: "managed" | "self-service";
   status: "active" | "suspended";
   createdAt: string;
   profile: {
