@@ -45,3 +45,4 @@ export {
 } from "./onboarding";
 export type { Invitation } from "./onboarding";
 export * from "./support";
+export * from "./product-images";

@@ -46,9 +46,9 @@ it("separates enterprise owners from platform and documents cashier denials", ()
   );
   expect(Object.keys(roleGuides)).not.toContain("platform_admin");
 });
-it("does not teach unimplemented camera scanning or stock reservation", () => {
+it("documents explicit scan confirmation and no stock reservation", () => {
   expect(helpArticles.find((a) => a.slug === "scan")?.summary).toContain(
-    "aún no",
+    "Confirma",
   );
   expect(helpArticles.find((a) => a.slug === "suspend")?.summary).toContain(
     "No reserva",

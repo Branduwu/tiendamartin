@@ -103,6 +103,9 @@ export const platformForUser = (userId: string) =>
 export const onboardingForUser = (userId: string) =>
   new PostgresOnboarding(databasePool(), userId);
 import { PostgresSupport } from "@smartretail/database";
+import { PostgresProductImages } from "@smartretail/database";
+export const productImagesForUser = (userId: string, tenantId: string) =>
+  new PostgresProductImages(databasePool(), { userId, tenantId });
 export const supportForUser = (
   userId: string,
   tenantId?: string,

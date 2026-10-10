@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import {
+  PostgresProductImages,
+  ProductImageConflictError,
+  ProductImageRateLimitError,
+} from "../src/product-images";
 import { PostgresSupport } from "../src/support";
 import {
   SupportUnavailableError,
@@ -578,6 +583,16 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
         ),
       );
     }
+    if (
+      !(await admin.query("SELECT to_regclass('retail.product_images') t"))
+        .rows[0].t
+    )
+      await admin.query(
+        await readFile(
+          new URL("../migrations/027_product_images.sql", import.meta.url),
+          "utf8",
+        ),
+      );
     // Reproduce the managed schema restriction, independently of column grants.
     await admin.query(
       "REVOKE USAGE ON SCHEMA auth FROM smartretail_platform_guard",
@@ -603,7 +618,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
   });
   beforeEach(async () => {
     await admin.query(
-      "TRUNCATE retail.support_audit,retail.support_requests,retail.onboarding_audit,retail.invitation_locations,retail.tenant_invitations,retail.onboarding_commands,retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
+      "TRUNCATE retail.product_image_audit,retail.product_images,retail.support_audit,retail.support_requests,retail.onboarding_audit,retail.invitation_locations,retail.tenant_invitations,retail.onboarding_commands,retail.platform_audit,retail.platform_admins,retail.settings_audit,retail.business_profiles,retail.payables_audit,retail.expenses,retail.payable_payments,retail.payables,retail.credit_audit,retail.receivable_payments,retail.receivable_adjustments,retail.receivables,retail.tax_profiles,retail.promotion_audit,retail.coupon_redemptions,retail.promotions,retail.coupons,retail.membership_audit,retail.member_locations,retail.inventory_minimum_audit,retail.inventory_minimums,retail.customer_audit,retail.customers,retail.purchasing_audit,retail.purchase_receipt_lines,retail.purchase_receipts,retail.purchase_order_lines,retail.purchase_orders,retail.suppliers,retail.audit_log,retail.sale_return_refunds,retail.sale_return_lines,retail.sale_returns,retail.suspended_sale_lines,retail.suspended_sales,retail.cash_movements,retail.cash_register_shifts,retail.sale_payments,retail.sale_lines,retail.sales,retail.inventory_counts,retail.inventory_commands,retail.inventory_transfers,retail.inventory_movements,retail.stock_balances,retail.inventory_locations,retail.products,retail.tenant_memberships,retail.tenants",
     );
     await admin.query(
       "INSERT INTO retail.tenants(tenant_id) VALUES ($1),($2)",
@@ -637,6 +652,201 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     await receiveInventory(db, receipt());
   });
 
+  describe("UX03D1 product image authorization", () => {
+    const images = () =>
+      new PostgresProductImages(apiPool, {
+        tenantId: tenantA,
+        userId: ownerUser,
+      });
+    it("writes exact scoped reference and durable audit", async () => {
+      const id = randomUUID(),
+        corr = randomUUID();
+      await images().assertWrite(product, corr);
+      await images().changeImage(product, null, id, corr);
+      expect(await images().image(product)).toEqual({
+        imageId: id,
+        objectPath: tenantA + "/" + product + "/" + id + ".jpg",
+      });
+      const a = await admin.query(
+        "SELECT operation,actor_user_id,correlation_id FROM retail.product_image_audit ORDER BY created_at",
+      );
+      expect(a.rows.map((r) => r.operation)).toEqual([
+        "photo.change_attempt",
+        "photo.replace",
+      ]);
+      expect(a.rows[1].actor_user_id).toBe(ownerUser);
+      expect(a.rows[1].correlation_id).toBe(corr);
+    });
+    it("does not expose reference from another tenant", async () => {
+      await images().changeImage(product, null, randomUUID(), randomUUID());
+      await expect(
+        new PostgresProductImages(apiPool, {
+          tenantId: tenantB,
+          userId: ownerUser,
+        }).image(product),
+      ).resolves.toBeNull();
+    });
+    it("cashier and clerk cannot write photos", async () => {
+      for (const role of ["cashier", "inventory_clerk"]) {
+        await admin.query(
+          "UPDATE retail.tenant_memberships SET role=$1 WHERE tenant_id=$2 AND user_id=$3",
+          [role, tenantA, clerkUser],
+        );
+        await expect(
+          new PostgresProductImages(apiPool, {
+            tenantId: tenantA,
+            userId: clerkUser,
+          }).assertWrite(product, randomUUID()),
+        ).rejects.toBeInstanceOf(PermissionDeniedError);
+      }
+    });
+    it("inactive membership cannot read/write", async () => {
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, ownerUser],
+      );
+      await expect(images().image(product)).rejects.toBeInstanceOf(
+        PermissionDeniedError,
+      );
+      await expect(
+        images().assertWrite(product, randomUUID()),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("concurrent replacement preserves one winner and audit", async () => {
+      const concurrent = new Pool({
+        ...apiPool.options,
+        password: apiPool.options.password,
+        max: 2,
+      });
+      const images = () =>
+        new PostgresProductImages(concurrent, {
+          tenantId: tenantA,
+          userId: ownerUser,
+        });
+      try {
+        const ids = [randomUUID(), randomUUID()];
+        const r = await Promise.allSettled(
+          ids.map((id) =>
+            images().changeImage(product, null, id, randomUUID()),
+          ),
+        );
+        expect(r.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+        const denied = r.find((x) => x.status === "rejected");
+        expect(denied?.status === "rejected" && denied.reason).toBeInstanceOf(
+          ProductImageConflictError,
+        );
+        expect(ids).toContain((await images().image(product))?.imageId);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int n FROM retail.product_image_audit",
+            )
+          ).rows[0].n,
+        ).toBe(1);
+      } finally {
+        await concurrent.end();
+      }
+    });
+    it("deletes only current photo reference and preserves audit", async () => {
+      const id = randomUUID();
+      await images().changeImage(product, null, id, randomUUID());
+      expect(await images().changeImage(product, id, null, randomUUID())).toBe(
+        tenantA + "/" + product + "/" + id + ".jpg",
+      );
+      expect(await images().image(product)).toBeNull();
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.product_image_audit",
+          )
+        ).rows[0].n,
+      ).toBe(2);
+    });
+    it("database constraints reject cross-tenant and traversal references", async () => {
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "INSERT INTO retail.product_images VALUES($1,$2,$3,$4,$5,clock_timestamp())",
+            [tenantA, product, randomUUID(), "../other/image.jpg", ownerUser],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "23514" });
+    });
+    it("blocks quota before storage work and records authorized attempts", async () => {
+      await admin.query(
+        "INSERT INTO retail.product_image_audit(tenant_id,product_id,actor_user_id,operation,correlation_id) SELECT $1,$2,$3,'photo.change_attempt',gen_random_uuid() FROM generate_series(1,60)",
+        [tenantA, product, ownerUser],
+      );
+      await expect(
+        images().assertWrite(product, randomUUID()),
+      ).rejects.toBeInstanceOf(ProductImageRateLimitError);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.product_image_audit",
+          )
+        ).rows[0].n,
+      ).toBe(60);
+    });
+    it("concurrent attempts at quota boundary allow exactly one", async () => {
+      const concurrent = new Pool({
+        ...apiPool.options,
+        password: apiPool.options.password,
+        max: 2,
+      });
+      const images = () =>
+        new PostgresProductImages(concurrent, {
+          tenantId: tenantA,
+          userId: ownerUser,
+        });
+      try {
+        await admin.query(
+          "INSERT INTO retail.product_image_audit(tenant_id,product_id,actor_user_id,operation,correlation_id) SELECT $1,$2,$3,'photo.change_attempt',gen_random_uuid() FROM generate_series(1,59)",
+          [tenantA, product, ownerUser],
+        );
+        const results = await Promise.allSettled([
+          images().assertWrite(product, randomUUID()),
+          images().assertWrite(product, randomUUID()),
+        ]);
+        expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int n FROM retail.product_image_audit",
+            )
+          ).rows[0].n,
+        ).toBe(60);
+      } finally {
+        await concurrent.end();
+      }
+    });
+    it("RLS denies direct image writes to another tenant", async () => {
+      const id = randomUUID();
+      await expect(
+        sql(tenantA, (c) =>
+          c.query(
+            "INSERT INTO retail.product_images VALUES($1,$2,$3,$4,$5,clock_timestamp())",
+            [
+              tenantB,
+              product,
+              id,
+              tenantB + "/" + product + "/" + id + ".jpg",
+              ownerUser,
+            ],
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+    it("audit is immutable and unprivileged truncate is denied", async () => {
+      await images().changeImage(product, null, randomUUID(), randomUUID());
+      await expect(
+        sql(tenantA, (c) => c.query("DELETE FROM retail.product_image_audit")),
+      ).rejects.toMatchObject({ code: "42501" });
+      await expect(
+        sql(tenantA, (c) => c.query("TRUNCATE retail.product_image_audit")),
+      ).rejects.toMatchObject({ code: "42501" });
+    });
+  });
   describe("UX03C support and setup", () => {
     it("denies revoked platform authority and replay of another actor's ID", async () => {
       const v = input();
@@ -3818,7 +4028,7 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
     }>(
       "SELECT relrowsecurity,relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='retail' AND c.relkind='r' AND c.relname <> 'role_permissions'",
     );
-    expect(tables.rows).toHaveLength(55);
+    expect(tables.rows).toHaveLength(57);
     expect(
       tables.rows.every((r) => r.relrowsecurity && r.relforcerowsecurity),
     ).toBe(true);

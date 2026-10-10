@@ -30,7 +30,7 @@ const acceptedRisk = {
     cliForge: "1.4.0",
     certificatesForge: "1.4.0",
     lockHash:
-      "fdf6f23af313117517a1517e42955457b4546f7f9fc08c2b96175d2babdb5e12",
+      "6b6658a958e66c6e57042c1e784e46d367e19d3942569b1e9ec14b66c520b7dd",
     appConfigHash:
       "b9448506cc52aa6c96030eeda50d75aa55b3ee480fd9e2338d7405751df125f2",
     dynamicConfig: false,

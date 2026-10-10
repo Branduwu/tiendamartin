@@ -1,4 +1,24 @@
 /* Shared layouts and interaction sizing; semantic tokens live in globals.css. */
+.scan-feedback {
+  position: fixed;
+  z-index: 100;
+  top: max(1rem, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  padding: 0.875rem 1rem;
+  border: 2px solid var(--text);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--text);
+  box-shadow: 0 4px 16px #0003;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.scanner-viewfinder[hidden] {
+  display: none;
+}
 .retail-ui {
   min-height: 100dvh;
   background: var(--background);
@@ -1567,4 +1587,62 @@ body.retail-ui:has(.app-sidebar) main.workspace {
   .pilot-products .data-table .row-actions {
     display: block;
   }
+}
+/* Capture follows the existing compact dialog, with manual access below preview. */
+.scanner-viewfinder {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 320px;
+  background: #101828;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-block: 12px;
+}
+.scanner-viewfinder video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scanner-viewfinder::after {
+  content: "";
+  position: absolute;
+  inset: 25% 10%;
+  border: 2px solid #fff;
+  border-radius: 12px;
+  pointer-events: none;
+}
+.scanner-viewfinder > span {
+  position: absolute;
+  bottom: 12px;
+  inset-inline: 12px;
+  color: #fff;
+  text-align: center;
+  font-size: 14px;
+}
+.safe-code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+.product-photo-input img {
+  object-fit: contain;
+  max-width: 100%;
+  border-radius: 8px;
+}
+.product-thumbnail {
+  object-fit: contain;
+  border-radius: 6px;
+  vertical-align: middle;
+  margin-inline-end: 8px;
+}
+.product-photo-input fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.product-photo-input input[type="file"],
+.ui-dialog input[type="file"] {
+  max-width: 100%;
 }

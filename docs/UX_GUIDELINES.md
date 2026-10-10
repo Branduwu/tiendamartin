@@ -46,3 +46,11 @@ AUTH-SEC01 → UX03C → UX03D: recuperación/cambio de contraseña, guía/ayuda
 - Cada usuario consulta sus solicitudes; plataforma puede cambiar estado sin impersonación ni acceso automático a operaciones comerciales. Folio corto secundario, texto escapado, cuerpo limitado y 20 solicitudes/hora por actor/empresa. Reintentos conservan intención e ID; sessionStorage guarda únicamente empresa/ID para reconciliar respuestas inciertas, nunca descripción ni credenciales. El formulario espera a terminar esa reconciliación.
 
 La evidencia focal de ejecución se registra en PROJECT_STATE. UX03D no forma parte de esta entrega.
+
+## Captura móvil — UX03D1
+
+- Scanner reutiliza Dialog: cámara sólo por acción, manual siempre visible, resultado explícito antes de lookup, cierre con Escape/foco restaurado y apagado de tracks. Permiso denegado o navegador sin cámara mantienen foto/manual, sin excepciones técnicas.
+- Viewfinder acotado 4:3 con guía simple; texto QR seguro con wrap, sin enlaces automáticos. No cargar decoder fallback hasta usar cámara/foto.
+- POS conserva entrada por teclado/Enter y búsqueda como acciones principales; crear código desconocido sólo con products.write y en otra pestaña para preservar carrito. Una lectura no agrega repetidamente.
+- Foto opcional: preview antes de guardar, botones de tomar/seleccionar/reemplazar/eliminar y procesamiento que bloquea guardado. Miniaturas de 36 px sólo cuando existe referencia; sin catálogo tipo ecommerce. Ayuda contextual enlaza la guía breve, sin tutorial permanente.
+- Viewports y axe no certifican hardware: registrar por separado dispositivo físico, navegador, permiso/trasera/barcode/QR/apagado. Límites y controles en CAPTURE; evidencia en PROJECT_STATE.

@@ -44,6 +44,59 @@ const article = (
 });
 export const helpArticles: readonly HelpArticle[] = [
   article(
+    "camera",
+    "Permitir cámara y leer desde una foto",
+    "Vender",
+    "El permiso se solicita sólo al iniciar Escanear con cámara. Se prefiere la cámara trasera; cerrar o salir detiene la cámara.",
+    [
+      "Abre Escanear e inicia la cámara.",
+      "Permite el acceso del navegador y apunta al código con buena luz.",
+      "También puedes subir JPEG, PNG o WebP de hasta 8 MB desde tu teléfono.",
+      "Confirma la lectura o escribe el código manualmente.",
+    ],
+    [
+      "Si la cámara está ocupada, cierra otra aplicación y reintenta.",
+      "Si denegaste permiso, revísalo en los ajustes del navegador; manual siempre está disponible.",
+      "Compatibilidad depende del navegador y dispositivo; no es soporte universal.",
+    ],
+    ["scan", "qr"],
+  ),
+  article(
+    "qr",
+    "Leer QR de forma segura",
+    "Vender",
+    "Un QR puede contener un código, texto o un enlace. SmartRetail lo trata como datos: no abre URLs ni ejecuta instrucciones.",
+    [
+      "Lee el QR con cámara o fotografía.",
+      "Revisa el resultado y confirma sólo si es un código de producto.",
+      "Para contenido desconocido, usa búsqueda manual.",
+    ],
+    [
+      "Un enlace externo no identifica automáticamente un producto.",
+      "Nunca escribas contraseñas o tokens en un QR de prueba.",
+    ],
+    ["scan", "camera"],
+  ),
+  article(
+    "product-photo",
+    "Foto principal del producto",
+    "Inventario",
+    "La foto es opcional. Puedes tomarla o elegirla, revisar una vista previa y aplicarla al guardar. Las fotos para escanear son distintas y no se almacenan.",
+    [
+      "Con permiso de editar, abre Crear o Editar producto.",
+      "En Foto del producto toma o selecciona JPEG, PNG o WebP hasta 8 MB.",
+      "Revisa la vista previa y guarda el producto.",
+      "Para reemplazar o eliminar, edita de nuevo y confirma Guardar.",
+    ],
+    [
+      "La imagen se reduce y recodifica sin conservar EXIF; no se guardan imágenes binarias en la base de datos.",
+      "Si el producto se guardó pero la foto falló, reintenta conservando la vista previa.",
+      "Si otra persona cambió la foto, recarga antes de reemplazarla.",
+    ],
+    ["products", "scan"],
+    { href: "/products", label: "Ver productos", permission: "products.read" },
+  ),
+  article(
     "business",
     "Configurar tu empresa",
     "Primeros pasos",
@@ -240,18 +293,20 @@ export const helpArticles: readonly HelpArticle[] = [
     "scan",
     "Escanear un código de barras",
     "Vender",
-    "Puedes usar un lector que escriba como teclado en el campo de búsqueda. Usa el código existente del producto. Cámara, QR y OCR aún no forman parte de este flujo.",
+    "Puedes leer códigos con un lector físico, cámara, foto o entrada manual. La cámara y las fotos de lectura se procesan en tu dispositivo; no se guardan. Confirma la lectura antes de buscar.",
     [
-      "En POS enfoca Buscar o escanear producto.",
-      "Escanea con tu lector o escribe el código.",
-      "Confirma el producto encontrado y su cantidad.",
+      "En POS selecciona una sucursal y toca Escanear, o enfoca Código de barras para usar el lector físico.",
+      "Inicia la cámara y coloca el código dentro del recuadro; confirma Usar este código.",
+      "Una pieza se agrega una sola vez; para unidades por peso indica la cantidad.",
+      "En Productos puedes escanear para buscar o llenar el barcode al crear/editar sin guardar automáticamente.",
     ],
     [
-      "Si no se encuentra, verifica el código guardado en Productos.",
-      "Un lector con teclado necesita que el campo tenga el foco.",
+      "Si no se encuentra, revisa el código o busca por nombre. Sólo quien puede editar productos recibe Crear producto.",
+      "Si rechazas cámara, usa foto o código manual.",
+      "No abras enlaces de QR: SmartRetail los muestra como texto, nunca navega automáticamente.",
     ],
-    ["pos", "products"],
-    { href: "/pos", label: "Buscar en POS", permission: "sales.create" },
+    ["camera", "qr", "product-photo", "checkout"],
+    { href: "/pos", label: "Abrir POS", permission: "sales.create" },
   ),
   article(
     "checkout",

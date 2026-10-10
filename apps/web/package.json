@@ -22,9 +22,12 @@
     "jsbarcode": "3.12.3",
     "next": "16.3.8",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "sharp": "0.35.5",
+    "zxing-wasm": "3.1.5"
   },
   "devDependencies": {
+    "@types/emscripten": "1.41.6",
     "@types/node": "24.13.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

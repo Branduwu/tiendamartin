@@ -1,4 +1,5 @@
 "use client";
+import { ScanFeedback, useScanFeedback } from "../components/scan-feedback";
 import { selectCompany } from "../../lib/company-selection";
 import PilotSalePanel from "../components/pilot-sale-panel";
 import BusinessContext from "../components/business-context";
@@ -25,6 +26,15 @@ import {
   type SuspendedSaleDto,
 } from "@smartretail/contracts";
 import { scanSaleProduct } from "@smartretail/application";
+import { ContextHelp } from "../components/ui";
+import {
+  useProductPhotos,
+  ProductThumbnail,
+} from "../components/product-thumbnails";
+import dynamic from "next/dynamic";
+const SmartScanner = dynamic(() => import("../components/smart-scanner"), {
+  ssr: false,
+});
 import type {
   SaleDraftDto,
   CashShiftDto,
@@ -79,8 +89,11 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [suspended, setSuspended] = useState<SuspendedSaleDto[]>([]);
   const [showSuspended, setShowSuspended] = useState(false);
   const [barcode, setBarcode] = useState("");
+  const [cameraScanner, setCameraScanner] = useState(false),
+    [unknownCode, setUnknownCode] = useState("");
   const [scanProduct, setScanProduct] = useState<ProductDto | null>(null);
   const [scanQuantity, setScanQuantity] = useState("");
+  const feedback = useScanFeedback();
   const [notice, setNotice] = useState("");
   const scannerRef = useRef<HTMLInputElement>(null);
   const scanQuantityRef = useRef<HTMLInputElement>(null);
@@ -93,6 +106,7 @@ export default function PosPanel({ userId }: { userId: string }) {
       }[]
     >([]),
     [tenant, setTenant] = useState("");
+  const photos = useProductPhotos(tenant);
   const [products, setProducts] = useState<ProductDto[]>([]),
     [locations, setLocations] = useState<InventoryLocationDto[]>([]),
     [location, setLocation] = useState("");
@@ -372,32 +386,38 @@ export default function PosPanel({ userId }: { userId: string }) {
       setScanProduct(null);
       setScanQuantity("");
       setConfirmed(null);
-      setNotice(`${product.name}: producto agregado.`);
+      feedback.announce(`✓ ${product.name} agregado a la venta`);
       setError("");
       scannerRef.current?.focus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Cantidad inv\u00e1lida.");
     }
   }
-  async function scan() {
+  async function scan(code = barcode) {
     if (locked || sendingRef.current || !location) return;
     sendingRef.current = true;
     setSending(true);
     setError("");
     setNotice("");
+    feedback.announce("✓ Código escaneado. Buscando producto…");
     setScanProduct(null);
+    setUnknownCode("");
     let needsQuantity = false;
     try {
       const result = await api<{
         status: "active" | "inactive" | "not_found";
         product?: ProductDto;
-      }>(`/api/v1/products/lookup?barcode=${encodeURIComponent(barcode)}`, {
+      }>(`/api/v1/products/lookup?barcode=${encodeURIComponent(code)}`, {
         headers: { "x-tenant-id": tenant },
       });
       setBarcode("");
-      if (result.status === "not_found")
-        setError("C\u00f3digo de barras no encontrado.");
-      else if (result.status === "inactive")
+      if (result.status === "not_found") {
+        feedback.announce(
+          "Código escaneado. No encontramos un producto con este código.",
+        );
+        setError("No encontramos un producto con este código.");
+        setUnknownCode(code);
+      } else if (result.status === "inactive")
         setError("El producto est\u00e1 inactivo y no puede venderse.");
       else if (result.product) {
         if (result.product.unit === "piece") scanAdd(result.product);
@@ -405,7 +425,9 @@ export default function PosPanel({ userId }: { userId: string }) {
           needsQuantity = true;
           setScanProduct(result.product);
           setScanQuantity("");
-          setNotice("Indica la cantidad antes de agregar este producto.");
+          feedback.announce(
+            `✓ Producto encontrado: ${result.product.name}. Indica la cantidad antes de agregar.`,
+          );
         }
       }
     } catch (e) {
@@ -833,6 +855,7 @@ export default function PosPanel({ userId }: { userId: string }) {
             />
           </div>
         </div>
+        <ScanFeedback message={feedback.message} />
         {notice ? (
           <p role="status" className="notice">
             {notice}
@@ -947,6 +970,57 @@ export default function PosPanel({ userId }: { userId: string }) {
                   aria-labelledby="scan-title"
                 >
                   <h2 id="scan-title">Buscar o escanear</h2>
+                  <ContextHelp
+                    label="Escanear productos"
+                    href="/help/scan"
+                    keepPage={locked || !!draft?.lines.length}
+                  >
+                    Puedes usar la cámara del teléfono, una foto o un lector
+                    conectado. Confirma el código antes de agregar.
+                  </ContextHelp>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={locked || !location}
+                    onClick={() => setCameraScanner(true)}
+                  >
+                    Escanear
+                  </button>
+                  {unknownCode && (
+                    <div className="stack">
+                      <p>
+                        Código escaneado. No encontramos un producto con este
+                        código.
+                      </p>
+                      <div className="actions">
+                        <button
+                          type="button"
+                          onClick={() => setCameraScanner(true)}
+                        >
+                          Escanear otro
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => scannerRef.current?.focus()}
+                        >
+                          Buscar manualmente
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {unknownCode &&
+                    tenants
+                      .find((t) => t.tenantId === tenant)
+                      ?.permissions.includes("products.write") && (
+                      <Link
+                        href={`/products?tenantId=${tenant}&barcode=${encodeURIComponent(unknownCode)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Crear producto con este código (abre otra pestaña)
+                      </Link>
+                    )}
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -1162,6 +1236,13 @@ export default function PosPanel({ userId }: { userId: string }) {
                       draft.lines.map((l) => (
                         <article className="pos-line" key={l.productId}>
                           <div>
+                            {photos[l.productId] && (
+                              <ProductThumbnail
+                                key={photos[l.productId]}
+                                tenantId={tenant}
+                                productId={l.productId}
+                              />
+                            )}
                             <strong>{l.name}</strong>
                             <small>
                               {l.sku} · {mxn(l.unitPrice.minorUnits.toString())}{" "}
@@ -1499,6 +1580,16 @@ export default function PosPanel({ userId }: { userId: string }) {
           </>
         )}
       </main>
+      {cameraScanner && (
+        <SmartScanner
+          onClose={() => setCameraScanner(false)}
+          onCode={(code) => {
+            setCameraScanner(false);
+            setBarcode(code);
+            void scan(code);
+          }}
+        />
+      )}
     </div>
   );
 }

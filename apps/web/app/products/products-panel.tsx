@@ -1,4 +1,5 @@
 "use client";
+import { ScanFeedback, useScanFeedback } from "../components/scan-feedback";
 import { LoadingLabel } from "../components/ui";
 import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
@@ -14,6 +15,16 @@ import { browserAuth } from "../../lib/supabase/client";
 import { minorUnitsToDecimal } from "../../lib/money-input";
 import ProductForm from "./product-form";
 import { Button, EmptyState, PageHeader } from "../components/ui";
+import dynamic from "next/dynamic";
+import { scanCode } from "../../lib/scanner";
+import type { PhotoChange } from "../components/product-photo-input";
+import {
+  useProductPhotos,
+  ProductThumbnail,
+} from "../components/product-thumbnails";
+const SmartScanner = dynamic(() => import("../components/smart-scanner"), {
+  ssr: false,
+});
 type Tenant = {
   tenantId: string;
   tenantName?: string;
@@ -49,13 +60,18 @@ export default function ProductsPanel() {
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState("");
+  const feedback = useScanFeedback();
+  const [unknownScan, setUnknownScan] = useState("");
   const [notice, setNotice] = useState("");
   const [editor, setEditor] = useState<ProductDto | null | undefined>(
     undefined,
   );
   const [reload, setReload] = useState(0);
+  const photos = useProductPhotos(tenantId, reload);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [scanner, setScanner] = useState(false),
+    [initialBarcode, setInitialBarcode] = useState("");
   const visibleProducts = products.filter(
     (product) =>
       (statusFilter === "all" || product.status === statusFilter) &&
@@ -73,6 +89,16 @@ export default function ProductsPanel() {
         setTenants(data.tenants);
         const selected = selectCompany(data.tenants);
         setTenantId(selected);
+        const code = scanCode(
+          new URL(window.location.href).searchParams.get("barcode") ?? "",
+        );
+        if (
+          code &&
+          data.tenants.find((t) => t.tenantId === selected)?.canWriteProducts
+        ) {
+          setInitialBarcode(code);
+          setEditor(null);
+        }
         if (!selected) setLoading(false);
       })
       .catch(() => {
@@ -111,36 +137,63 @@ export default function ProductsPanel() {
   const canWrite =
     tenants.find((tenant) => tenant.tenantId === tenantId)?.canWriteProducts ===
     true;
-  async function save(value: CreateProductDto | UpdateProductDto) {
+  async function save(
+    value: CreateProductDto | UpdateProductDto,
+    photo?: PhotoChange,
+  ) {
+    let persisted = false;
     setSaving(true);
     setError("");
     setNotice("");
     try {
-      const result = await api<{ product: ProductDto }>(
-        router,
-        `/api/v1/products${editor ? `/${editor.id}` : ""}`,
-        {
-          method: editor ? "PATCH" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-tenant-id": tenantId,
-          },
-          body: JSON.stringify(value),
-        },
-      );
+      const result =
+        editor && !Object.keys(value).length
+          ? { product: editor }
+          : await api<{ product: ProductDto }>(
+              router,
+              `/api/v1/products${editor ? `/${editor.id}` : ""}`,
+              {
+                method: editor ? "PATCH" : "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-tenant-id": tenantId,
+                },
+                body: JSON.stringify(value),
+              },
+            );
       setProducts((previous) =>
         [
           ...previous.filter((item) => item.id !== result.product.id),
           result.product,
         ].sort((a, b) => a.name.localeCompare(b.name)),
       );
+      persisted = true;
+      if (photo) {
+        // Product creation and optional photo are separate, explicit operations.
+        // If upload fails, keep the persisted product in edit mode so retry never creates another product.
+        setEditor(result.product);
+        await api(router, `/api/v1/products/${result.product.id}/image`, {
+          method: photo.blob ? "PUT" : "DELETE",
+          headers: {
+            "x-tenant-id": tenantId,
+            "x-product-image-version": photo.expected ?? "none",
+            ...(photo.blob ? { "Content-Type": "image/jpeg" } : {}),
+          },
+          ...(photo.blob ? { body: photo.blob } : {}),
+        });
+      }
       setEditor(undefined);
+      setInitialBarcode("");
       setNotice("Producto guardado.");
+      setReload((value) => value + 1);
     } catch (error) {
       setError(
-        error instanceof Error
-          ? error.message
-          : "No pudimos guardar el producto.",
+        (photo && persisted
+          ? "Producto guardado; la foto no se pudo aplicar. Reintenta con la vista previa. "
+          : "") +
+          (error instanceof Error
+            ? error.message
+            : "No pudimos guardar el producto."),
       );
     } finally {
       setSaving(false);
@@ -188,6 +241,14 @@ export default function ProductsPanel() {
         <PageHeader>
           <div>
             <h1>Productos</h1>
+            <button
+              type="button"
+              className="secondary"
+              disabled={loading || saving || editor !== undefined}
+              onClick={() => setScanner(true)}
+            >
+              Escanear para buscar
+            </button>
             <p className="muted">
               Administra los datos y precios de tus productos.
             </p>
@@ -197,6 +258,7 @@ export default function ProductsPanel() {
               disabled={loading || saving || editor !== undefined}
               onClick={() => {
                 setEditor(null);
+                setInitialBarcode("");
                 setError("");
                 setNotice("");
               }}
@@ -231,6 +293,40 @@ export default function ProductsPanel() {
         {tenants.length === 1 && (
           <p className="company-context">Empresa activa</p>
         )}
+        <ScanFeedback message={feedback.message} />
+        {unknownScan && (
+          <section className="notice">
+            <p>Código escaneado. No encontramos un producto con este código.</p>
+            <div className="actions">
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInitialBarcode(unknownScan);
+                    setEditor(null);
+                    setUnknownScan("");
+                  }}
+                >
+                  Crear producto
+                </button>
+              )}
+              <button type="button" onClick={() => setScanner(true)}>
+                Escanear otro
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setSearch("");
+                  setUnknownScan("");
+                  document.getElementById("product-search")?.focus();
+                }}
+              >
+                Buscar manualmente
+              </button>
+            </div>
+          </section>
+        )}
         {error && (
           <p role="alert" className="error">
             {error}
@@ -243,12 +339,20 @@ export default function ProductsPanel() {
         )}
         {editor !== undefined && (
           <ProductForm
-            key={editor?.id ?? "new"}
+            onCodeCaptured={() =>
+              feedback.announce(
+                "✓ Código capturado. Revisa el producto antes de guardar.",
+              )
+            }
+            initialBarcode={initialBarcode}
             product={editor}
             tenantId={tenantId}
             busy={saving}
             onSave={save}
-            onCancel={() => setEditor(undefined)}
+            onCancel={() => {
+              setEditor(undefined);
+              setInitialBarcode("");
+            }}
           />
         )}
         {loading ? (
@@ -282,6 +386,7 @@ export default function ProductsPanel() {
                 <label>
                   Buscar productos
                   <input
+                    id="product-search"
                     type="search"
                     placeholder="Nombre, SKU o código de barras"
                     value={search}
@@ -374,6 +479,13 @@ export default function ProductsPanel() {
                     {visibleProducts.map((product) => (
                       <tr key={product.id}>
                         <th scope="row">
+                          {photos[product.id] && (
+                            <ProductThumbnail
+                              key={photos[product.id]}
+                              tenantId={tenantId}
+                              productId={product.id}
+                            />
+                          )}
                           <strong>{product.name}</strong>
                           <span className="product-meta">
                             {product.sku} ·{" "}
@@ -475,6 +587,22 @@ export default function ProductsPanel() {
           </section>
         )}
       </main>
+      {scanner && (
+        <SmartScanner
+          onClose={() => setScanner(false)}
+          onCode={(code) => {
+            setSearch(code);
+            const found = products.find((p) => p.barcode === code);
+            setUnknownScan(found ? "" : code);
+            feedback.announce(
+              found
+                ? `✓ Código escaneado. Producto encontrado: ${found.name}`
+                : "Código escaneado. No encontramos un producto con este código.",
+            );
+            setScanner(false);
+          }}
+        />
+      )}
     </div>
   );
 }

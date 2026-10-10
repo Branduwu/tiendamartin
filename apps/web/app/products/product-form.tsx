@@ -1,4 +1,5 @@
 "use client";
+import { ScanFeedback, useScanFeedback } from "../components/scan-feedback";
 import { LoadingLabel } from "../components/ui";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -14,6 +15,13 @@ import {
   minorUnitsToDecimal,
 } from "../../lib/money-input";
 import { purchasingApi } from "../components/purchasing-client";
+import dynamic from "next/dynamic";
+import ProductPhotoInput, {
+  type PhotoChange,
+} from "../components/product-photo-input";
+const SmartScanner = dynamic(() => import("../components/smart-scanner"), {
+  ssr: false,
+});
 const unitLabels = {
   piece: "Pieza",
   kg: "Kilogramo",
@@ -29,16 +37,28 @@ export default function ProductForm({
   busy,
   onSave,
   onCancel,
+  initialBarcode = "",
+  onCodeCaptured,
 }: {
   product: ProductDto | null;
   tenantId: string;
   busy: boolean;
-  onSave: (value: CreateProductDto | UpdateProductDto) => Promise<void>;
+  onSave: (
+    value: CreateProductDto | UpdateProductDto,
+    photo?: PhotoChange,
+  ) => Promise<void>;
   onCancel: () => void;
+  initialBarcode?: string;
+  onCodeCaptured?: () => void;
 }) {
+  const feedback = useScanFeedback();
   const [error, setError] = useState("");
   const [profiles, setProfiles] = useState<TaxProfileDto[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [photoProcessing, setPhotoProcessing] = useState(false);
+  const [barcode, setBarcode] = useState(product?.barcode ?? initialBarcode),
+    [scanner, setScanner] = useState(false),
+    [photo, setPhoto] = useState<PhotoChange>();
   useEffect(() => {
     const controller = new AbortController();
     purchasingApi<{ profiles: TaxProfileDto[] }>("/api/v1/taxes", tenantId, {
@@ -60,7 +80,7 @@ export default function ProductForm({
   }, [tenantId]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !loaded) return;
+    if (busy || !loaded || photoProcessing) return;
     setError("");
     const form = new FormData(event.currentTarget);
     try {
@@ -91,7 +111,7 @@ export default function ProductForm({
         );
         return;
       }
-      if (!product) await onSave(parsed.data);
+      if (!product) await onSave(parsed.data, photo);
       else {
         const patch: UpdateProductDto = {};
         for (const field of ["name", "sku", "unit", "status"] as const) {
@@ -109,11 +129,11 @@ export default function ProductForm({
           patch.purchaseCost = parsed.data.purchaseCost;
         if (parsed.data.salePrice.minorUnits !== product.salePrice.minorUnits)
           patch.salePrice = parsed.data.salePrice;
-        if (!Object.keys(patch).length) {
+        if (!Object.keys(patch).length && !photo) {
           onCancel();
           return;
         }
-        await onSave(patch);
+        await onSave(patch, photo);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : "Revisa los importes.");
@@ -122,6 +142,7 @@ export default function ProductForm({
   return (
     <section className="card" aria-labelledby="form-title">
       <h2 id="form-title">{product ? "Editar producto" : "Nuevo producto"}</h2>
+      {!onCodeCaptured && <ScanFeedback message={feedback.message} />}
       <form onSubmit={submit} className="stack">
         <fieldset disabled={busy || !loaded} className="form-grid">
           <label>
@@ -151,8 +172,16 @@ export default function ProductForm({
             <input
               name="barcode"
               maxLength={128}
-              defaultValue={product?.barcode ?? ""}
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
             />
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setScanner(true)}
+            >
+              Escanear código
+            </button>
           </label>
           <label>
             Unidad
@@ -219,6 +248,13 @@ export default function ProductForm({
             </select>
           </label>
         </fieldset>
+        <ProductPhotoInput
+          onProcessing={setPhotoProcessing}
+          tenantId={tenantId}
+          {...(product ? { productId: product.id } : {})}
+          busy={busy}
+          onChange={setPhoto}
+        />
         <p className="muted">
           Importes con punto decimal y hasta dos decimales. Ejemplo: 123.45.
         </p>
@@ -228,7 +264,7 @@ export default function ProductForm({
           </p>
         )}
         <div className="actions">
-          <button disabled={busy || !loaded} type="submit">
+          <button disabled={busy || !loaded || photoProcessing} type="submit">
             <LoadingLabel busy={busy} label="Guardando…">
               Guardar producto
             </LoadingLabel>
@@ -243,6 +279,20 @@ export default function ProductForm({
           </button>
         </div>
       </form>
+      {scanner && (
+        <SmartScanner
+          onClose={() => setScanner(false)}
+          onCode={(code) => {
+            setBarcode(code);
+            if (onCodeCaptured) onCodeCaptured();
+            else
+              feedback.announce(
+                "✓ Código capturado. Revisa el producto antes de guardar.",
+              );
+            setScanner(false);
+          }}
+        />
+      )}
     </section>
   );
 }
