@@ -271,5 +271,5 @@ CLIENT: formularios, autocomplete, confirmación, longitudes y mensajes. SERVER:
 
 - Imagen con barcode/QR: siete fixtures sintéticas prioritarias, decodificación local; no almacenar fotos usadas sólo para escanear. Chromium local/remoto: siete formatos prioritarios PASS en desktop/390/360.
 - Foto principal: metadata/auditoría con RLS/FORCE RLS, path derivado, permisos products.read/write, bucket privado; no imagen binaria en DB.
-- Real device verification: PENDING; viewport Chromium emulado no acredita Safari/iOS ni Android físicos. Cámara trasera, barcode/QR físicos y apagado se comprobarán por usuario antes de cierre Git.
+- Real device verification: PASS reportado por usuario: permiso, trasera, barcode/QR, apagado sin background y corrección de precisión/feedback (ignora números sueltos, barcode correcto con confirmación). Modelo/OS/browser no proporcionados; viewport Chromium no certifica compatibilidad universal Safari/iOS/Android.
 - K06 visual product recognition continúa experimental/futuro. K07/K08 factura/nota/PDF/OCR y revisión humana corresponden a UX03D2, no implementados ni DONE.
