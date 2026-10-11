@@ -1101,6 +1101,10 @@ Cierre final: usuario confirma PASS físico de la corrección: ignora números i
 
 Git: commit funcional 29c05ae (`feat: add mobile product scanning and images`) publicado en origin/main. QA final detectó una nota PENDING antigua al pie de la matriz: corregida a PASS físico reportado por usuario, sin cambiar código ni ampliar evidencia de dispositivos; cierre documental en commit separado, sin reescribir historial.
 
+## TASK-BETA01 — Auditoría de preparación para beta (2026-10-10, COMPLETADA)
+
+Auditoría documental y de código focal, sin cambios operativos: 119 requisitos reconciliados (78 DONE, 25 PARTIAL, 3 MISSING, 13 DEFERRED). Dictamen NO-GO para negocios reales hasta acreditar restore de Database/Storage con RPO/RTO, MFA obligatoria para cuentas privilegiadas y rate limiting de documentos/OCR. QA y SECURITY independientes revisaron el reporte; no ejecutaron producción, restore, hardware ni suites completas. Informe: docs/BETA_READINESS_REPORT.md. Corrección documental posterior: K07/K08 reflejan el smoke físico PASS de UX03D2 y K08 queda DONE por la confirmación humana antes de recepción. Sin commit/push ni nueva TASK.
+
 ## TASK-UX03D2 — Captura documental asistida (2026-10-10, COMPLETADA)
 
 Cierre posterior: el smoke físico en iPhone pasó tras desplegar la corrección de fotos grandes. Foto real y PDF permitieron revisar datos y crear únicamente un borrador, sin recepción ni cambio de inventario. La captura prepara una copia local orientada y optimizada cuando hace falta; no se sube la fuente original. El estado PARCIAL indicado más abajo corresponde al punto previo a esta validación y queda superado por este cierre.
