@@ -307,6 +307,35 @@ export class PostgresPurchasing
   async createPurchase(input: PurchaseDraftInput) {
     const value = purchaseDraft(input);
     return this.scope("purchases.write", async (c) => {
+      // Serialize retries for the same tenant/command before testing existence.
+      await c.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [
+        `${this.tenant}:purchase:${value.id.toLowerCase()}`,
+      ]);
+      const exists = await c.query(
+        "SELECT 1 FROM retail.purchase_orders WHERE tenant_id=$1 AND id=$2",
+        [this.tenant, value.id],
+      );
+      if (exists.rowCount) {
+        const current = await this.read(c, value.id);
+        const same =
+          current.supplierId === value.supplierId.toLowerCase() &&
+          current.locationId === value.locationId.toLowerCase() &&
+          current.notes === value.notes &&
+          current.lines.length === value.lines.length &&
+          value.lines.every((line) =>
+            current.lines.some(
+              (present) =>
+                present.productId === line.productId.toLowerCase() &&
+                present.quantityOrdered.unit === line.quantityOrdered.unit &&
+                present.quantityOrdered.milliUnits ===
+                  line.quantityOrdered.milliUnits &&
+                present.unitCost.minorUnits === line.unitCost.minorUnits,
+            ),
+          );
+        if (!same)
+          throw new PurchaseConflictError("Purchase retry payload changed");
+        return current;
+      }
       await this.references(c, value);
       await c.query(
         "INSERT INTO retail.purchase_orders(id,tenant_id,supplier_id,location_id,created_by,notes) VALUES($1,$2,$3,$4,$5,$6)",
@@ -322,6 +351,19 @@ export class PostgresPurchasing
       await this.lines(c, value);
       return this.read(c, value.id);
     });
+  }
+  async assertDocumentCapture() {
+    return this.scope("purchases.write", async () => undefined);
+  }
+  async assertDocumentPurchase(id: string, write = false) {
+    return this.scope(
+      write ? "purchases.write" : "purchases.read",
+      async (c) => {
+        const purchase = await this.read(c, id);
+        await this.requireLocation(c, purchase.locationId);
+        return purchase;
+      },
+    );
   }
   async updatePurchase(input: PurchaseDraftInput) {
     const value = purchaseDraft(input);

@@ -193,8 +193,8 @@ QA Hypatia revisó implementación y pruebas escritas, sin ejecutar cámara, nav
 | K04 | QR compatibles con política de contenido | DONE | P2 | Decoder local, contenido JSX escapado; URL/deep links no ejecutados | Fixtures/browser y QR físico PASS reportado por usuario; URL sin navegación automática. |
 | K05 | Foto de producto: capturar/subir/almacenar | PARTIAL | P2 | Preview, upload/reload/reemplazo/eliminación real PASS; Storage privado/RLS | Captura física por picker del teléfono sin validar; límites en CAPTURE. |
 | K06 | Reconocimiento visual de producto               | DEFERRED | P3        | Sin implementación encontrada; NV                                                   | Experimental; propuesta humana, nunca cambia producto/stock por inferencia. |
-| K07 | Imagen/PDF de factura o nota→OCR/extracción     | DEFERRED | P3        | E05 compra manual; sin ingestión/OCR encontrado                                     | UX03D fase posterior: propuestas→revisión→confirmación→borrador/compra.     |
-| K08 | Confirmación humana antes de ledger de OCR      | DEFERRED | P0        | Requisito de diseño futuro; no OCR implementado                                     | Condición obligatoria de K07, no afirmar control ejecutado.                 |
+| K07 | Imagen/PDF de factura o nota→OCR/extracción | PARTIAL | P3 | UX03D2: imagen, PDF textual sin OCR, OCR español local y propuesta revisable; 10 E2E locales y 10 remotos PASS | Smoke físico pendiente; perfil PDF acotado en DOCUMENT_CAPTURE. |
+| K08 | Confirmación humana antes de ledger de OCR | PARTIAL | P0 | UX03D2: confirmación por línea y final; borrador sin recepción; PostgreSQL 452 PASS y 24 tablas productivas del tenant de prueba intactas | Smoke físico pendiente; OCR nunca aplica recepción automáticamente. |
 | K09 | XML fiscal como importación estructurada        | DEFERRED | P3        | Sin parser fiscal; ticket no CFDI                                                   | CFDI/importación XML; separar de OCR.                                       |
 | K10 | Leer barcode/QR desde imagen | DONE | P2 | Siete fixtures PNG y fallback local en Chromium desktop/390/360; no upload de scanner | JPEG/WebP admitidos por decoder; Safari/iOS físicos no acreditados. |
 | K11 | Verificación en teléfono real | DONE | P0 | Usuario reporta permiso/trasera/barcode/QR/apagado PASS | Usuario confirma corrección de precisión y feedback PASS; permiso/trasera/QR/apagado PASS reportados. Modelo/OS/browser no proporcionados; no certifica todos los dispositivos. |
@@ -272,4 +272,16 @@ CLIENT: formularios, autocomplete, confirmación, longitudes y mensajes. SERVER:
 - Imagen con barcode/QR: siete fixtures sintéticas prioritarias, decodificación local; no almacenar fotos usadas sólo para escanear. Chromium local/remoto: siete formatos prioritarios PASS en desktop/390/360.
 - Foto principal: metadata/auditoría con RLS/FORCE RLS, path derivado, permisos products.read/write, bucket privado; no imagen binaria en DB.
 - Real device verification: PASS reportado por usuario: permiso, trasera, barcode/QR, apagado sin background y corrección de precisión/feedback (ignora números sueltos, barcode correcto con confirmación). Modelo/OS/browser no proporcionados; viewport Chromium no certifica compatibilidad universal Safari/iOS/Android.
-- K06 visual product recognition continúa experimental/futuro. K07/K08 factura/nota/PDF/OCR y revisión humana corresponden a UX03D2, no implementados ni DONE.
+- K06 visual product recognition continúa experimental/futuro. K07/K08 se actualizan únicamente con la evidencia UX03D2 posterior; XML fiscal/CFDI/SAT siguen diferidos.
+
+### UX03D2 — Captura asistida (en validación)
+
+| Capacidad | Estado / evidencia |
+| --- | --- |
+| Foto/imagen de nota | OCR español real y cancelación E2E local/remoto PASS; picker físico pendiente. |
+| PDF | Texto primero, OCR por página insuficiente; preview multipágina y PDF escaneado local/remoto PASS. |
+| Extracción estructurada | Proveedor/folio/fecha/moneda/líneas/importes propuestos, no datos finales; layouts desconocidos manuales. |
+| Revisión humana | Matching sólo sugerido, corrección, creación explícita de producto y confirmaciones E2E local/remoto PASS. |
+| Borrador de compra | API normal/idempotencia; DB concurrencia/replay/conflicto PASS; 24 tablas de inventario/finanzas productivas intactas después del smoke. |
+| Original privado | Storage cloud privado: UI/descarga, hash, retry/inmutabilidad, permiso/tenant/sucursal y bloqueo de JWT directo PASS; runtime restringido y RLS/FORCE RLS verificados. |
+| Fiscal | Sin validación CFDI/SAT ni importación XML fiscal; no DONE. |

@@ -203,11 +203,13 @@ export function Dialog({
   title,
   onClose,
   children,
+  blocked = false,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  blocked?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null),
     id = useId();
@@ -220,6 +222,9 @@ export function Dialog({
       ref={ref}
       className="ui-dialog"
       aria-labelledby={id}
+      onCancel={(event) => {
+        if (blocked) event.preventDefault();
+      }}
       onClose={onClose}
     >
       <div className="dialog-heading">
@@ -227,6 +232,7 @@ export function Dialog({
         <IconButton
           label="Cerrar diálogo"
           variant="ghost"
+          disabled={blocked}
           onClick={() => ref.current?.close()}
         >
           ×

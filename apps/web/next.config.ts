@@ -2,8 +2,28 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["zxing-wasm"],
+  serverExternalPackages: [
+    "zxing-wasm",
+    "pdfjs-dist",
+    "tesseract.js",
+    "tesseract.js-core",
+    "@tesseract.js-data/spa",
+  ],
   outputFileTracingIncludes: {
+    "/api/v1/purchases/*": [
+      "./node_modules/pdfjs-dist/package.json",
+      "./node_modules/pdfjs-dist/legacy/build/*",
+    ],
+    "/document-engine/*": [
+      "./node_modules/pdfjs-dist/package.json",
+      "./node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+      "./node_modules/tesseract.js/package.json",
+      "./node_modules/tesseract.js/dist/worker.min.js",
+      "./node_modules/tesseract.js/dist/tesseract.min.js",
+      "./node_modules/tesseract.js-core/*",
+      "./node_modules/@tesseract.js-data/spa/package.json",
+      "./node_modules/@tesseract.js-data/spa/4.0.0_best_int/spa.traineddata.gz",
+    ],
     "/scanner-engine/reader.wasm": [
       "./node_modules/zxing-wasm/package.json",
       "./node_modules/zxing-wasm/dist/cjs/reader/index.js",

@@ -19,11 +19,15 @@
     "@smartretail/domain": "workspace:*",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.117.2",
+    "@tesseract.js-data/spa": "1.0.0",
     "jsbarcode": "3.12.3",
     "next": "16.3.8",
+    "pdfjs-dist": "6.4.299",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "sharp": "0.35.5",
+    "tesseract.js": "7.0.0",
+    "tesseract.js-core": "7.0.0",
     "zxing-wasm": "3.1.5"
   },
   "devDependencies": {

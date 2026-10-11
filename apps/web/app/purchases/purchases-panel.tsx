@@ -13,6 +13,8 @@ import {
   type InventoryLocationDto,
 } from "@smartretail/contracts";
 import { PurchasePayable } from "../components/financial-panel";
+import PurchaseDocument from "../components/purchase-document";
+import { documentIdentity } from "../../lib/document-review";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { formatDateTime } from "../components/presentation";
 import {
@@ -446,6 +448,13 @@ export default function PurchasesPanel({
           </div>
           <div className="actions">
             <Link href="/suppliers">Ver proveedores</Link>
+            {canWrite && !initialPurchaseId && !saving && !pending && (
+              <Link
+                href={`/purchases/capture?tenantId=${encodeURIComponent(company.tenantId)}`}
+              >
+                Capturar documento
+              </Link>
+            )}
             {!initialPurchaseId && (
               <button
                 disabled={!canWrite || saving || loading || !!pending}
@@ -600,7 +609,22 @@ export default function PurchasesPanel({
                     id={detail.id}
                   />
                 )}
-              {detail.notes && <p>{detail.notes}</p>}
+              {detail.notes &&
+                (documentIdentity(detail.notes) ? (
+                  <div className="stack">
+                    <p>
+                      Documento:{" "}
+                      {documentIdentity(detail.notes)?.reference || "Sin folio"}{" "}
+                      · {documentIdentity(detail.notes)?.date || "Sin fecha"}
+                    </p>
+                    <PurchaseDocument
+                      tenantId={company.tenantId}
+                      purchaseId={detail.id}
+                    />
+                  </div>
+                ) : (
+                  <p>{detail.notes}</p>
+                ))}
               <details className="secondary-reference">
                 <summary>Referencia de la orden</summary>
                 <p className="sale-id">{detail.id}</p>

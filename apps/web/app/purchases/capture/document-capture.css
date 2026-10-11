@@ -1,0 +1,54 @@
+.document-review-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.document-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding-block: 8px;
+}
+.document-check input[type="checkbox"] {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 2px 0 0;
+  padding: 0;
+}
+.document-preview canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: white;
+  border-radius: var(--radius);
+}
+.document-filename {
+  overflow-wrap: anywhere;
+}
+.document-line legend {
+  font-weight: 600;
+}
+.document-line p {
+  overflow-wrap: anywhere;
+}
+.document-review-grid fieldset {
+  min-width: 0;
+}
+@media (min-width: 1100px) {
+  .document-review-grid {
+    grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  }
+  .document-preview {
+    position: sticky;
+    top: 5rem;
+  }
+}
+@media print {
+  .document-review-grid {
+    display: block;
+  }
+}

@@ -54,3 +54,11 @@ La evidencia focal de ejecución se registra en PROJECT_STATE. UX03D no forma pa
 - POS conserva entrada por teclado/Enter y búsqueda como acciones principales; crear código desconocido sólo con products.write y en otra pestaña para preservar carrito. Una lectura no agrega repetidamente.
 - Foto opcional: preview antes de guardar, botones de tomar/seleccionar/reemplazar/eliminar y procesamiento que bloquea guardado. Miniaturas de 36 px sólo cuando existe referencia; sin catálogo tipo ecommerce. Ayuda contextual enlaza la guía breve, sin tutorial permanente.
 - Viewports y axe no certifican hardware: registrar por separado dispositivo físico, navegador, permiso/trasera/barcode/QR/apagado. Límites y controles en CAPTURE; evidencia en PROJECT_STATE.
+
+## Captura documental asistida — UX03D2
+
+- Preview antes de «Usar documento»; PDF con controles de página, sin viewer ni enlaces ejecutables. Desktop conserva preview lateral y móvil usa tarjetas por línea.
+- Cada coincidencia es una sugerencia: seleccionar y confirmar explícitamente el producto. Cantidad, unidad y costo siguen editables; etiquetas Detectado/Revisar/No identificado y advertencias no dependen sólo del color.
+- El primer error de revisión recibe foco y se asocia con su campo. Cancelar termina el worker; cambiar documento limpia proveedor, errores y confirmaciones.
+- Crear producto/proveedor es una acción explícita en Dialog con cierre bloqueado sólo mientras guarda. Regresa a la revisión, sin inventar precio de venta ni confirmar el match automáticamente.
+- La confirmación final dice «borrador, sin modificar inventario»; durante reintentos se congela el comando y se conserva su ID. Recepción posterior por el flujo normal de compras.

@@ -4862,6 +4862,120 @@ describe.skipIf(!configPath)("PostgreSQL inventory integration", () => {
       id,
       lines: [{ productId: product, quantity: quantity("piece", amount) }],
     });
+    it("UX03D2 concurrent draft retries create one purchase and no inventory movements", async () => {
+      const p = await purchase(false);
+      const runtime = purchaseRepo(ownerUser, tenantA, true);
+      const before = (
+        await admin.query(
+          "SELECT count(*)::int n FROM retail.inventory_movements",
+        )
+      ).rows[0].n;
+      const input = {
+        ...p.input,
+        id: randomUUID(),
+        notes: "SMOKE human reviewed document",
+      };
+      await runtime.assertDocumentCapture();
+      const results = await Promise.all([
+        runtime.createPurchase(input),
+        runtime.createPurchase(input),
+      ]);
+      expect(results[0]?.id).toBe(results[1]?.id);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.purchase_orders WHERE id=$1",
+            [input.id],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.inventory_movements",
+          )
+        ).rows[0].n,
+      ).toBe(before);
+      await runtime.changePurchase(input.id, "order");
+      await runtime.receivePurchaseOrder(input.id, incoming(1000n));
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int n FROM retail.inventory_movements",
+          )
+        ).rows[0].n,
+      ).toBe(before + 1);
+      expect((await runtime.createPurchase(input)).id).toBe(input.id);
+    });
+    it("UX03D2 same draft ID with different payload conflicts and authorization remains enforced", async () => {
+      const p = await purchase(false);
+      const runtime = purchaseRepo(ownerUser, tenantA, true);
+      await expect(
+        runtime.createPurchase({ ...p.input, notes: "changed" }),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      await expect(
+        runtime.createPurchase({
+          ...p.input,
+          lines: [{ ...p.input.lines[0]!, unitCost: money(1n) }],
+        }),
+      ).rejects.toBeInstanceOf(PurchaseConflictError);
+      await expect(
+        purchaseRepo(clerkUser, tenantA, true).assertDocumentCapture(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        purchaseRepo(outsiderUser, tenantA, true).assertDocumentCapture(),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("UX03D2 documents require the assigned purchase location even with purchases.read", async () => {
+      const p = await purchase(false);
+      const otherPurchase = await p.repo.createPurchase({
+        ...p.input,
+        id: randomUUID(),
+        locationId: destination,
+      });
+      await admin.query(
+        "DELETE FROM retail.member_locations WHERE tenant_id=$1 AND user_id=$2 AND location_id=$3",
+        [tenantA, clerkUser, destination],
+      );
+      const clerk = purchaseRepo(clerkUser, tenantA, true);
+      expect((await clerk.assertDocumentPurchase(p.input.id)).id).toBe(
+        p.input.id,
+      );
+      await expect(
+        clerk.assertDocumentPurchase(otherPurchase.id),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        clerk.assertDocumentPurchase(p.input.id, true),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+      await expect(
+        purchaseRepo(ownerUser, tenantB, true).assertDocumentPurchase(
+          p.input.id,
+        ),
+      ).rejects.toThrow();
+      await admin.query(
+        "UPDATE retail.tenant_memberships SET status='inactive' WHERE tenant_id=$1 AND user_id=$2",
+        [tenantA, clerkUser],
+      );
+      await expect(
+        clerk.assertDocumentPurchase(p.input.id),
+      ).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+    it("UX03D2 canonical UUID case preserves purchase replay identity", async () => {
+      const p = await purchase(false);
+      const same = {
+        ...p.input,
+        id: p.input.id.toUpperCase(),
+        supplierId: p.input.supplierId.toUpperCase(),
+        locationId: inventoryLocationId(p.input.locationId.toUpperCase()),
+        lines: p.input.lines.map((l) => ({
+          ...l,
+          productId: productId(l.productId.toUpperCase()),
+        })),
+      };
+      expect(
+        (await purchaseRepo(ownerUser, tenantA, true).createPurchase(same)).id,
+      ).toBe(p.input.id);
+    });
     it("supplier create/edit/deactivate preserves used supplier and forbids hard delete", async () => {
       const p = await purchase();
       const updated = await p.repo.updateSupplier(p.supplier.id, {

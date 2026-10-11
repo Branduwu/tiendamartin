@@ -44,6 +44,100 @@ const article = (
 });
 export const helpArticles: readonly HelpArticle[] = [
   article(
+    "document-capture",
+    "Capturar una compra desde factura",
+    "Comprar",
+    "Una foto o PDF propone datos para un borrador. No es validación fiscal ni recepción de inventario.",
+    [
+      "En Compras abre Capturar documento.",
+      "Elige una foto o PDF y revisa la vista previa.",
+      "Pulsa Usar documento, corrige los datos y confirma cada producto.",
+      "Crea el borrador; recibe mercancía después desde la compra normal.",
+    ],
+    ["Si la lectura falla, Compra manual siempre está disponible."],
+    ["document-photo", "document-review"],
+    {
+      href: "/purchases/capture",
+      label: "Capturar documento",
+      permission: "purchases.write",
+    },
+  ),
+  article(
+    "document-photo",
+    "Tomar una foto legible",
+    "Comprar",
+    "Documento completo, buena luz y cámara paralela mejoran la lectura.",
+    [
+      "Evita reflejos, sombras y cortes en los bordes.",
+      "Fotos de hasta 12 MB y 50 megapíxeles se ajustan en el navegador si hace falta; la copia queda dentro de 4 MB y 12 megapíxeles.",
+      "Revisa la vista previa antes de usarla.",
+    ],
+    ["Si se ve borrosa, vuelve a tomarla. PDF admite hasta cinco páginas."],
+    ["document-capture"],
+  ),
+  article(
+    "document-review",
+    "Revisar datos detectados",
+    "Comprar",
+    "Detectado significa leído, no correcto. Revisa proveedor, unidades, costos y totales junto al original.",
+    [
+      "Elige proveedor y sucursal.",
+      "Confirma el producto de cada línea o ignórala.",
+      "Corrige cantidades e importes ambiguos.",
+      "Lee las advertencias y confirma antes de crear un borrador.",
+    ],
+    [
+      "Moneda ausente necesita confirmación MXN. No se inventan impuestos ni valores faltantes.",
+    ],
+    ["document-amounts", "document-product", "document-confirm"],
+  ),
+  article(
+    "document-product",
+    "Producto no reconocido",
+    "Comprar",
+    "Las coincidencias por código, SKU o nombre son sugerencias; tú decides qué producto usar.",
+    [
+      "Busca y selecciona un producto existente.",
+      "Si tienes permiso, crea el producto y completa precio de venta y unidad.",
+      "Vuelve a la revisión y confirma su selección.",
+    ],
+    [
+      "No convertimos cajas a piezas automáticamente. Puedes ignorar una línea.",
+    ],
+    ["document-review", "products"],
+  ),
+  article(
+    "document-amounts",
+    "Corregir importes",
+    "Comprar",
+    "Dinero y cantidades se mantienen exactos. Separadores ambiguos requieren revisión humana.",
+    [
+      "Escribe costos con punto decimal y hasta dos decimales.",
+      "Cantidades admiten hasta tres decimales; piezas deben ser enteras.",
+      "Compara cantidad por costo, subtotal, impuestos y total con el documento.",
+    ],
+    [
+      "Impuestos detectados se conservan como referencia documental; la compra utiliza los costos confirmados por línea.",
+      "Las inconsistencias se advierten, no se corrigen silenciosamente.",
+    ],
+    ["document-review"],
+  ),
+  article(
+    "document-confirm",
+    "Por qué SmartRetail pide confirmación",
+    "Comprar",
+    "OCR puede equivocarse. Leer un documento no autoriza compras ni cambios de inventario.",
+    [
+      "Confirma cada producto y revisa los valores.",
+      "Crear borrador de compra conserva inventario sin cambios.",
+      "La recepción normal posterior aplica los movimientos autorizados.",
+    ],
+    [
+      "Cancelar antes de crear no guarda documentos ni compras. Guardar el original, o la copia optimizada si se ajustó la foto, es opcional y privado.",
+    ],
+    ["document-capture", "document-review"],
+  ),
+  article(
     "camera",
     "Permitir cámara y leer desde una foto",
     "Vender",

@@ -38,6 +38,7 @@ export default function ProductForm({
   onSave,
   onCancel,
   initialBarcode = "",
+  documentPrefill,
   onCodeCaptured,
 }: {
   product: ProductDto | null;
@@ -49,6 +50,7 @@ export default function ProductForm({
   ) => Promise<void>;
   onCancel: () => void;
   initialBarcode?: string;
+  documentPrefill?: { name: string; sku: string; cost: string | null };
   onCodeCaptured?: () => void;
 }) {
   const feedback = useScanFeedback();
@@ -151,7 +153,7 @@ export default function ProductForm({
               name="name"
               required
               maxLength={120}
-              defaultValue={product?.name ?? ""}
+              defaultValue={product?.name ?? documentPrefill?.name ?? ""}
             />
           </label>
           <label>
@@ -160,7 +162,7 @@ export default function ProductForm({
               name="sku"
               required
               maxLength={64}
-              defaultValue={product?.sku ?? ""}
+              defaultValue={product?.sku ?? documentPrefill?.sku ?? ""}
               aria-describedby="sku-help"
             />
             <small id="sku-help">
@@ -200,9 +202,15 @@ export default function ProductForm({
               required
               inputMode="decimal"
               maxLength={128}
-              defaultValue={minorUnitsToDecimal(
-                product?.purchaseCost.minorUnits ?? "0",
-              )}
+              defaultValue={
+                documentPrefill?.cost === null
+                  ? ""
+                  : minorUnitsToDecimal(
+                      product?.purchaseCost.minorUnits ??
+                        documentPrefill?.cost ??
+                        "0",
+                    )
+              }
             />
           </label>
           <label>
@@ -212,9 +220,11 @@ export default function ProductForm({
               required
               inputMode="decimal"
               maxLength={128}
-              defaultValue={minorUnitsToDecimal(
-                product?.salePrice.minorUnits ?? "0",
-              )}
+              defaultValue={
+                documentPrefill
+                  ? ""
+                  : minorUnitsToDecimal(product?.salePrice.minorUnits ?? "0")
+              }
             />
           </label>
           <label>
@@ -248,13 +258,15 @@ export default function ProductForm({
             </select>
           </label>
         </fieldset>
-        <ProductPhotoInput
-          onProcessing={setPhotoProcessing}
-          tenantId={tenantId}
-          {...(product ? { productId: product.id } : {})}
-          busy={busy}
-          onChange={setPhoto}
-        />
+        {!documentPrefill && (
+          <ProductPhotoInput
+            onProcessing={setPhotoProcessing}
+            tenantId={tenantId}
+            {...(product ? { productId: product.id } : {})}
+            busy={busy}
+            onChange={setPhoto}
+          />
+        )}
         <p className="muted">
           Importes con punto decimal y hasta dos decimales. Ejemplo: 123.45.
         </p>
