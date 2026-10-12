@@ -16,7 +16,7 @@ El núcleo comercial tiene evidencia histórica de implementación y pruebas, pe
 | Núcleo comercial e integridad | LISTO | Dinero, inventario, ventas, caja, crédito, CxP y auditoría tienen contratos, transacciones, RLS y evidencia focal histórica. |
 | Identidad, tenant y permisos | CONDICIONAL | RLS/FORCE RLS, roles y aislamiento tienen evidencia focal; MFA obligatoria para privilegiados no está acreditada. |
 | Archivos y OCR | BLOQUEADO | Validación y Storage privado existen, pero no hay límite de frecuencia para documento/OCR. |
-| Recuperación de datos | BLOQUEADO | No hay evidencia de backup, retención, responsable, RPO/RTO ni restauración no destructiva de base y Storage. |
+| Recuperación de datos | BLOQUEADO | Descubrimiento BETA02: Supabase Free, PITR desactivado y cero backups recuperables listados; Storage exige copia separada. No hay restauración ejecutada. |
 | Observabilidad y soporte operativo | CONDICIONAL | Auditoría durable y soporte existen; faltan alertas, monitorización, guardia y runbook de incidentes. |
 | Experiencia y campo | CONDICIONAL | Web responsive, scanner y OCR tienen smoke focal; faltan jornadas reales, impresora y lector físico. |
 | Legal, privacidad y ciclo de vida | BLOQUEADO | No hay evidencia de términos, aviso de privacidad, retención, baja o portabilidad completa. |
