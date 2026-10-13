@@ -16,7 +16,7 @@ El núcleo comercial tiene evidencia histórica de implementación y pruebas, pe
 | Núcleo comercial e integridad | LISTO | Dinero, inventario, ventas, caja, crédito, CxP y auditoría tienen contratos, transacciones, RLS y evidencia focal histórica. |
 | Identidad, tenant y permisos | CONDICIONAL | RLS/FORCE RLS, roles y aislamiento tienen evidencia focal; MFA obligatoria para privilegiados no está acreditada. |
 | Archivos y OCR | BLOQUEADO | Validación y Storage privado existen, pero no hay límite de frecuencia para documento/OCR. |
-| Recuperación de datos | BLOQUEADO | Descubrimiento BETA02: Supabase Free, PITR desactivado y cero backups recuperables listados; Storage exige copia separada. No hay restauración ejecutada. |
+| Recuperación de datos | BLOQUEADO | BETA02 acreditó sólo un transporte/restauración externo sintético con B2 y Restic; Supabase Free sigue sin PITR y no existe restauración aislada de Database/Auth/Storage reales. |
 | Observabilidad y soporte operativo | CONDICIONAL | Auditoría durable y soporte existen; faltan alertas, monitorización, guardia y runbook de incidentes. |
 | Experiencia y campo | CONDICIONAL | Web responsive, scanner y OCR tienen smoke focal; faltan jornadas reales, impresora y lector físico. |
 | Legal, privacidad y ciclo de vida | BLOQUEADO | No hay evidencia de términos, aviso de privacidad, retención, baja o portabilidad completa. |
@@ -84,7 +84,7 @@ La revisión de SECURITY ejecutó `pnpm audit --json`: **0 LOW, 1 MODERATE, 2 HI
 
 ## Backup, recuperación y operaciones
 
-**NO VERIFICADO:** frecuencia, retención, responsable y cobertura de backup para Supabase Database y Storage; restauración no destructiva; RPO/RTO; recuperación de borrados accidentales; y procedimiento de rollback de migraciones con datos reales. Tener un backup del proveedor no demuestra que la restauración funcione.
+**PARCIALMENTE VERIFICADO:** un artefacto Restic cifrado de cuatro archivos ficticios se recuperó desde bytes descargados de B2, con Object Lock Compliance sintético y hashes coincidentes. **NO VERIFICADO:** frecuencia, retención operativa, responsable, cobertura de Supabase Database/Auth/Storage, restauración no destructiva de datos reales, RPO/RTO, recuperación de borrados accidentales y rollback de migraciones con datos reales. Tener un backup del proveedor no demuestra que la restauración real funcione.
 
 Antes de beta se necesita una restauración aislada y no destructiva: restaurar una copia de Database en un proyecto de prueba, comprobar esquema, RLS, una muestra de ledger y lectura autorizada de objetos privados; registrar duración, datos restaurados, responsable y resultado. Propuesta inicial a validar con negocio: RPO máximo 24 h y RTO máximo 8 h. Son objetivos propuestos, no capacidades demostradas.
 
