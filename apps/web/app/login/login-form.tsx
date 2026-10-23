@@ -1,9 +1,11 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { browserAuth } from "../../lib/supabase/client";
 import Link from "next/link";
 import { readInvitationToken } from "../../lib/invitation-handoff";
+import { AUTH_MESSAGES } from "../../lib/supabase/resilience";
+import { loginAttempt } from "../../lib/supabase/login-attempt";
 export default function LoginForm({
   configured,
   destination = "/onboarding",
@@ -14,33 +16,79 @@ export default function LoginForm({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [settling, setSettling] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [continuePath, setContinuePath] = useState("/onboarding");
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const attempt = useRef<ReturnType<typeof loginAttempt> | null>(null);
+  function getAttempt() {
+    if (attempt.current === null)
+      attempt.current = loginAttempt(
+        (credentials) => browserAuth().auth.signInWithPassword(credentials),
+        (result) => {
+          if (!mounted.current) return;
+          setSettling(false);
+          if (result.kind === "success") {
+            setContinuePath(nextPath());
+            setReady(true);
+            setError("");
+          } else if (result.kind === "error")
+            setError(AUTH_MESSAGES[result.failure]);
+        },
+      );
+    return attempt.current;
+  }
+  const nextPath = () => {
+    let next = destination;
+    try {
+      if (readInvitationToken()) next = "/invite";
+    } catch {
+      /* Unavailable storage cannot block a successful login. */
+    }
+    return next;
+  };
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (!configured) return;
+    const flow = getAttempt();
+    if (flow.pending || flow.authenticated) return;
     const data = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
     try {
-      const { error } = await browserAuth().auth.signInWithPassword({
+      const result = await flow.run({
         email: String(data.get("email")),
         password: String(data.get("password")),
       });
-      if (error) {
-        setError("No pudimos iniciar sesión. Revisa tu correo y contraseña.");
-        setBusy(false);
+      if (!mounted.current) return;
+      setSettling(flow.pending);
+      if (result.kind === "error") {
+        setError(AUTH_MESSAGES[result.failure]);
         return;
       }
-      router.replace(readInvitationToken() ? "/invite" : destination);
-      router.refresh();
+      if (result.kind === "success") {
+        const path = nextPath();
+        setContinuePath(path);
+        setReady(true);
+        router.replace(path);
+      }
     } catch {
-      setError("No pudimos conectar. Inténtalo de nuevo.");
-      setBusy(false);
+      if (mounted.current) setError(AUTH_MESSAGES.unknown);
+    } finally {
+      if (mounted.current) setBusy(false);
     }
   }
   return (
     <form
       onSubmit={submit}
       className="stack"
+      aria-busy={busy}
       aria-describedby={error ? "login-error" : undefined}
     >
       {!configured && (
@@ -73,8 +121,28 @@ export default function LoginForm({
           {error}
         </p>
       )}
-      <button disabled={busy || !configured} type="submit">
-        {busy ? "Iniciando sesión…" : "Iniciar sesión"}
+      {settling && (
+        <p role="status">
+          La solicitud anterior sigue terminando. No envíes otro intento; si no
+          finaliza, recarga esta página.
+        </p>
+      )}
+      {ready && (
+        <p role="status">
+          Sesión iniciada.{" "}
+          <Link href={continuePath} prefetch={false}>
+            Continuar
+          </Link>
+        </p>
+      )}
+      <button disabled={busy || settling || ready || !configured} type="submit">
+        {busy
+          ? "Iniciando sesión…"
+          : ready
+            ? "Sesión iniciada"
+            : settling
+              ? "Solicitud pendiente"
+              : "Iniciar sesión"}
       </button>
       <Link href="/register">Crear una cuenta</Link>
       <Link href="/forgot-password">¿Olvidaste tu contraseña?</Link>

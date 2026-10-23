@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => ({
   tenants: vi.fn(),
   repo: vi.fn(),
 }));
-vi.mock("./supabase/server", () => ({ serverAuth: mocks.server }));
+vi.mock("./supabase/server", () => ({
+  serverAuth: mocks.server,
+  serverClaims: (client: { auth: { getClaims: typeof mocks.claims } }) =>
+    client.auth.getClaims(),
+}));
 vi.mock("./database", () => ({
   productsForUser: mocks.repo,
   tenantsForUser: mocks.tenants,

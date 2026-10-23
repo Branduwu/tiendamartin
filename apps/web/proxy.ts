@@ -5,13 +5,16 @@ import { SUSPENDED_COMPANY_MESSAGE } from "@smartretail/application";
 import { platformForUser, tenantsForUser } from "./lib/database";
 import { authConfiguration } from "./lib/supabase/config";
 import { canonicalPageRedirect } from "./lib/app-origin";
+import { authRead, authTransport } from "./lib/supabase/resilience";
 
 export async function proxy(request: NextRequest) {
   let authenticated = false;
   let response = NextResponse.next({ request });
   const config = authConfiguration();
   if (config) {
+    const transport = authTransport();
     const client = createServerClient(config.url, config.key, {
+      global: { fetch: transport.fetch },
       cookieOptions: {
         secure: request.nextUrl.protocol === "https:",
         sameSite: "lax",
@@ -29,7 +32,10 @@ export async function proxy(request: NextRequest) {
       },
     });
     try {
-      const { data, error } = await client.auth.getClaims();
+      const { data, error } = await authRead(
+        () => client.auth.getClaims(),
+        () => transport.close(),
+      );
       const actor = UuidSchema.safeParse(data?.claims.sub),
         tenant = UuidSchema.safeParse(request.headers.get("x-tenant-id"));
       authenticated = !error && actor.success;
