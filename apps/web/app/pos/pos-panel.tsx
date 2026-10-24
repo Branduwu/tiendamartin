@@ -786,10 +786,18 @@ export default function PosPanel({ userId }: { userId: string }) {
       }
     } catch (e) {
       if (e instanceof ApiError && [400, 404, 409].includes(e.status)) {
+        try {
+          sessionStorage.removeItem(pendingKey);
+        } catch {
+          setRecoveryBlocked(true);
+          setError(
+            `${e.message} No pudimos retirar el intento rechazado del almacenamiento local. Conservamos la venta; recarga para recuperar el mismo intento antes de volver a cobrar.`,
+          );
+          return;
+        }
         setPending(null);
         setPriceQuote(null);
         setQuoteRevision((r) => r + 1);
-        sessionStorage.removeItem(pendingKey);
       }
       if (e instanceof ApiError && e.status === 401) router.replace("/login");
       setError(
