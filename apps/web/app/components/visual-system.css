@@ -1646,3 +1646,163 @@ body.retail-ui:has(.app-sidebar) main.workspace {
 .ui-dialog input[type="file"] {
   max-width: 100%;
 }
+
+/* POS-UX-01: scoped catalog and cart controls, preserving the existing shell. */
+@media (min-width: 761px) {
+  .pilot-pos .pilot-sale-panel .pos-cart {
+    max-height: var(--pos-panel-height, calc(100dvh - 230px));
+  }
+}
+.pilot-pos .pos-search {
+  margin-block: 1rem;
+}
+.pilot-pos .pos-search-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+.pilot-pos .pos-search-controls input {
+  flex: 1;
+  min-width: 0;
+}
+.pilot-pos .pos-search-controls button {
+  white-space: nowrap;
+}
+.pilot-pos .pos-search p {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+.pilot-pos .pos-catalog-empty {
+  padding: 1.25rem;
+  border: 1px dashed var(--control-border);
+  border-radius: var(--radius);
+}
+.pilot-pos .pos-product-info {
+  min-width: 0;
+}
+.pilot-pos .pos-product-info > strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.pilot-pos .pos-product-action {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 8rem;
+}
+.pilot-pos .pos-product-action > strong {
+  white-space: nowrap;
+}
+.pilot-pos .pos-product-action button {
+  min-height: 44px;
+  width: 100%;
+}
+.pilot-pos .pos-stock {
+  font-size: 0.8125rem;
+  color: var(--success-text);
+}
+.pilot-pos .pos-stock.empty {
+  color: var(--warning-text);
+}
+.pilot-pos .pos-stock.unknown {
+  color: var(--muted);
+}
+.pilot-pos .pos-line {
+  grid-template-columns: minmax(0, 1fr);
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.pilot-pos .pos-line > div:first-child {
+  gap: 0.35rem;
+}
+.pilot-pos .pos-line > div:first-child strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.pilot-pos .pos-quantity {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.pilot-pos .pos-quantity label {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.pilot-pos .pos-quantity-controls {
+  display: grid;
+  grid-template-columns: 44px minmax(4rem, 1fr) 44px;
+  gap: 0.5rem;
+  max-width: 17rem;
+}
+.pilot-pos .pos-quantity-controls button {
+  padding: 0.5rem;
+  min-height: 44px;
+  font-size: 1.25rem;
+}
+.pilot-pos .pos-quantity-controls input {
+  text-align: center;
+  min-width: 0;
+}
+.pilot-pos .pos-line .actions {
+  grid-column: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pilot-pos .pos-line-total {
+  display: grid;
+  font-variant-numeric: tabular-nums;
+}
+.pilot-pos .pos-line-total small {
+  font-size: 0.75rem;
+}
+.pilot-pos .pos-line .actions button {
+  white-space: nowrap;
+}
+.pilot-pos .pos-checkout-help {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0;
+}
+.pilot-pos .sale-checkout-total strong {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pilot-pos .pos-checkout {
+  white-space: normal;
+  min-height: 48px;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .pilot-pos .pos-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.95fr);
+    gap: 1rem;
+  }
+  .pilot-pos .pos-layout > section:first-child {
+    padding: 1rem;
+  }
+}
+@media (max-width: 760px) {
+  .pilot-pos .pos-product {
+    align-items: start;
+  }
+  .pilot-pos .pilot-sale-panel .pos-cart {
+    padding-top: 1.25rem;
+  }
+  .pilot-pos .sale-panel-close {
+    min-height: 44px;
+  }
+}
+@media (max-width: 380px) {
+  .pilot-pos .pos-product-action {
+    min-width: 0;
+    max-width: 8rem;
+  }
+  .pilot-pos .pos-product-action > strong {
+    white-space: normal;
+  }
+  .pilot-pos .sale-checkout-total {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+}

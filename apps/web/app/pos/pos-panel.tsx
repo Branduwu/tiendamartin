@@ -1,5 +1,6 @@
 "use client";
 import { ScanFeedback, useScanFeedback } from "../components/scan-feedback";
+import { unitLabel } from "../components/presentation";
 import { selectCompany } from "../../lib/company-selection";
 import PilotSalePanel from "../components/pilot-sale-panel";
 import BusinessContext from "../components/business-context";
@@ -107,6 +108,8 @@ export default function PosPanel({ userId }: { userId: string }) {
     >([]),
     [tenant, setTenant] = useState("");
   const photos = useProductPhotos(tenant);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const [products, setProducts] = useState<ProductDto[]>([]),
     [locations, setLocations] = useState<InventoryLocationDto[]>([]),
     [location, setLocation] = useState("");
@@ -279,6 +282,7 @@ export default function PosPanel({ userId }: { userId: string }) {
       .then(([p, l]) => {
         if (controller.signal.aborted) return;
         setProducts(p.products);
+        setCatalogError("");
         setLocations(l.locations.filter((v) => v.status === "active"));
         setLocation(
           (current) =>
@@ -288,13 +292,18 @@ export default function PosPanel({ userId }: { userId: string }) {
       })
       .catch((e) => {
         if (!controller.signal.aborted) {
-          setError(e.message);
+          setCatalogError(
+            "No pudimos cargar el catálogo. Intenta consultarlo de nuevo.",
+          );
+          setError(
+            "No pudimos cargar el catálogo. Puedes reintentar la consulta.",
+          );
           setLoading(false);
           if (e.status === 401) router.replace("/login");
         }
       });
     return () => controller.abort();
-  }, [tenant, router]);
+  }, [tenant, router, catalogRevision]);
   useEffect(() => {
     if (!tenant || !location) return;
     const controller = new AbortController();
@@ -338,8 +347,32 @@ export default function PosPanel({ userId }: { userId: string }) {
         ),
       );
       setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Cantidad inválida.");
+    } catch {
+      setError(
+        "Revisa la cantidad: usa un número mayor a cero y hasta tres decimales.",
+      );
+    }
+  }
+  function stepQuantity(id: string, direction: 1 | -1) {
+    if (locked || !draft) return;
+    const line = draft.lines.find((value) => value.productId === id);
+    if (!line) return;
+    try {
+      const current = BigInt(
+        decimalToMilliUnits(
+          texts[id] ?? milliUnitsToDecimal(line.quantity.milliUnits.toString()),
+        ),
+      );
+      if (current <= 0n) throw new Error("Invalid quantity input");
+      const next = current + BigInt(direction) * 1000n;
+      if (next <= 0n) return;
+      const text = milliUnitsToDecimal(next.toString());
+      adjust(id, text);
+      setTexts((values) => ({ ...values, [id]: text }));
+    } catch {
+      setError(
+        "Revisa la cantidad: usa un número mayor a cero y hasta tres decimales.",
+      );
     }
   }
   function add(product: ProductDto, amount = 1000n) {
@@ -359,6 +392,7 @@ export default function PosPanel({ userId }: { userId: string }) {
         ),
       );
       setConfirmed(null);
+      setNotice(`${product.name} agregado a la venta.`);
       setError("");
     } catch (e) {
       setError(
@@ -768,6 +802,42 @@ export default function PosPanel({ userId }: { userId: string }) {
       setSending(false);
     }
   }
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("es-MX")
+      .trim();
+  const query = normalizeSearch(search);
+  const matchingProducts = products.filter(
+    (product) =>
+      product.status === "active" &&
+      normalizeSearch(
+        `${product.name} ${product.sku} ${product.barcode ?? ""}`,
+      ).includes(query),
+  );
+  const paymentLabel = {
+    cash: "Efectivo",
+    card: "Tarjeta",
+    mixed: "Efectivo + tarjeta",
+    credit: "Crédito",
+    "cash-credit": "Efectivo + crédito",
+    "card-credit": "Tarjeta + crédito",
+    "mixed-credit": "Pago combinado conservado",
+  }[method];
+  const checkoutHint = recoveryBlocked
+    ? "Resuelve la venta pendiente antes de continuar."
+    : pendingSuspend
+      ? "Confirma la suspensión pendiente antes de cobrar."
+      : !draft?.lines.length
+        ? "Agrega productos para comenzar la venta."
+        : !location
+          ? "Selecciona una sucursal para continuar."
+          : !pending && shift?.status !== "open"
+            ? "Abre la caja de esta sucursal antes de cobrar."
+            : !pending && !currentQuote
+              ? "Esperando la cotización. Revisa los mensajes de descuentos y vuelve a intentar si hay un error."
+              : `Pago: ${paymentLabel}. Revisa el total antes de confirmar la venta.`;
   return (
     <div className="visual-pilot pilot-pos">
       <header className="topbar">
@@ -1102,59 +1172,125 @@ export default function PosPanel({ userId }: { userId: string }) {
                 <h2 id="catalog-title" tabIndex={-1}>
                   Productos
                 </h2>
-                <label>
-                  Buscar por nombre o SKU
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Nombre o SKU"
-                  />
-                </label>
-                <div className="pos-catalog">
-                  {!products.some(
-                    (p) =>
-                      p.status === "active" &&
-                      `${p.name} ${p.sku}`
-                        .toLocaleLowerCase()
-                        .includes(search.toLocaleLowerCase()),
-                  ) && (
-                    <p className="muted" role="status">
-                      No hay coincidencias. Cambia la búsqueda o revisa el{" "}
-                      <Link href="/products">catálogo de productos</Link>.
-                    </p>
-                  )}
-
-                  {products
-                    .filter(
-                      (p) =>
-                        p.status === "active" &&
-                        `${p.name} ${p.sku}`
-                          .toLocaleLowerCase()
-                          .includes(search.toLocaleLowerCase()),
+                <form
+                  role="search"
+                  className="pos-search"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (
+                      !locked &&
+                      !catalogError &&
+                      location &&
+                      query &&
+                      matchingProducts.length === 1
                     )
-                    .map((p) => {
+                      add(matchingProducts[0]!);
+                  }}
+                >
+                  <label htmlFor="pos-search">Buscar productos</label>
+                  <div className="pos-search-controls">
+                    <input
+                      id="pos-search"
+                      type="search"
+                      value={search}
+                      maxLength={200}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Nombre, SKU o código de barras"
+                      aria-describedby="pos-search-status"
+                    />
+                    {search && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => setSearch("")}
+                      >
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+                  <p
+                    id="pos-search-status"
+                    className="muted"
+                    role="status"
+                    aria-atomic="true"
+                  >
+                    {matchingProducts.length}{" "}
+                    {matchingProducts.length === 1
+                      ? "producto encontrado"
+                      : "productos encontrados"}
+                    {query && matchingProducts.length === 1
+                      ? ". Pulsa Enter para agregarlo."
+                      : ". Selecciona Agregar para incluirlo en la venta."}
+                  </p>
+                </form>
+                <div className="pos-catalog" aria-label="Productos disponibles">
+                  {catalogError ? (
+                    <div className="notice" role="status">
+                      <p>{catalogError}</p>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          setLoading(true);
+                          setError("");
+                          setCatalogRevision((v) => v + 1);
+                        }}
+                      >
+                        Reintentar catálogo
+                      </button>
+                    </div>
+                  ) : (
+                    !matchingProducts.length && (
+                      <div className="pos-catalog-empty">
+                        <p>
+                          {query
+                            ? "No encontramos productos con esa búsqueda. Prueba otro nombre, SKU o código."
+                            : "No hay productos activos para vender."}
+                        </p>
+                        {search && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setSearch("")}
+                          >
+                            Ver todos los productos
+                          </button>
+                        )}
+                      </div>
+                    )
+                  )}
+                  {!catalogError &&
+                    matchingProducts.map((p) => {
                       const current = stock.find((s) => s.productId === p.id);
+                      const available = current
+                        ? milliUnitsToDecimal(
+                            current.quantity.milliUnits,
+                          ).replace(p.unit === "piece" ? /\.000$/ : /$^/, "")
+                        : null;
                       return (
                         <article key={p.id} className="pos-product">
-                          <div>
+                          <div className="pos-product-info">
                             <strong>{p.name}</strong>
                             <small>
-                              {p.sku} · {p.unit === "piece" ? "pza" : p.unit}
+                              SKU: {p.sku} · {unitLabel(p.unit)}
                             </small>
-                            <small>
-                              Disponible:{" "}
-                              {current
-                                ? milliUnitsToDecimal(
-                                    current.quantity.milliUnits,
-                                  ).replace(
-                                    p.unit === "piece" ? /\.000$/ : /$^/,
-                                    "",
-                                  )
-                                : "—"}
-                            </small>
+                            <span
+                              className={
+                                !current
+                                  ? "pos-stock unknown"
+                                  : BigInt(current.quantity.milliUnits) <= 0n
+                                    ? "pos-stock empty"
+                                    : "pos-stock"
+                              }
+                            >
+                              {available === null
+                                ? "Existencia no disponible"
+                                : BigInt(current!.quantity.milliUnits) <= 0n
+                                  ? "Sin existencias"
+                                  : `Disponible: ${available} ${unitLabel(p.unit, current!.quantity.milliUnits)}`}
+                            </span>
                           </div>
-                          <div>
+                          <div className="pos-product-action">
                             <strong>{mxn(p.salePrice.minorUnits)}</strong>
                             <button
                               type="button"
@@ -1246,36 +1382,65 @@ export default function PosPanel({ userId }: { userId: string }) {
                             <strong>{l.name}</strong>
                             <small>
                               {l.sku} · {mxn(l.unitPrice.minorUnits.toString())}{" "}
-                              / {l.unit === "piece" ? "pza" : l.unit}
+                              / {unitLabel(l.unit, "1000")}
                             </small>
                           </div>
-                          <label>
-                            Cantidad ({l.unit === "piece" ? "pza" : l.unit})
-                            <input
-                              inputMode="decimal"
-                              value={(
-                                texts[l.productId] ??
-                                milliUnitsToDecimal(
-                                  l.quantity.milliUnits.toString(),
-                                )
-                              ).replace(
-                                l.unit === "piece" ? /\.000$/ : /$^/,
-                                "",
-                              )}
-                              disabled={locked}
-                              onChange={(e) =>
-                                setTexts({
-                                  ...texts,
-                                  [l.productId]: e.target.value,
-                                })
-                              }
-                              onBlur={(e) =>
-                                adjust(l.productId, e.target.value)
-                              }
-                            />
-                          </label>
+                          <div className="pos-quantity">
+                            <label htmlFor={`quantity-${l.productId}`}>
+                              Cantidad ({unitLabel(l.unit)})
+                            </label>
+                            <div className="pos-quantity-controls">
+                              <button
+                                type="button"
+                                className="secondary"
+                                aria-label={`Disminuir cantidad de ${l.name}`}
+                                title={`Restar 1 ${unitLabel(l.unit, "1000")}`}
+                                disabled={
+                                  locked || l.quantity.milliUnits <= 1000n
+                                }
+                                onClick={() => stepQuantity(l.productId, -1)}
+                              >
+                                −
+                              </button>
+                              <input
+                                id={`quantity-${l.productId}`}
+                                aria-label={`Cantidad de ${l.name}`}
+                                inputMode="decimal"
+                                value={(
+                                  texts[l.productId] ??
+                                  milliUnitsToDecimal(
+                                    l.quantity.milliUnits.toString(),
+                                  )
+                                ).replace(
+                                  l.unit === "piece" ? /\.000$/ : /$^/,
+                                  "",
+                                )}
+                                disabled={locked}
+                                onChange={(e) =>
+                                  setTexts({
+                                    ...texts,
+                                    [l.productId]: e.target.value,
+                                  })
+                                }
+                                onBlur={(e) =>
+                                  adjust(l.productId, e.target.value)
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="secondary"
+                                aria-label={`Aumentar cantidad de ${l.name}`}
+                                title={`Sumar 1 ${unitLabel(l.unit, "1000")}`}
+                                disabled={locked}
+                                onClick={() => stepQuantity(l.productId, 1)}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
                           <div className="actions">
-                            <strong>
+                            <strong className="pos-line-total">
+                              <small>Importe</small>
                               {mxn(l.lineTotal.minorUnits.toString())}
                             </strong>
                             <button
@@ -1445,7 +1610,12 @@ export default function PosPanel({ userId }: { userId: string }) {
                     </span>
                     <strong>{mxn(total.toString())}</strong>
                   </div>
+                  <p className="pos-checkout-help" id="pos-checkout-help">
+                    {checkoutHint}
+                  </p>
                   <button
+                    aria-describedby="pos-checkout-help"
+                    aria-busy={sending}
                     className="pos-checkout"
                     type="button"
                     disabled={
@@ -1463,7 +1633,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                       ? "Confirmando venta…"
                       : pending
                         ? "Reintentar la misma venta"
-                        : "Cobrar"}
+                        : `Cobrar ${mxn(total.toString())}`}
                   </button>
                   {pending ? (
                     <p role="status" className="notice">

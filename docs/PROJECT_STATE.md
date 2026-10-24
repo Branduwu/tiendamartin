@@ -1205,3 +1205,8 @@ The next proposed gate is a separately approved production-destination design: a
 ## Ventas — mejora funcional local (24/10/2026)
 
 Rama feature/sales-history sobre el candidato a2f33e2: historial por cursor de 50 ventas, búsqueda y filtros de fecha/pago/ubicación, tabla adaptable y unidades en español; contexto de consulta por usuario/empresa en la pestaña. Sin migraciones ni cambios de permisos/cálculos. Pruebas sintéticas y build locales; PostgreSQL real, clientes y publicación no verificados. Main y servicios remotos intactos. Evidencia breve en tmp/sales-functional-01/1537779795ab44a8b5625e49e9cd150a; no se reactivan BETA02/BETA03.
+
+
+## POS-UX-01 — mejora local (24/10/2026)
+
+Feature/pos-ux sobre32254a7: búsqueda nombre/SKU/barcode con acentos y Enter, cantidades +/− usando las funciones existentes, carrito adaptable y total/forma de pago visibles. Se conservan checkout, pagos, escaneo, suspensión, pending y sus condiciones de bloqueo.128 regresiones y25 comprobaciones Chromium sintéticas PASS; QA/SECURITY focales independientes con hallazgos corregidos. Sin backend, permisos, SQL, infraestructura ni publicación; main intacto. Evidencia breve bajo tmp/pos-ux-01/02b6d8867d08454085e85febd36b6b2f.
