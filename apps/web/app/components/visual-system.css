@@ -2411,3 +2411,237 @@ body.retail-ui:has(.app-sidebar) main.workspace {
     flex: 1 1 100%;
   }
 }
+
+/* Dashboard: existing report values, scoped responsive presentation. */
+.retail-ui
+  .dashboard-ux
+  :is(
+    .workspace,
+    .card,
+    .dashboard-sections,
+    .dashboard-filter-form,
+    label,
+    .report-kpis > div
+  ) {
+  min-width: 0;
+}
+.retail-ui .dashboard-ux :is(button, select, input, summary) {
+  min-height: 44px;
+}
+.retail-ui .dashboard-ux :is(button, summary) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.retail-ui .dashboard-ux :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.retail-ui
+  .dashboard-ux
+  :is(h1, h2, h3, p, span, strong, small, dt, dd, th, td) {
+  overflow-wrap: anywhere;
+}
+.retail-ui .dashboard-ux .dashboard-filter-help {
+  flex-basis: 100%;
+  margin: 0;
+  order: 4;
+}
+.retail-ui .dashboard-ux .dashboard-context {
+  padding-block: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.retail-ui .dashboard-ux .dashboard-context h2 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.retail-ui .dashboard-ux .dashboard-context p {
+  margin-block: 0.3rem;
+}
+.retail-ui .dashboard-ux .report-kpis {
+  margin: 0;
+  padding: 1rem 0;
+  gap: 1rem;
+  border: 0;
+}
+.retail-ui .dashboard-ux .report-kpis > div {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+.retail-ui .dashboard-ux .report-kpis > div:first-child {
+  padding-left: 1rem;
+}
+.retail-ui .dashboard-ux .report-kpis dt {
+  min-height: 0;
+  font-size: 0.875rem;
+  margin-bottom: 0.65rem;
+}
+.retail-ui .dashboard-ux .report-kpis dd {
+  margin: 0;
+  font-size: clamp(1.1rem, 1.8vw, 1.6rem);
+  letter-spacing: normal;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+.retail-ui .dashboard-ux .report-kpis small {
+  display: block;
+  color: var(--muted);
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+.retail-ui .dashboard-ux :is(.metric-rows dd, .cash-summary dd) {
+  min-width: 0;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.retail-ui .dashboard-ux :is(.metric-rows dt, .cash-summary dt) {
+  min-width: 0;
+}
+.retail-ui .dashboard-ux :is(.metric-rows > div, .cash-summary > div) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+.retail-ui .dashboard-ux .metric-context {
+  display: block;
+  color: var(--muted);
+}
+.retail-ui .dashboard-ux .report-trend {
+  margin: 1rem 0;
+  min-width: 0;
+}
+.retail-ui .dashboard-ux .report-trend figcaption {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+.retail-ui .dashboard-ux .trend-scale,
+.retail-ui .dashboard-ux .trend-period {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+.retail-ui .dashboard-ux .report-trend svg {
+  display: block;
+  width: 100%;
+  height: 180px;
+  margin-block: 1rem;
+  overflow: visible;
+}
+.retail-ui .dashboard-ux .trend-line {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 2.5;
+}
+.retail-ui .dashboard-ux .dashboard-empty {
+  padding: 1rem;
+  background: var(--elevated-surface);
+  border-radius: 0.5rem;
+}
+.retail-ui .dashboard-ux .data-table {
+  width: 100%;
+  table-layout: fixed;
+}
+.retail-ui .dashboard-ux .data-table :is(th, td) {
+  white-space: normal;
+  vertical-align: top;
+}
+.retail-ui .dashboard-ux .heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+}
+.retail-ui .dashboard-ux .report-alerts li {
+  min-width: 0;
+}
+.retail-ui .dashboard-ux .report-scroll {
+  max-width: 100%;
+}
+@media (max-width: 1050px) {
+  .retail-ui .dashboard-ux .report-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .retail-ui .dashboard-ux .dashboard-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .retail-ui .dashboard-ux .data-table,
+  .retail-ui .dashboard-ux .data-table tbody {
+    display: block;
+  }
+  .retail-ui .dashboard-ux .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .retail-ui .dashboard-ux .data-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    margin-block: 1rem;
+  }
+  .retail-ui .dashboard-ux .data-table th[scope="row"] {
+    grid-column: 1/-1;
+    width: auto;
+  }
+  .retail-ui .dashboard-ux .data-table td {
+    display: block;
+    grid-column: auto;
+    grid-row: auto;
+    text-align: left;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .retail-ui .dashboard-ux .data-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+  }
+  .retail-ui .dashboard-ux .report-scroll {
+    overflow: visible;
+  }
+}
+@media (max-width: 540px) {
+  .retail-ui .dashboard-ux .report-kpis,
+  .retail-ui .dashboard-ux .metric-rows,
+  .retail-ui .dashboard-ux .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .retail-ui .dashboard-ux .dashboard-advanced {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .retail-ui .dashboard-ux .dashboard-period {
+    width: 100%;
+  }
+  .retail-ui .dashboard-ux .card {
+    padding: 1rem;
+  }
+  .retail-ui .dashboard-ux .heading > button {
+    width: 100%;
+  }
+  .retail-ui .dashboard-ux .data-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1050px) {
+  .retail-ui .dashboard-ux .dashboard-stock,
+  .retail-ui .dashboard-ux .dashboard-trend {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}

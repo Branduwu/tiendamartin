@@ -11,8 +11,16 @@ import {
   purchasingApi,
   usePurchasingCompany,
 } from "../components/purchasing-client";
+import { unitLabel } from "../components/presentation";
+import type { UnitCodeDto } from "@smartretail/contracts";
 import { minorUnitsToDecimal } from "../../lib/money-input";
-const mxn = (value: string) => "$" + minorUnitsToDecimal(value) + " MXN";
+function mxn(value: string): string {
+  const negative = value.startsWith("-");
+  const [whole, fraction] = minorUnitsToDecimal(
+    negative ? value.slice(1) : value,
+  ).split(".");
+  return `${negative ? "-" : ""}$${whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${fraction} MXN`;
+}
 function units(value: string): string {
   const n = BigInt(value),
     remainder = (n % 1000n)
@@ -35,6 +43,17 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
         `${days.length === 1 ? 360 : Math.round((i * 700) / (days.length - 1)) + 10},${145n - (BigInt(d.gross) * 130n) / max}`,
     )
     .join(" ");
+  if (!days.length || peak === 0n)
+    return (
+      <figure className="report-trend">
+        <figcaption>Ventas completadas por día · MXN</figcaption>
+        <p className="dashboard-empty">
+          {!days.length
+            ? "Sin datos diarios para el periodo seleccionado."
+            : "Los importes diarios de ventas son cero en este periodo. Consulta las operaciones y devoluciones en el desglose."}
+        </p>
+      </figure>
+    );
   return (
     <figure className="report-trend">
       <figcaption>Ventas completadas por día · MXN</figcaption>
@@ -44,7 +63,8 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
       </div>
       <svg
         role="img"
-        aria-label="Tendencia de ventas; cifras exactas en el reporte diario"
+        aria-label="Tendencia de ventas completadas en MXN; cifras exactas en el reporte diario"
+        preserveAspectRatio="none"
         viewBox="0 0 720 160"
       >
         <line x1="10" x2="710" y1="145" y2="145" className="trend-baseline" />
@@ -58,9 +78,9 @@ function Trend({ days }: { days: OperationalReport["days"] }) {
           />
         )}
       </svg>
-      <div className="actions muted">
-        <span>{days[0]?.date}</span>
-        <span>{days.at(-1)?.date}</span>
+      <div className="trend-period muted">
+        <span>Inicio: {humanPeriod(days[0]!.date, days[0]!.date)}</span>
+        <span>Fin: {humanPeriod(days.at(-1)!.date, days.at(-1)!.date)}</span>
       </div>
     </figure>
   );
@@ -86,10 +106,17 @@ export default function DashboardPanel() {
       value: ReportOptions;
     }>(),
     [error, setError] = useState(""),
+    [requestError, setRequestError] = useState<{
+      key: string;
+      message: string;
+    }>(),
     [optionsError, setOptionsError] = useState(""),
     [refresh, setRefresh] = useState(0),
     [exporting, setExporting] = useState(false);
   const key = company.tenantId + "?" + query;
+  const requestKey = `${key}&refresh=${refresh}`;
+  const reportError =
+    requestError?.key === requestKey ? requestError.message : "";
   useEffect(() => {
     if (!company.tenantId) return;
     const controller = new AbortController();
@@ -120,21 +147,26 @@ export default function DashboardPanel() {
     )
       .then((value) => {
         if (!controller.signal.aborted) {
-          setLoaded({ key, value });
+          setLoaded({ key: requestKey, value });
+          setRequestError(undefined);
           setError("");
         }
       })
       .catch((e) => {
         if (!controller.signal.aborted) {
           setLoaded(undefined);
-          setError(
-            e instanceof Error ? e.message : "No pudimos consultar el reporte.",
-          );
+          setRequestError({
+            key: requestKey,
+            message:
+              e instanceof Error
+                ? e.message
+                : "No pudimos consultar el reporte.",
+          });
         }
       });
     return () => controller.abort();
-  }, [company.tenantId, key, query, refresh]);
-  const report = loaded?.key === key ? loaded.value : undefined;
+  }, [company.tenantId, requestKey, query, refresh]);
+  const report = loaded?.key === requestKey ? loaded.value : undefined;
   const choices =
     options?.tenant === company.tenantId ? options.value : undefined;
   function apply(e: FormEvent<HTMLFormElement>) {
@@ -234,7 +266,7 @@ export default function DashboardPanel() {
     "Neto sin impuestos",
   ];
   return (
-    <div className="visual-pilot pilot-dashboard">
+    <div className="visual-pilot pilot-dashboard dashboard-ux">
       <header className="topbar">
         <Link className="brand" href="/dashboard">
           SmartRetail
@@ -281,9 +313,9 @@ export default function DashboardPanel() {
             </select>
           </label>
         )}
-        {(error || company.error || optionsError) && (
+        {(error || company.error || optionsError || reportError) && (
           <p role="alert" className="error">
-            {error || company.error || optionsError}
+            {reportError || error || company.error || optionsError}
           </p>
         )}
         {company.loading ? (
@@ -307,7 +339,11 @@ export default function DashboardPanel() {
                 <div className="dashboard-period">
                   <label>
                     Periodo
-                    <select name="period" defaultValue="today">
+                    <select
+                      name="period"
+                      defaultValue="today"
+                      aria-describedby="dashboard-filter-help"
+                    >
                       <option value="today">Hoy</option>
                       <option value="7d">7 días</option>
                       <option value="30d">30 días</option>
@@ -349,7 +385,7 @@ export default function DashboardPanel() {
                     ).map(([name, label, list]) => (
                       <label key={name}>
                         {label}
-                        <select name={name}>
+                        <select name={name} disabled={!choices}>
                           <option value="">Todos</option>
                           {choices?.[list].map((o) => (
                             <option key={o.id} value={o.id}>
@@ -374,6 +410,14 @@ export default function DashboardPanel() {
                     referencias.
                   </p>
                 </details>
+                <p
+                  id="dashboard-filter-help"
+                  className="muted dashboard-filter-help"
+                >
+                  El periodo y los filtros cambian al pulsar «Aplicar filtros».
+                  Las existencias y los saldos actuales se identifican por
+                  separado.
+                </p>
                 <div className="actions">
                   <button className="secondary" disabled={exporting}>
                     Aplicar filtros
@@ -381,14 +425,57 @@ export default function DashboardPanel() {
                 </div>
               </form>
             </section>
-            {!report && !error ? (
-              <p role="status">Consultando reportes…</p>
+            {reportError ? (
+              <section
+                className="card dashboard-query-error"
+                aria-label="Reporte no disponible"
+              >
+                <h2>No pudimos consultar este periodo</h2>
+                <p>
+                  No se muestran cifras porque la consulta falló. Esto no
+                  significa que tengas cero ventas.
+                </p>
+                <button
+                  className="secondary"
+                  disabled={exporting}
+                  onClick={() => {
+                    setError("");
+                    setRefresh((n) => n + 1);
+                  }}
+                >
+                  Reintentar reporte
+                </button>
+              </section>
+            ) : !report ? (
+              <p role="status" className="card dashboard-loading">
+                Consultando reportes… No se muestran cifras hasta completar la
+                consulta.
+              </p>
             ) : (
               report && (
                 <>
-                  <p role="status" className="muted">
-                    {humanPeriod(report.filters.from, report.filters.to)}
-                  </p>
+                  <section
+                    className="dashboard-context"
+                    aria-labelledby="dashboard-period-title"
+                  >
+                    <h2 id="dashboard-period-title">Resumen del periodo</h2>
+                    <p role="status">
+                      {humanPeriod(report.filters.from, report.filters.to)}
+                    </p>
+                    <p className="muted">
+                      {[
+                        report.context?.businessName,
+                        report.context?.branchName,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Empresa y ubicación consultadas"}{" "}
+                      · Zona horaria: {report.timezone}
+                    </p>
+                    <p className="muted">
+                      Importes en MXN. Los indicadores siguientes corresponden
+                      al periodo consultado.
+                    </p>
+                  </section>
                   <dl className="report-kpis">
                     {metrics
                       .filter(([label]) => primaryLabels.includes(label))
@@ -396,6 +483,11 @@ export default function DashboardPanel() {
                         <div key={label}>
                           <dt>{label}</dt>
                           <dd>{value}</dd>
+                          <small>
+                            {label === "Ventas realizadas"
+                              ? "Ventas completadas · periodo"
+                              : "MXN · periodo"}
+                          </small>
                         </div>
                       ))}
                   </dl>
@@ -405,10 +497,25 @@ export default function DashboardPanel() {
                     </summary>
                     <dl className="metric-rows">
                       {metrics
-                        .filter(([label]) => !primaryLabels.includes(label))
+                        .filter(
+                          ([label]) =>
+                            !primaryLabels.includes(label) &&
+                            !(
+                              label === "Ventas de hoy" &&
+                              report.filters.from === report.today &&
+                              report.filters.to === report.today
+                            ),
+                        )
                         .map(([label, value]) => (
                           <div key={label}>
-                            <dt>{label}</dt>
+                            <dt>
+                              {label}
+                              {label === "Ventas de hoy" && (
+                                <small className="metric-context">
+                                  {humanPeriod(report.today, report.today)}
+                                </small>
+                              )}
+                            </dt>
                             <dd>{value}</dd>
                           </div>
                         ))}
@@ -460,40 +567,46 @@ export default function DashboardPanel() {
                           role="region"
                           aria-label="Resumen diario desplazable"
                         >
-                          <table className="data-table">
+                          <table className="data-table" role="table">
                             <caption>Resumen diario local</caption>
-                            <thead>
-                              <tr>
+                            <thead role="rowgroup">
+                              <tr role="row">
                                 {[
                                   "Fecha",
                                   "Ventas",
                                   "Cantidad",
                                   "Promedio",
-                                  "Cash",
-                                  "Card",
+                                  "Efectivo",
+                                  "Tarjeta",
                                   "Devoluciones",
                                   "Neta",
                                 ].map((x) => (
-                                  <th key={x} scope="col">
+                                  <th key={x} scope="col" role="columnheader">
                                     {x}
                                   </th>
                                 ))}
                               </tr>
                             </thead>
-                            <tbody>
+                            <tbody role="rowgroup">
                               {report.days.map((d) => (
-                                <tr key={d.date}>
-                                  <th scope="row">{d.date}</th>
+                                <tr role="row" key={d.date}>
+                                  <th scope="row" role="rowheader">
+                                    {d.date}
+                                  </th>
                                   {[
                                     ["Ventas", mxn(d.gross)],
                                     ["Cantidad", d.count],
                                     ["Promedio", mxn(d.average)],
-                                    ["Cash", mxn(d.cash)],
-                                    ["Card", mxn(d.card)],
+                                    ["Efectivo", mxn(d.cash)],
+                                    ["Tarjeta", mxn(d.card)],
                                     ["Devoluciones", mxn(d.refunds)],
                                     ["Neta", mxn(d.net)],
                                   ].map(([label, value]) => (
-                                    <td key={label} data-label={label}>
+                                    <td
+                                      role="cell"
+                                      key={label}
+                                      data-label={label}
+                                    >
                                       {value}
                                     </td>
                                   ))}
@@ -535,7 +648,7 @@ export default function DashboardPanel() {
                               <span>
                                 {p.state === "out" ? "Agotado" : "Stock bajo"} ·{" "}
                                 {units(p.stock)}{" "}
-                                {p.unit === "piece" ? "pza" : p.unit} ·{" "}
+                                {unitLabel(p.unit as UnitCodeDto) ?? p.unit} ·{" "}
                                 {p.locationName} · Mínimo {units(p.minimum)}
                               </span>
                             </li>
@@ -565,33 +678,37 @@ export default function DashboardPanel() {
                       {!report.products.length ? (
                         <p>Sin productos vendidos en este periodo.</p>
                       ) : (
-                        <table className="data-table">
-                          <thead>
-                            <tr>
+                        <table className="data-table" role="table">
+                          <thead role="rowgroup">
+                            <tr role="row">
                               {[
                                 "Producto",
                                 "Unidades vendidas",
                                 "Ingresos",
                                 "Stock actual",
                               ].map((x) => (
-                                <th scope="col" key={x}>
+                                <th scope="col" role="columnheader" key={x}>
                                   {x}
                                 </th>
                               ))}
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody role="rowgroup">
                             {report.products.map((p) => (
-                              <tr key={p.id}>
-                                <th scope="row">{p.name}</th>
-                                <td data-label="Unidades vendidas">
+                              <tr role="row" key={p.id}>
+                                <th scope="row" role="rowheader">
+                                  {p.name}
+                                </th>
+                                <td role="cell" data-label="Unidades vendidas">
                                   {units(p.quantity)}{" "}
-                                  {p.unit === "piece" ? "pza" : p.unit}
+                                  {unitLabel(p.unit as UnitCodeDto) ?? p.unit}
                                 </td>
-                                <td data-label="Ingresos">{mxn(p.revenue)}</td>
-                                <td data-label="Stock actual">
+                                <td role="cell" data-label="Ingresos">
+                                  {mxn(p.revenue)}
+                                </td>
+                                <td role="cell" data-label="Stock actual">
                                   {units(p.stock)}{" "}
-                                  {p.unit === "piece" ? "pza" : p.unit}
+                                  {unitLabel(p.unit as UnitCodeDto) ?? p.unit}
                                 </td>
                               </tr>
                             ))}
@@ -613,7 +730,7 @@ export default function DashboardPanel() {
                             {[
                               ["Órdenes creadas", report.purchases.created],
                               [
-                                "Pendientes (ordered)",
+                                "Pendientes de recibir",
                                 report.purchases.pending,
                               ],
                               [
@@ -652,8 +769,8 @@ export default function DashboardPanel() {
                               ["Efectivo esperado", mxn(report.cash.expected)],
                               ["Faltantes", mxn(report.cash.shortage)],
                               ["Sobrantes", mxn(report.cash.surplus)],
-                              ["Cash in", mxn(report.cash.cashIn)],
-                              ["Cash out", mxn(report.cash.cashOut)],
+                              ["Entradas de efectivo", mxn(report.cash.cashIn)],
+                              ["Salidas de efectivo", mxn(report.cash.cashOut)],
                             ].map(([l, v]) => (
                               <div key={l}>
                                 <dt>{l}</dt>
