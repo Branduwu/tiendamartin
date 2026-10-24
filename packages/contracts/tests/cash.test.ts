@@ -1,3 +1,4 @@
+import { CashHistorySchema } from "../src/cash";
 import { expect, it } from "vitest";
 import {
   OpenCashShiftSchema,
@@ -56,5 +57,65 @@ it("close accepts nonnegative counted but no client expected or difference", () 
       countedCash: cash("1"),
       difference: cash("0"),
     }).success,
+  ).toBe(false);
+});
+
+it("validates a bounded empty history and rejects unknown or unbounded output", () => {
+  expect(CashHistorySchema.parse({ shifts: [], movements: [] })).toEqual({
+    shifts: [],
+    movements: [],
+  });
+  expect(
+    CashHistorySchema.safeParse({
+      shifts: [],
+      movements: [],
+      tenantId: "forged",
+    }).success,
+  ).toBe(false);
+  expect(
+    CashHistorySchema.safeParse({ shifts: Array(11).fill({}), movements: [] })
+      .success,
+  ).toBe(false);
+  expect(
+    CashHistorySchema.safeParse({ shifts: [], movements: Array(21).fill({}) })
+      .success,
+  ).toBe(false);
+});
+
+it("accepts ten/twenty valid records and rejects overflow with otherwise valid records", () => {
+  const at = "2026-10-24T12:00:00.000Z",
+    uuid = (n: number) =>
+      `550e8400-e29b-41d4-a716-${n.toString().padStart(12, "0")}`;
+  const shifts = Array.from({ length: 11 }, (_, n) => ({
+    id: uuid(n),
+    status: "closed",
+    openedAt: at,
+    closedAt: at,
+    openingCash: { currency: "MXN", minorUnits: "100" },
+    countedCash: { currency: "MXN", minorUnits: "50" },
+    difference: { currency: "MXN", minorUnits: "-50" },
+  }));
+  const movements = Array.from({ length: 21 }, (_, n) => ({
+    id: uuid(n),
+    shiftId: uuid(0),
+    type: "cash_in",
+    amount: { currency: "MXN", minorUnits: "50" },
+    reason: "Ingreso de prueba",
+    createdBy: uuid(99),
+    createdAt: at,
+  }));
+  expect(
+    CashHistorySchema.safeParse({
+      shifts: shifts.slice(0, 10),
+      movements: movements.slice(0, 20),
+    }).success,
+  ).toBe(true);
+  expect(
+    CashHistorySchema.safeParse({ shifts, movements: movements.slice(0, 20) })
+      .success,
+  ).toBe(false);
+  expect(
+    CashHistorySchema.safeParse({ shifts: shifts.slice(0, 10), movements })
+      .success,
   ).toBe(false);
 });

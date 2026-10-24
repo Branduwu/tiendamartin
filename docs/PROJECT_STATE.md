@@ -1210,3 +1210,8 @@ Rama feature/sales-history sobre el candidato a2f33e2: historial por cursor de 5
 ## POS-UX-01 — mejora local (24/10/2026)
 
 Feature/pos-ux sobre32254a7: búsqueda nombre/SKU/barcode con acentos y Enter, cantidades +/− usando las funciones existentes, carrito adaptable y total/forma de pago visibles. Se conservan checkout, pagos, escaneo, suspensión, pending y sus condiciones de bloqueo.128 regresiones y25 comprobaciones Chromium sintéticas PASS; QA/SECURITY focales independientes con hallazgos corregidos. Sin backend, permisos, SQL, infraestructura ni publicación; main intacto. Evidencia breve bajo tmp/pos-ux-01/02b6d8867d08454085e85febd36b6b2f.
+
+
+## CAJA-UX-01 — mejora local (24/10/2026)
+
+Feature/caja-ux sobre ac446c9: estado y responsable del turno, resumen monetario sin nuevos cálculos, formularios de ingreso/retiro y revisión explícita del cierre, historial acotado de 10 turnos/20 movimientos por ubicación y diseño adaptable. Nueva consulta sólo lectura con cash.read, identidad y pertenencia verificadas; mutaciones, idempotencia y contratos financieros originales conservados. 49 pruebas focales y 28 escenarios Chromium sintéticos PASS; TypeScript web/database, lint, formato y build Next.js PASS. QA (Bohr) y SECURITY (Newton) independientes: revisión estática focal PASS, dos hallazgos UI corregidos y revisados. PostgreSQL real y operaciones con clientes no ejecutados; no se acredita validación productiva. Sin migraciones, dependencias ni cambios de infraestructura. Main intacto; sin push/deploy. Evidencia local bajo tmp/caja-ux-01/7113ca510bbd4b49b136357b51bb4915. BETA02/BETA03 permanecen pausadas y SmartRetail NO-GO para lanzamiento.

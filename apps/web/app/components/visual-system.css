@@ -1806,3 +1806,192 @@ body.retail-ui:has(.app-sidebar) main.workspace {
     gap: 0.25rem;
   }
 }
+
+/* CAJA-UX-01: bounded history and existing financial actions. */
+.cash-workspace .cash-heading,
+.cash-workspace .cash-history-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.cash-workspace .cash-heading h1,
+.cash-workspace .cash-history-heading h2 {
+  margin-bottom: 0.5rem;
+}
+.cash-workspace .cash-heading .badge {
+  margin-top: 1rem;
+  white-space: normal;
+}
+.cash-workspace .cash-selectors {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-block: 1.5rem;
+}
+.cash-workspace .cash-selectors label {
+  flex: 1;
+  max-width: 30rem;
+  min-width: 0;
+}
+.cash-workspace .cash-selectors button,
+.cash-workspace .cash-history-heading button {
+  white-space: nowrap;
+  min-height: 44px;
+}
+.cash-workspace .cash-location {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cash-workspace .cash-shift-info {
+  display: grid;
+  gap: 0.75rem;
+}
+.cash-workspace .cash-shift-info div {
+  display: grid;
+  gap: 0.25rem;
+}
+.cash-workspace .cash-shift-info dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.cash-workspace .cash-shift-info dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.cash-workspace .cash-summary dt {
+  min-width: 0;
+}
+.cash-workspace .cash-summary dd {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.cash-workspace .cash-summary dd small {
+  font-weight: 400;
+}
+.cash-workspace .cash-pending {
+  padding: 1.25rem;
+  background: var(--warning);
+  color: var(--warning-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.cash-workspace .cash-actions form {
+  gap: 0.875rem;
+}
+.cash-workspace .cash-actions h2,
+.cash-workspace .cash-actions p {
+  margin-block: 0;
+}
+.cash-workspace .cash-actions form > button {
+  justify-self: stretch;
+  min-height: 44px;
+}
+.cash-workspace .cash-close-review {
+  padding: 1rem;
+  border: 1px solid var(--danger);
+  background: var(--danger-surface);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.cash-workspace .cash-close-review h3 {
+  margin-top: 0;
+}
+.cash-workspace .cash-close-review dl div {
+  display: grid;
+  gap: 0.25rem;
+  margin-block: 0.75rem;
+}
+.cash-workspace .cash-close-review dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cash-workspace .cash-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.cash-workspace .cash-review-actions button {
+  flex: 1;
+  min-height: 44px;
+}
+.cash-workspace .cash-history {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.cash-workspace .cash-history h3 {
+  margin-top: 1.5rem;
+}
+.cash-workspace .cash-history-table {
+  width: 100%;
+  table-layout: auto;
+}
+.cash-workspace .cash-history-table caption {
+  text-align: left;
+  padding-block: 0.75rem;
+}
+.cash-workspace .cash-history-table time {
+  display: block;
+}
+.cash-workspace .cash-history-table p {
+  margin: 0.4rem 0;
+}
+.cash-workspace .cash-history-table .sale-id {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1001px) {
+  .cash-workspace .cash-history-table {
+    min-width: 50rem;
+  }
+  .cash-workspace .cash-history-table time {
+    white-space: nowrap;
+  }
+}
+@media (max-width: 1000px) {
+  .cash-workspace .cash-history-table caption {
+    display: block;
+    width: 100%;
+  }
+  .cash-workspace .cash-history-table td {
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 760px) {
+  .cash-workspace .cash-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cash-workspace .cash-summary div {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 540px) {
+  .cash-workspace .cash-selectors {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cash-workspace .cash-selectors label {
+    max-width: none;
+  }
+  .cash-workspace .cash-history-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cash-workspace .cash-review-actions {
+    flex-direction: column;
+  }
+  .cash-workspace .cash-summary div {
+    display: grid;
+    gap: 0.35rem;
+  }
+  .cash-workspace .cash-summary dd {
+    text-align: left;
+  }
+  .cash-workspace .cash-history-heading button {
+    width: 100%;
+  }
+}

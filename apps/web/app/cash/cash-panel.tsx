@@ -3,6 +3,8 @@ import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  CashHistorySchema,
+  type CashHistoryDto,
   CashMovementInputSchema,
   OpenCashShiftSchema,
   CloseCashShiftSchema,
@@ -52,6 +54,20 @@ export default function CashPanel({ userId }: { userId: string }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [readError, setReadError] = useState("");
+  const [refresh, setRefresh] = useState(0),
+    [historyRevision, setHistoryRevision] = useState(0);
+  const [history, setHistory] = useState<{
+    tenantId: string;
+    locationId: string;
+    value: CashHistoryDto;
+  } | null>(null);
+  const [historyError, setHistoryError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [closePreview, setClosePreview] = useState<{
+    shiftId: string;
+    minorUnits: string;
+  } | null>(null);
   const sending = useRef(false);
   async function load(t: string, l: string, signal?: AbortSignal) {
     const r = await fetch(`/api/v1/cash?locationId=${l}`, {
@@ -191,16 +207,56 @@ export default function CashPanel({ userId }: { userId: string }) {
     const c = new AbortController();
     load(tenant, location, c.signal)
       .then((value) => {
-        if (!c.signal.aborted) setShift(value);
+        if (!c.signal.aborted) {
+          setShift(value);
+          setReadError("");
+        }
       })
       .catch((e) => {
-        if (!c.signal.aborted) setError(e.message);
+        if (!c.signal.aborted) {
+          setError(e.message);
+          setReadError(
+            "No pudimos consultar el estado del turno. Actualiza la caja antes de operar.",
+          );
+        }
       })
       .finally(() => {
         if (!c.signal.aborted) setLoading(false);
       });
     return () => c.abort();
-  }, [tenant, location]);
+  }, [tenant, location, refresh]);
+  useEffect(() => {
+    if (!tenant || !location) return;
+    const c = new AbortController();
+    Promise.resolve().then(() => {
+      if (!c.signal.aborted) {
+        setHistoryLoading(true);
+        setHistoryError("");
+      }
+    });
+    fetch(`/api/v1/cash/history?locationId=${location}`, {
+      headers: { "x-tenant-id": tenant },
+      signal: c.signal,
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        const b = await r.json();
+        if (!r.ok) throw new Error();
+        const value = CashHistorySchema.parse(b.history);
+        if (!c.signal.aborted)
+          setHistory({ tenantId: tenant, locationId: location, value });
+      })
+      .catch(() => {
+        if (!c.signal.aborted)
+          setHistoryError(
+            "No pudimos cargar el historial. Las operaciones de caja se muestran por separado.",
+          );
+      })
+      .finally(() => {
+        if (!c.signal.aborted) setHistoryLoading(false);
+      });
+    return () => c.abort();
+  }, [tenant, location, shift, historyRevision]);
   async function submit(operation: Pending["operation"]) {
     if (sending.current || blocked || !location) return;
     sending.current = true;
@@ -294,6 +350,61 @@ export default function CashPanel({ userId }: { userId: string }) {
     }
   }
   const locked = busy || !!pending || blocked;
+  const currentHistory =
+    history?.tenantId === tenant && history.locationId === location
+      ? history.value
+      : null;
+  const selectedLocation =
+    locations.find((l) => l.id === location)?.name ??
+    "Selecciona una ubicación";
+  const shiftState = loading
+    ? "Consultando turno"
+    : readError
+      ? "Estado no disponible"
+      : !location
+        ? "Sin ubicación"
+        : shift?.status === "open"
+          ? "Caja abierta"
+          : shift
+            ? "Último turno cerrado"
+            : "Sin turno registrado";
+  const activeCloseReview =
+    closePreview?.shiftId === shift?.id && shift?.status === "open"
+      ? closePreview
+      : null;
+  function refreshCash() {
+    setClosePreview(null);
+    setLoading(true);
+    setReadError("");
+    setError("");
+    setRefresh((v) => v + 1);
+  }
+  function reviewClose() {
+    try {
+      const value = CloseCashShiftSchema.parse({
+        shiftId: shift?.id,
+        countedCash: {
+          currency: "MXN",
+          minorUnits: decimalToMinorUnits(counted),
+        },
+      });
+      setClosePreview({
+        shiftId: value.shiftId,
+        minorUnits: value.countedCash.minorUnits,
+      });
+      setError("");
+    } catch {
+      setError(
+        "Revisa el efectivo contado: usa un importe no negativo y hasta dos decimales.",
+      );
+    }
+  }
+  const errorMessage = [
+    "Failed to fetch",
+    "NetworkError when attempting to fetch resource.",
+  ].includes(error)
+    ? "No pudimos comunicarnos con el servidor. Si hay una operación pendiente, conserva la página y consulta su estado antes de reintentar."
+    : error;
   return (
     <>
       <header className="topbar no-print">
@@ -308,20 +419,33 @@ export default function CashPanel({ userId }: { userId: string }) {
           }
         />
       </header>
-      <main id="workspace-content" tabIndex={-1} className="workspace">
-        <h1>Caja</h1>
+      <main
+        id="workspace-content"
+        tabIndex={-1}
+        className="workspace cash-workspace"
+      >
+        <div className="cash-heading">
+          <div>
+            <h1>Caja</h1>
+            <p className="muted">
+              Controla el efectivo de tu ubicación, registra movimientos y
+              revisa el cierre.
+            </p>
+          </div>
+          <span
+            className={`badge ${!loading && !readError && shift?.status === "open" ? "active" : ""}`}
+          >
+            {shiftState}
+          </span>
+        </div>
         <p className="company-context">
-          Cajero actual:{" "}
+          Usuario actual:{" "}
           {memberships.find((t) => t.tenantId === tenant)?.displayName ??
             "Cajero registrado"}
         </p>
-        <p className="muted">
-          Abre el turno, registra ingresos y retiros, y compara el efectivo al
-          cerrar.
-        </p>
         {error && (
-          <p role="alert" className="error">
-            {error}
+          <p id="cash-error" role="alert" className="error">
+            {errorMessage}
           </p>
         )}
         {notice && (
@@ -330,10 +454,10 @@ export default function CashPanel({ userId }: { userId: string }) {
           </p>
         )}
         {!tenants.length && !loading ? (
-          <p>No tienes permiso para consultar caja.</p>
+          <p className="card">No tienes permiso para consultar caja.</p>
         ) : (
           <>
-            <div className="pos-selectors">
+            <div className="cash-selectors">
               <label hidden>
                 Empresa
                 <select
@@ -347,6 +471,10 @@ export default function CashPanel({ userId }: { userId: string }) {
                     setLocations([]);
                     setLoading(true);
                     setShift(null);
+                    setClosePreview(null);
+                    setReadError("");
+                    setError("");
+                    setNotice("");
                   }}
                 >
                   {tenants.map((t, index) => (
@@ -370,6 +498,11 @@ export default function CashPanel({ userId }: { userId: string }) {
                     if (e.target.value === location) return;
                     setLocation(e.target.value);
                     setShift(null);
+                    setLoading(Boolean(e.target.value));
+                    setReadError("");
+                    setClosePreview(null);
+                    setError("");
+                    setNotice("");
                   }}
                 >
                   <option value="">Selecciona una ubicación</option>
@@ -380,15 +513,35 @@ export default function CashPanel({ userId }: { userId: string }) {
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || !location || loading}
+                onClick={refreshCash}
+              >
+                Actualizar caja
+              </button>
             </div>
             {pending && (
-              <section role="status">
+              <section role="status" className="cash-pending">
+                <strong>
+                  {
+                    {
+                      open: "Apertura",
+                      movements: "Movimiento",
+                      close: "Cierre",
+                    }[pending.operation]
+                  }{" "}
+                  pendiente de confirmación
+                </strong>
                 <p>
-                  Operación pendiente: {pending.operation}. Conservamos sus IDs
-                  para evitar duplicados. Si era un cierre, consulta primero el
-                  resumen del turno.
+                  Conservamos la operación y sus IDs para evitar duplicados. No
+                  registres otra ni cierres la página hasta resolver el
+                  resultado. Si era un cierre, consulta primero el resumen del
+                  turno.
                 </p>
                 <button
+                  type="button"
                   disabled={busy || blocked}
                   onClick={() => submit(pending.operation)}
                 >
@@ -399,53 +552,94 @@ export default function CashPanel({ userId }: { userId: string }) {
               </section>
             )}
             {loading ? (
-              <p>Cargando caja…</p>
+              <p className="card" role="status">
+                Cargando caja…
+              </p>
+            ) : !location ? (
+              <p className="card">
+                Selecciona una ubicación activa para consultar su caja.
+              </p>
+            ) : readError ? (
+              <section className="card" role="status">
+                <h2>Estado no disponible</h2>
+                <p>{readError}</p>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={refreshCash}
+                >
+                  Reintentar consulta
+                </button>
+              </section>
             ) : (
               <div className="cash-layout">
-                <section>
-                  <h2>
+                <section aria-labelledby="cash-summary-title">
+                  <h2 id="cash-summary-title">
                     {shift?.status === "open"
-                      ? "Turno abierto"
+                      ? "Resumen del turno abierto"
                       : shift
-                        ? "Turno cerrado"
-                        : "Sin turno"}
+                        ? "Resumen del último cierre"
+                        : "Prepara tu caja"}
                   </h2>
-                  {shift && (
+                  <p className="cash-location">{selectedLocation}</p>
+                  {shift ? (
                     <>
+                      <dl className="cash-shift-info">
+                        <div>
+                          <dt>Responsable de apertura</dt>
+                          <dd>{shift.openedByName ?? "Cajero registrado"}</dd>
+                        </div>
+                        <div>
+                          <dt>Apertura</dt>
+                          <dd>
+                            <time dateTime={shift.openedAt}>
+                              {formatDateTime(shift.openedAt)}
+                            </time>
+                          </dd>
+                        </div>
+                        {shift.status === "closed" && (
+                          <>
+                            <div>
+                              <dt>Responsable de cierre</dt>
+                              <dd>
+                                {shift.closedByName ?? "Cajero registrado"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Cierre</dt>
+                              <dd>
+                                {shift.closedAt ? (
+                                  <time dateTime={shift.closedAt}>
+                                    {formatDateTime(shift.closedAt)}
+                                  </time>
+                                ) : (
+                                  "Fecha no disponible"
+                                )}
+                              </dd>
+                            </div>
+                          </>
+                        )}
+                      </dl>
                       <details className="reference">
                         <summary>Referencia del turno</summary>
                         <p className="sale-id">{shift.id}</p>
+                        <p className="sale-id">Apertura: {shift.openedBy}</p>
+                        {shift.closedBy && (
+                          <p className="sale-id">Cierre: {shift.closedBy}</p>
+                        )}
                       </details>
-                      <p>Inicio: {formatDateTime(shift.openedAt)}</p>
-                      <p>
-                        Abierto por:{" "}
-                        {"openedByName" in shift &&
-                        typeof shift.openedByName === "string"
-                          ? shift.openedByName
-                          : "Cajero registrado"}
-                      </p>
-                      {shift.status === "closed" && (
-                        <p>
-                          Cerrado por:{" "}
-                          {"closedByName" in shift &&
-                          typeof shift.closedByName === "string"
-                            ? shift.closedByName
-                            : "Cajero registrado"}
-                        </p>
-                      )}
                       <dl className="cash-summary">
                         {[
                           ["Fondo inicial", shift.openingCash],
                           ["Ventas en efectivo", shift.salesCash],
-                          ["Ingresos", shift.cashIn],
-                          ["Retiros", shift.cashOut],
+                          ["Entradas de efectivo", shift.cashIn],
+                          ["Salidas de efectivo", shift.cashOut],
                           ["Efectivo esperado", shift.expectedCash],
                           ["Efectivo contado", shift.countedCash],
                           ["Diferencia", shift.difference],
                         ].map(([label, value]) =>
-                          typeof label === "string" &&
-                          value &&
-                          typeof value === "object" ? (
+                          typeof label === "string" ? (
                             <div
                               key={label}
                               className={
@@ -456,55 +650,54 @@ export default function CashPanel({ userId }: { userId: string }) {
                                     : undefined
                               }
                             >
-                              <dt>
-                                {label}
-                                {label === "Efectivo esperado" && (
-                                  <ContextHelp
-                                    label="Dinero esperado"
-                                    href="/help/expected-cash"
-                                    keepPage
-                                  >
-                                    Es el efectivo inicial más ventas y entradas
-                                    en efectivo, menos salidas, incluidos
-                                    reembolsos y gastos en efectivo. Tarjetas y
-                                    deuda a crédito no son efectivo en caja.
-                                  </ContextHelp>
-                                )}
-                              </dt>
+                              <dt>{label}</dt>
                               <dd>
-                                {mxn(value.minorUnits)}
-                                {label === "Diferencia" && (
-                                  <small>
-                                    {BigInt(value.minorUnits) < 0n
-                                      ? "Faltante"
-                                      : BigInt(value.minorUnits) > 0n
-                                        ? "Sobrante"
-                                        : "Sin diferencia"}
-                                  </small>
+                                {value && typeof value === "object" ? (
+                                  <>
+                                    {mxn(value.minorUnits)}
+                                    {label === "Diferencia" && (
+                                      <small>
+                                        {BigInt(value.minorUnits) < 0n
+                                          ? "Faltante"
+                                          : BigInt(value.minorUnits) > 0n
+                                            ? "Sobrante"
+                                            : "Sin diferencia"}
+                                      </small>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="muted">
+                                    {shift.status === "open"
+                                      ? "Se registra al cerrar"
+                                      : "No disponible"}
+                                  </span>
                                 )}
                               </dd>
                             </div>
                           ) : null,
                         )}
                       </dl>
-                      <p>
-                        Las ventas con tarjeta no aumentan el efectivo físico.
-                      </p>
+                      <ContextHelp
+                        label="Dinero esperado"
+                        href="/help/expected-cash"
+                        keepPage
+                      >
+                        El efectivo esperado incluye fondo, ventas y entradas,
+                        menos salidas registradas, como reembolsos y gastos.
+                        Tarjetas y deuda a crédito no son efectivo físico.
+                      </ContextHelp>
                     </>
+                  ) : (
+                    <p className="muted">
+                      No hay un turno registrado en esta ubicación. Abre la caja
+                      con el fondo de efectivo que tengas físicamente.
+                    </p>
                   )}
-                  <button
-                    className="secondary"
-                    disabled={busy || !location}
-                    onClick={() =>
-                      load(tenant, location)
-                        .then(setShift)
-                        .catch((e) => setError(e.message))
-                    }
-                  >
-                    Actualizar caja
-                  </button>
                 </section>
-                <section className="cash-actions">
+                <section
+                  className="cash-actions"
+                  aria-label="Operaciones de caja"
+                >
                   {shift?.status !== "open" ? (
                     <form
                       onSubmit={(e) => {
@@ -513,15 +706,24 @@ export default function CashPanel({ userId }: { userId: string }) {
                       }}
                     >
                       <h2>{shift ? "Abrir nuevo turno" : "Abrir turno"}</h2>
+                      <p className="muted">
+                        Registra únicamente el efectivo inicial. El cierre
+                        anterior se conserva.
+                      </p>
                       <label>
                         Fondo inicial (MXN)
                         <input
+                          aria-describedby="opening-help cash-error"
                           value={opening}
                           disabled={locked}
                           inputMode="decimal"
                           onChange={(e) => setOpening(e.target.value)}
                         />
                       </label>
+                      <small id="opening-help">
+                        Importe no negativo, con hasta dos decimales. Puede ser
+                        cero.
+                      </small>
                       <button disabled={locked || !location} aria-busy={busy}>
                         <LoadingLabel busy={busy} label="Abriendo…">
                           Abrir caja
@@ -533,6 +735,7 @@ export default function CashPanel({ userId }: { userId: string }) {
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
+                          setClosePreview(null);
                           submit("movements");
                         }}
                       >
@@ -549,13 +752,23 @@ export default function CashPanel({ userId }: { userId: string }) {
                               )
                             }
                           >
-                            <option value="cash_in">Ingreso</option>
-                            <option value="cash_out">Retiro</option>
+                            <option value="cash_in">
+                              Ingreso · entrada de dinero
+                            </option>
+                            <option value="cash_out">
+                              Retiro · salida de dinero
+                            </option>
                           </select>
                         </label>
+                        <p className="cash-movement-description">
+                          {movementType === "cash_in"
+                            ? "Ingreso: dinero que entra físicamente a la caja."
+                            : "Retiro: dinero que sale físicamente de la caja. El servidor valida el efectivo disponible."}
+                        </p>
                         <label>
                           Importe (MXN)
                           <input
+                            aria-describedby="movement-help cash-error"
                             value={amount}
                             disabled={locked}
                             inputMode="decimal"
@@ -565,57 +778,290 @@ export default function CashPanel({ userId }: { userId: string }) {
                         <label>
                           Motivo
                           <input
+                            aria-describedby="movement-help cash-error"
                             value={reason}
                             disabled={locked}
                             maxLength={200}
+                            placeholder={
+                              movementType === "cash_in"
+                                ? "Ej. reposición de fondo"
+                                : "Ej. retiro para depósito"
+                            }
                             onChange={(e) => setReason(e.target.value)}
                           />
                         </label>
+                        <small id="movement-help">
+                          Importe mayor a cero, hasta dos decimales y un motivo
+                          sin espacios al principio o al final.
+                        </small>
                         <button disabled={locked} aria-busy={busy}>
                           <LoadingLabel busy={busy} label="Registrando…">
-                            Registrar movimiento
+                            {movementType === "cash_in"
+                              ? "Registrar ingreso"
+                              : "Registrar retiro"}
                           </LoadingLabel>
                         </button>
                       </form>
                       <form
+                        className="cash-close-form"
                         onSubmit={(e) => {
                           e.preventDefault();
-                          submit("close");
+                          reviewClose();
                         }}
                       >
                         <h2>Cerrar turno</h2>
+                        <p className="muted">
+                          Cuenta el efectivo físico antes de cerrar. No se
+                          ajustan automáticamente los movimientos.
+                        </p>
                         <label>
                           Efectivo contado (MXN)
                           <input
+                            aria-describedby="counted-help cash-error"
                             value={counted}
-                            disabled={locked}
+                            disabled={locked || activeCloseReview !== null}
                             inputMode="decimal"
                             onChange={(e) => setCounted(e.target.value)}
                           />
                         </label>
-                        <ContextHelp
-                          label="Diferencia al cerrar caja"
-                          href="/help/cash-difference"
-                          keepPage
-                        >
-                          Se conserva la diferencia entre efectivo esperado y
-                          contado. Los movimientos registrados no se ajustan
-                          automáticamente.
-                        </ContextHelp>
-                        <button
-                          className="danger"
-                          disabled={locked}
-                          aria-busy={busy}
-                        >
-                          <LoadingLabel busy={busy} label="Cerrando…">
-                            Cerrar caja
-                          </LoadingLabel>
-                        </button>
+                        <small id="counted-help">
+                          El servidor guardará el cierre y calculará la
+                          diferencia. Puede existir un faltante o sobrante.
+                        </small>
+                        {activeCloseReview === null ? (
+                          <button
+                            className="danger"
+                            disabled={locked}
+                            aria-busy={busy}
+                          >
+                            Revisar cierre
+                          </button>
+                        ) : (
+                          <section
+                            className="cash-close-review"
+                            aria-label="Confirmar cierre"
+                          >
+                            <h3>Revisa antes de cerrar</h3>
+                            <dl>
+                              <div>
+                                <dt>Ubicación</dt>
+                                <dd>{selectedLocation}</dd>
+                              </div>
+                              <div>
+                                <dt>Efectivo esperado consultado</dt>
+                                <dd>{mxn(shift.expectedCash.minorUnits)}</dd>
+                              </div>
+                              <div>
+                                <dt>Efectivo contado</dt>
+                                <dd>{mxn(activeCloseReview.minorUnits)}</dd>
+                              </div>
+                            </dl>
+                            <p>
+                              El cierre se registra en el servidor y conserva la
+                              diferencia. Confirma sólo si terminaste el conteo.
+                            </p>
+                            <div className="cash-review-actions">
+                              <button
+                                type="button"
+                                className="secondary"
+                                disabled={locked}
+                                onClick={() => setClosePreview(null)}
+                              >
+                                Volver a editar
+                              </button>
+                              <button
+                                type="button"
+                                className="danger"
+                                disabled={locked}
+                                aria-busy={busy}
+                                onClick={() => {
+                                  setClosePreview(null);
+                                  submit("close");
+                                }}
+                              >
+                                <LoadingLabel busy={busy} label="Cerrando…">
+                                  Confirmar cierre
+                                </LoadingLabel>
+                              </button>
+                            </div>
+                          </section>
+                        )}
                       </form>
                     </>
                   )}
                 </section>
               </div>
+            )}
+            {!!location && (
+              <section
+                className="cash-history"
+                aria-labelledby="cash-history-title"
+              >
+                <div className="cash-history-heading">
+                  <div>
+                    <h2 id="cash-history-title">
+                      Historial reciente de esta ubicación
+                    </h2>
+                    <p className="muted">
+                      Hasta 10 turnos y 20 movimientos, del más reciente al más
+                      antiguo. No es el historial completo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={historyLoading || busy}
+                    onClick={() => setHistoryRevision((v) => v + 1)}
+                  >
+                    Actualizar historial
+                  </button>
+                </div>
+                {historyLoading ? (
+                  <p role="status">Cargando historial…</p>
+                ) : historyError ? (
+                  <p role="status" className="notice">
+                    {historyError}
+                  </p>
+                ) : currentHistory ? (
+                  <>
+                    <h3>Movimientos recientes</h3>
+                    {!currentHistory.movements.length ? (
+                      <p className="card muted">
+                        No hay movimientos registrados en esta ubicación.
+                      </p>
+                    ) : (
+                      <div className="table-scroll responsive-table">
+                        <table className="data-table cash-history-table">
+                          <caption>Entradas y salidas registradas</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">Fecha</th>
+                              <th scope="col">Movimiento y concepto</th>
+                              <th scope="col">Importe MXN</th>
+                              <th scope="col">Referencias</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentHistory.movements.map((m) => (
+                              <tr key={m.id}>
+                                <td data-label="Fecha">
+                                  <time dateTime={m.createdAt}>
+                                    {formatDateTime(m.createdAt)}
+                                  </time>
+                                </td>
+                                <td data-label="Movimiento y concepto">
+                                  <strong>
+                                    {m.type === "cash_in"
+                                      ? "Ingreso"
+                                      : "Retiro"}
+                                  </strong>
+                                  <p>{m.reason}</p>
+                                </td>
+                                <td data-label="Importe MXN" className="amount">
+                                  {m.type === "cash_in" ? "+" : "−"}
+                                  {mxn(m.amount.minorUnits)}
+                                </td>
+                                <td data-label="Referencias">
+                                  <details className="reference">
+                                    <summary>Ver referencias</summary>
+                                    <p className="sale-id">
+                                      Movimiento: {m.id}
+                                    </p>
+                                    <p className="sale-id">
+                                      Turno: {m.shiftId}
+                                    </p>
+                                    <p className="sale-id">
+                                      Registrado por: {m.createdBy}
+                                    </p>
+                                  </details>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <h3>Turnos recientes</h3>
+                    {!currentHistory.shifts.length ? (
+                      <p className="card muted">
+                        No hay turnos registrados en esta ubicación.
+                      </p>
+                    ) : (
+                      <div className="table-scroll responsive-table">
+                        <table className="data-table cash-history-table">
+                          <caption>Aperturas y cierres registrados</caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">Apertura</th>
+                              <th scope="col">Responsable y estado</th>
+                              <th scope="col">Fondo inicial</th>
+                              <th scope="col">Cierre y diferencia</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currentHistory.shifts.map((s) => (
+                              <tr key={s.id}>
+                                <td data-label="Apertura">
+                                  <time dateTime={s.openedAt}>
+                                    {formatDateTime(s.openedAt)}
+                                  </time>
+                                  <details className="reference">
+                                    <summary>Referencia</summary>
+                                    <span className="sale-id">{s.id}</span>
+                                  </details>
+                                </td>
+                                <td data-label="Responsable y estado">
+                                  <strong>
+                                    {s.openedByName ?? "Cajero registrado"}
+                                  </strong>
+                                  <p>
+                                    {s.status === "open"
+                                      ? "Abierto"
+                                      : "Cerrado"}
+                                  </p>
+                                </td>
+                                <td
+                                  data-label="Fondo inicial"
+                                  className="amount"
+                                >
+                                  {mxn(s.openingCash.minorUnits)}
+                                </td>
+                                <td data-label="Cierre y diferencia">
+                                  {s.status === "open" ? (
+                                    "Pendiente de cierre"
+                                  ) : (
+                                    <>
+                                      {s.closedAt && (
+                                        <time dateTime={s.closedAt}>
+                                          {formatDateTime(s.closedAt)}
+                                        </time>
+                                      )}
+                                      <p>
+                                        Contado:{" "}
+                                        {s.countedCash
+                                          ? mxn(s.countedCash.minorUnits)
+                                          : "No disponible"}
+                                      </p>
+                                      <p>
+                                        Diferencia:{" "}
+                                        {s.difference
+                                          ? mxn(s.difference.minorUnits)
+                                          : "No disponible"}
+                                      </p>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p role="status">Preparando historial…</p>
+                )}
+              </section>
             )}
           </>
         )}

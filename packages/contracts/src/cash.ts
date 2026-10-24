@@ -48,3 +48,35 @@ export const CashShiftSchema = z.strictObject({
   difference: MoneySchema.nullable(),
 });
 export type CashShiftDto = z.infer<typeof CashShiftSchema>;
+
+/** Bounded, read-only view of existing cash records. Not a command contract. */
+export const CashHistorySchema = z.strictObject({
+  shifts: z
+    .array(
+      z.strictObject({
+        id: UuidSchema,
+        status: z.enum(["open", "closed"]),
+        openedAt: z.iso.datetime(),
+        openedByName: MemberDisplayNameSchema.exactOptional(),
+        closedAt: z.iso.datetime().nullable(),
+        openingCash: Nonnegative,
+        countedCash: Nonnegative.nullable(),
+        difference: MoneySchema.nullable(),
+      }),
+    )
+    .max(10),
+  movements: z
+    .array(
+      z.strictObject({
+        id: UuidSchema,
+        shiftId: UuidSchema,
+        type: z.enum(["cash_in", "cash_out"]),
+        amount: Nonnegative,
+        reason: z.string().min(1).max(200),
+        createdBy: UuidSchema,
+        createdAt: z.iso.datetime(),
+      }),
+    )
+    .max(20),
+});
+export type CashHistoryDto = z.infer<typeof CashHistorySchema>;

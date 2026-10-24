@@ -121,6 +121,62 @@ export class PostgresCash extends PostgresInventory implements CashRepository {
       return r.rows[0] ? this.shift(c, r.rows[0].id) : null;
     });
   }
+  /** Existing records only; does not call financial routines or change POS reads. */
+  history(locationId: string) {
+    return this.transaction(
+      "cash.read",
+      async (c) => {
+        const location = inventoryLocationId(locationId);
+        await this.requireLocation(c, location);
+        const shifts = await c.query<
+          Pick<
+            ShiftRow,
+            | "id"
+            | "status"
+            | "opened_at"
+            | "opened_by_name"
+            | "closed_at"
+            | "opening_cash"
+            | "counted_cash"
+            | "difference"
+          >
+        >(
+          "SELECT id,status,opened_at,opened_by_name,closed_at,opening_cash::text,counted_cash::text,difference::text FROM retail.cash_register_shifts WHERE tenant_id=$1 AND location_id=$2 ORDER BY opened_at DESC,id DESC LIMIT 10",
+          [this.tenant, location],
+        );
+        const movements = await c.query<MovementRow>(
+          "SELECT m.id,m.shift_id,m.type,m.amount::text,m.reason,m.created_by,m.created_at FROM retail.cash_movements m JOIN retail.cash_register_shifts s ON s.tenant_id=m.tenant_id AND s.id=m.shift_id WHERE m.tenant_id=$1 AND s.location_id=$2 ORDER BY m.created_at DESC,m.id DESC LIMIT 20",
+          [this.tenant, location],
+        );
+        return {
+          shifts: shifts.rows.map((s) => ({
+            id: s.id,
+            status: s.status,
+            openedAt: s.opened_at.toISOString(),
+            ...(s.opened_by_name == null
+              ? {}
+              : { openedByName: s.opened_by_name }),
+            closedAt: s.closed_at?.toISOString() ?? null,
+            openingCash: money(integer(s.opening_cash)),
+            countedCash:
+              s.counted_cash === null ? null : money(integer(s.counted_cash)),
+            difference:
+              s.difference === null ? null : money(integer(s.difference)),
+          })),
+          movements: movements.rows.map((m) => ({
+            id: m.id,
+            shiftId: m.shift_id,
+            type: m.type,
+            amount: money(integer(m.amount)),
+            reason: m.reason,
+            createdBy: m.created_by,
+            createdAt: m.created_at.toISOString(),
+          })),
+        };
+      },
+      true,
+    );
+  }
   openShift(input: OpenCashInput) {
     input = {
       ...input,

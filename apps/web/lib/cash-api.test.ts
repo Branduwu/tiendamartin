@@ -12,6 +12,7 @@ const mock = vi.hoisted(() => ({
   current: vi.fn(),
   move: vi.fn(),
   close: vi.fn(),
+  history: vi.fn(),
 }));
 vi.mock("./auth", () => ({ verifiedUserId: mock.user }));
 vi.mock("./database", () => ({ cashForUser: mock.repo }));
@@ -63,6 +64,7 @@ beforeEach(() => {
     currentShift: mock.current,
     moveCash: mock.move,
     closeShift: mock.close,
+    history: mock.history,
   });
   mock.open.mockResolvedValue(shift);
 });
@@ -106,4 +108,93 @@ it("SQL failure is sanitized", async () => {
   const r = await handleCash(request(), "open");
   expect(r.status).toBe(500);
   expect(await r.text()).not.toContain("SELECT");
+});
+
+const historyRequest = (query = `?locationId=${id}`, business = tenant) =>
+  new Request(`https://example.test/api/v1/cash/history${query}`, {
+    headers: { "x-tenant-id": business },
+  });
+it("cash history uses verified identity and returns only bounded existing records", async () => {
+  const { GET } = await import("../app/api/v1/cash/history/route");
+  mock.history.mockResolvedValue({
+    shifts: [
+      {
+        id,
+        status: "closed",
+        openedAt: shift.openedAt,
+        closedAt: shift.openedAt,
+        openingCash: money(100n),
+        countedCash: money(50n),
+        difference: money(-50n),
+      },
+    ],
+    movements: [
+      {
+        id,
+        shiftId: id,
+        type: "cash_out",
+        amount: money(50n),
+        reason: "Retiro",
+        createdBy: user,
+        createdAt: shift.openedAt,
+      },
+    ],
+  });
+  const response = await GET(historyRequest());
+  expect(response.status).toBe(200);
+  expect(mock.repo).toHaveBeenCalledWith(user, tenant);
+  expect(mock.history).toHaveBeenCalledWith(id);
+  expect((await response.json()).history.shifts[0].difference.minorUnits).toBe(
+    "-50",
+  );
+  expect(mock.open).not.toHaveBeenCalled();
+  expect(mock.move).not.toHaveBeenCalled();
+  expect(mock.close).not.toHaveBeenCalled();
+});
+it.each([
+  "",
+  "?locationId=bad",
+  `?locationId=${id}&locationId=${id}`,
+  `?locationId=${id}&tenantId=forged`,
+])("rejects invalid history query %s", async (query) => {
+  const { GET } = await import("../app/api/v1/cash/history/route");
+  expect((await GET(historyRequest(query))).status).toBe(400);
+  expect(mock.history).not.toHaveBeenCalled();
+});
+it("history is denied without a session before DB", async () => {
+  const { GET } = await import("../app/api/v1/cash/history/route");
+  mock.user.mockResolvedValue(null);
+  expect((await GET(historyRequest())).status).toBe(401);
+  expect(mock.repo).not.toHaveBeenCalled();
+});
+it("foreign business/location or missing read permission stays denied", async () => {
+  const { GET } = await import("../app/api/v1/cash/history/route");
+  mock.history.mockRejectedValue(new PermissionDeniedError());
+  expect(
+    (
+      await GET(
+        historyRequest(
+          "?locationId=" + id,
+          "550e8400-e29b-41d4-a716-446655440099",
+        ),
+      )
+    ).status,
+  ).toBe(403);
+});
+it("history errors remain sanitized and do not claim a financial operation failed", async () => {
+  const { GET } = await import("../app/api/v1/cash/history/route");
+  mock.history.mockRejectedValue(new Error("SQL secret internal"));
+  const response = await GET(historyRequest());
+  expect(response.status).toBe(500);
+  const text = await response.text();
+  expect(text).not.toContain("SQL secret");
+  expect(text).toContain("historial");
+  expect(text).not.toContain("confirmar la operación");
+});
+it("keeps the original current-cash response used by POS", async () => {
+  mock.current.mockResolvedValue(shift);
+  const response = await handleCash(historyRequest(), "current");
+  expect(response.status).toBe(200);
+  expect(Object.keys(await response.json())).toEqual(["shift"]);
+  expect(mock.history).not.toHaveBeenCalled();
 });
