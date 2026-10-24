@@ -1,7 +1,7 @@
 "use client";
 import { selectCompany } from "../../lib/company-selection";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type {
@@ -14,6 +14,13 @@ import InventoryForm, { type Command, type Action } from "./inventory-form";
 import InventoryMinimumForm from "../components/inventory-minimum-form";
 import InventoryStateBadge from "../components/inventory-state-badge";
 import { ActionMenu, ContextHelp } from "../components/ui";
+import {
+  inventoryPendingKey,
+  recoverPendingInventory,
+  persistPendingInventory,
+  clearPendingInventory,
+  inventoryAcknowledged,
+} from "../../lib/inventory-pending";
 
 type Tenant = { tenantId: string; tenantName?: string; permissions: string[] };
 class ApiFailure extends Error {
@@ -24,8 +31,12 @@ class ApiFailure extends Error {
     super(message);
   }
 }
-export default function InventoryPanel() {
+export default function InventoryPanel({ userId }: { userId: string }) {
   const router = useRouter();
+  const pendingKey = inventoryPendingKey(userId);
+  const sending = useRef(false);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const [recoveryBlocked, setRecoveryBlocked] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [locations, setLocations] = useState<InventoryLocationDto[]>([]);
@@ -49,6 +60,9 @@ export default function InventoryPanel() {
   const blocked =
     loading ||
     saving ||
+    !recoveryReady ||
+    recoveryBlocked ||
+    pending !== undefined ||
     editor !== undefined ||
     minimumEditor !== undefined ||
     loadFailed !== undefined;
@@ -83,7 +97,27 @@ export default function InventoryPanel() {
         if (controller.signal.aborted) return;
         setTenants(data.tenants);
         setLoadFailed(undefined);
-        const selected = selectCompany(data.tenants);
+        let selected = selectCompany(data.tenants);
+        try {
+          const recovered = recoverPendingInventory(
+            sessionStorage.getItem(pendingKey),
+            data.tenants.map((t) => t.tenantId),
+          );
+          if (recovered.kind === "blocked")
+            throw Error("PENDING_RECOVERY_BLOCKED");
+          if (recovered.kind === "recover") {
+            selected = recovered.pending.tenantId;
+            setPending(recovered.pending.command);
+          }
+          setRecoveryBlocked(false);
+        } catch {
+          setRecoveryBlocked(true);
+          setError(
+            "No podemos recuperar la operación pendiente con este acceso o almacenamiento. Conservamos su registro; confirma su estado antes de registrar otra.",
+          );
+          setLoading(false);
+        }
+        setRecoveryReady(true);
         setTenantId(selected);
         if (!selected) setLoading(false);
       })
@@ -95,7 +129,7 @@ export default function InventoryPanel() {
         }
       });
     return () => controller.abort();
-  }, [router, accessReload]);
+  }, [router, accessReload, pendingKey]);
   useEffect(() => {
     if (!tenantId) return;
     const controller = new AbortController();
@@ -145,20 +179,38 @@ export default function InventoryPanel() {
   }, [tenantId, reload, router]);
 
   async function save(command: Command) {
-    if (saving) return;
+    if (sending.current || !recoveryReady || recoveryBlocked || !tenantId)
+      return;
+    sending.current = true;
+    const value = { tenantId, command: pending ?? command };
+    let sent = false;
+    const recovering = pending !== undefined;
     setSaving(true);
     setError("");
     setNotice("");
-    setPending(command);
     try {
-      const result = await api<{ status?: string }>(command.path, {
+      persistPendingInventory(sessionStorage, pendingKey, value);
+      setPending(value.command);
+      sent = true;
+      const result = await api<{ status?: string }>(value.command.path, {
         method: "POST",
         headers: {
-          "x-tenant-id": tenantId,
+          "x-tenant-id": value.tenantId,
           "content-type": "application/json",
         },
-        body: JSON.stringify(command.body),
+        body: JSON.stringify(value.command.body),
       });
+      if (!inventoryAcknowledged(value.command, result))
+        throw Error("INCOMPLETE_ACKNOWLEDGEMENT");
+      try {
+        clearPendingInventory(sessionStorage, pendingKey, value);
+      } catch {
+        setRecoveryBlocked(true);
+        setError(
+          "Operación confirmada, pero no pudimos retirar su registro local. Conservamos el ID; no registres otra hasta recuperarlo.",
+        );
+        return;
+      }
       setPending(undefined);
       setEditor(undefined);
       setNotice(
@@ -170,14 +222,31 @@ export default function InventoryPanel() {
       setLoading(true);
       setReload((value) => value + 1);
     } catch (failure) {
-      const definite = failure instanceof ApiFailure && failure.status < 500;
-      if (definite) setPending(undefined);
+      // A later rejection cannot disprove an earlier commit. In particular,
+      // 409 also represents an ID conflict, not only insufficient stock.
+      const definite =
+        sent &&
+        !recovering &&
+        failure instanceof ApiFailure &&
+        [400, 404].includes(failure.status);
+      if (definite) {
+        try {
+          clearPendingInventory(sessionStorage, pendingKey, value);
+          setPending(undefined);
+        } catch {
+          setRecoveryBlocked(true);
+        }
+      }
+      if (!sent) setRecoveryBlocked(true);
       setError(
-        definite
-          ? failure.message
-          : "No pudimos confirmar el resultado. Reintenta el mismo comando; su ID se conserva.",
+        !sent
+          ? "No se envió la operación: no pudimos conservar su identificador. Revisa el almacenamiento antes de continuar."
+          : definite
+            ? failure.message
+            : "No pudimos confirmar el resultado. Reintenta el mismo comando; su ID se conserva.",
       );
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   }
@@ -229,7 +298,7 @@ export default function InventoryPanel() {
   return (
     <>
       <header className="topbar">
-        {saving || pending ? (
+        {saving || pending || recoveryBlocked || !recoveryReady ? (
           <span className="brand">SmartRetail</span>
         ) : (
           <Link className="brand" href="/products">
@@ -240,12 +309,14 @@ export default function InventoryPanel() {
           tenantId={tenantId}
           branchName={locations.find((l) => l.id === locationId)?.name}
           current="/inventory"
-          blocked={!!(saving || pending)}
+          blocked={!!(saving || pending || recoveryBlocked || !recoveryReady)}
           permissions={permissions}
         />
         <button
           className="secondary"
-          disabled={saving || pending !== undefined}
+          disabled={
+            saving || pending !== undefined || recoveryBlocked || !recoveryReady
+          }
           onClick={async () => {
             setSaving(true);
             try {
@@ -322,6 +393,23 @@ export default function InventoryPanel() {
           <p role="status" className="notice">
             {notice}
           </p>
+        )}
+        {pending && !editor && (
+          <section
+            className="card"
+            aria-label="Operación pendiente de inventario"
+          >
+            <p>
+              Hay una operación de inventario sin resolver. Conservamos su ID y
+              todos sus datos; no se envía automáticamente.
+            </p>
+            <button
+              disabled={saving || recoveryBlocked || !recoveryReady}
+              onClick={() => save(pending)}
+            >
+              {saving ? "Confirmando…" : "Reintentar operación pendiente"}
+            </button>
+          </section>
         )}
         {editor && (
           <InventoryForm

@@ -235,8 +235,9 @@ export default function InventoryForm({
       </div>
       {pending && !busy && (
         <p className="muted">
-          Conservamos el comando hasta confirmar su resultado. No recargues ni
-          cierres esta página durante el reintento.
+          Conservamos el comando en esta pestaña para recuperarlo tras una
+          recarga. Reintenta el mismo comando; no cierres la pestaña mientras
+          siga pendiente.
         </p>
       )}
     </form>
