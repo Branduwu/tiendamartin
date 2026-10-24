@@ -12,6 +12,8 @@ import type {
   UpdateProductDto,
 } from "@smartretail/contracts";
 import { browserAuth } from "../../lib/supabase/client";
+import { unitLabel } from "../components/presentation";
+import { UnitCodeSchema } from "@smartretail/contracts";
 import { minorUnitsToDecimal } from "../../lib/money-input";
 import ProductForm from "./product-form";
 import { Button, EmptyState, PageHeader } from "../components/ui";
@@ -70,14 +72,27 @@ export default function ProductsPanel() {
   const photos = useProductPhotos(tenantId, reload);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [unitFilter, setUnitFilter] = useState("all");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [scanner, setScanner] = useState(false),
     [initialBarcode, setInitialBarcode] = useState("");
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("es-MX");
+  const searchTerms = normalizeSearch(search.trim())
+    .split(/\s+/)
+    .filter(Boolean);
   const visibleProducts = products.filter(
     (product) =>
       (statusFilter === "all" || product.status === statusFilter) &&
-      `${product.name} ${product.sku} ${product.barcode ?? ""}`
-        .toLocaleLowerCase()
-        .includes(search.trim().toLocaleLowerCase()),
+      (unitFilter === "all" || product.unit === unitFilter) &&
+      searchTerms.every((term) =>
+        normalizeSearch(
+          `${product.name} ${product.sku} ${product.barcode ?? ""}`,
+        ).includes(term),
+      ),
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -121,11 +136,13 @@ export default function ProductsPanel() {
       .then((data) => {
         if (!controller.signal.aborted) {
           setProducts(data.products);
+          setLoadFailed(false);
           setLoading(false);
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
+          setLoadFailed(true);
           setError(
             "No pudimos cargar los productos. Revisa tu acceso e inténtalo de nuevo.",
           );
@@ -213,7 +230,7 @@ export default function ProductsPanel() {
     }
   }
   return (
-    <div className="visual-pilot pilot-products">
+    <div className="visual-pilot pilot-products products-ux">
       <header className="topbar">
         <a className="brand" href="/products">
           SmartRetail
@@ -221,7 +238,7 @@ export default function ProductsPanel() {
         <AppNavigation
           compact
           tenantId={tenantId}
-          blocked={saving || loggingOut}
+          blocked={saving || loggingOut || editor !== undefined}
           current="/products"
           permissions={
             tenants.find((t) => t.tenantId === tenantId)?.permissions ?? []
@@ -229,7 +246,7 @@ export default function ProductsPanel() {
         />
         <button
           className="secondary"
-          disabled={saving || loggingOut}
+          disabled={saving || loggingOut || editor !== undefined}
           onClick={logout}
         >
           <LoadingLabel busy={loggingOut} label="Cerrando sesión…">
@@ -276,6 +293,10 @@ export default function ProductsPanel() {
               onChange={(event) => {
                 setTenantId(event.target.value);
                 setProducts([]);
+                setSearch("");
+                setStatusFilter("all");
+                setUnitFilter("all");
+                setLoadFailed(false);
                 setLoading(true);
                 setError("");
                 setNotice("");
@@ -367,7 +388,10 @@ export default function ProductsPanel() {
           <section className="product-register" aria-label="Lista de productos">
             <div className="list-heading">
               <h2>
-                Catálogo <span className="result-count">{products.length}</span>
+                Catálogo{" "}
+                <span className="result-count">
+                  {loadFailed ? "—" : products.length}
+                </span>
               </h2>
               <button
                 className="ghost"
@@ -381,7 +405,7 @@ export default function ProductsPanel() {
                 Actualizar
               </button>
             </div>
-            {!!products.length && (
+            {!!products.length && !loadFailed && (
               <div className="catalog-toolbar">
                 <label>
                   Buscar productos
@@ -389,6 +413,7 @@ export default function ProductsPanel() {
                     id="product-search"
                     type="search"
                     placeholder="Nombre, SKU o código de barras"
+                    maxLength={200}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -404,12 +429,41 @@ export default function ProductsPanel() {
                     <option value="inactive">Inactivos</option>
                   </select>
                 </label>
+                <label>
+                  Unidad
+                  <select
+                    value={unitFilter}
+                    onChange={(e) => setUnitFilter(e.target.value)}
+                  >
+                    <option value="all">Todas las unidades</option>
+                    {UnitCodeSchema.options.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unitLabel(unit)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("all");
+                    setUnitFilter("all");
+                  }}
+                >
+                  Limpiar filtros
+                </button>
                 <p role="status">
                   {visibleProducts.length} de {products.length} productos
                 </p>
               </div>
             )}
-            {!products.length ? (
+            {loadFailed ? (
+              <EmptyState title="No pudimos consultar el catálogo">
+                Usa «Actualizar» para reintentar la consulta. No se han
+                eliminado productos.
+              </EmptyState>
+            ) : !products.length ? (
               <EmptyState
                 title="Aún no tienes productos"
                 helpHref="/help/products"
@@ -443,6 +497,7 @@ export default function ProductsPanel() {
                     onClick={() => {
                       setSearch("");
                       setStatusFilter("all");
+                      setUnitFilter("all");
                     }}
                   >
                     Limpiar búsqueda
@@ -458,9 +513,12 @@ export default function ProductsPanel() {
                 role="region"
                 aria-label="Productos"
               >
-                <table className="data-table">
-                  <thead>
-                    <tr>
+                <table className="data-table" role="table">
+                  <caption className="sr-only">
+                    Catálogo de productos consultados
+                  </caption>
+                  <thead role="rowgroup">
+                    <tr role="row">
                       {[
                         "Producto",
                         "Código de barras",
@@ -469,16 +527,16 @@ export default function ProductsPanel() {
                         "Estado",
                         "Acciones",
                       ].map((label) => (
-                        <th key={label} scope="col">
+                        <th key={label} scope="col" role="columnheader">
                           {label}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody role="rowgroup">
                     {visibleProducts.map((product) => (
-                      <tr key={product.id}>
-                        <th scope="row">
+                      <tr role="row" key={product.id}>
+                        <th scope="row" role="rowheader">
                           {photos[product.id] && (
                             <ProductThumbnail
                               key={photos[product.id]}
@@ -488,28 +546,39 @@ export default function ProductsPanel() {
                           )}
                           <strong>{product.name}</strong>
                           <span className="product-meta">
-                            {product.sku} ·{" "}
-                            {product.unit === "piece" ? "pza" : product.unit}
+                            {product.sku} · {unitLabel(product.unit)}
                           </span>
                         </th>
-                        <td data-label="Código de barras">
+                        <td role="cell" data-label="Código de barras">
                           {product.barcode ?? "—"}
                         </td>
-                        <td className="amount" data-label="Costo MXN">
+                        <td
+                          role="cell"
+                          className="amount"
+                          data-label="Costo MXN"
+                        >
                           $
                           {minorUnitsToDecimal(product.purchaseCost.minorUnits)}
                         </td>
-                        <td className="amount price" data-label="Precio MXN">
+                        <td
+                          role="cell"
+                          className="amount price"
+                          data-label="Precio MXN"
+                        >
                           ${minorUnitsToDecimal(product.salePrice.minorUnits)}
                         </td>
-                        <td data-label="Estado">
+                        <td role="cell" data-label="Estado">
                           <span className={`badge ${product.status}`}>
                             {product.status === "active"
                               ? "Activo"
                               : "Inactivo"}
                           </span>
                         </td>
-                        <td data-label="Acciones" className="row-actions">
+                        <td
+                          role="cell"
+                          data-label="Acciones"
+                          className="row-actions"
+                        >
                           <div className="desktop-product-edit">
                             {" "}
                             {canWrite ? (
@@ -533,7 +602,7 @@ export default function ProductsPanel() {
                             <summary
                               aria-label={`Más opciones de ${product.name}`}
                             >
-                              ⋯
+                              Más opciones
                             </summary>
                             <div className="product-more-content">
                               <p className="mobile-product-detail">

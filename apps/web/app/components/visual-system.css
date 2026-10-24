@@ -2197,3 +2197,217 @@ body.retail-ui:has(.app-sidebar) main.workspace {
     flex: 1 1 auto;
   }
 }
+
+/* Product catalogue and editor: presentation scoped to existing components. */
+.retail-ui .products-ux .workspace,
+.retail-ui .products-ux .product-register {
+  min-width: 0;
+}
+.retail-ui .products-ux .data-table .row-actions {
+  display: table-cell;
+}
+.retail-ui .products-ux .row-actions button {
+  width: 100%;
+  margin: 0;
+}
+.retail-ui .products-ux .product-more {
+  width: 100%;
+  margin-top: 0.5rem;
+  min-width: 0;
+}
+.retail-ui .products-ux .product-more summary {
+  font-size: 0.875rem;
+  font-weight: 500;
+  justify-content: center;
+  line-height: 1.5;
+}
+.retail-ui .products-ux th[scope="row"] strong {
+  display: block;
+}
+.retail-ui .products-ux .product-thumbnail {
+  float: none;
+  display: block;
+  margin: 0 0 0.5rem;
+}
+.retail-ui .products-ux .catalog-toolbar {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+.retail-ui .products-ux .catalog-toolbar p {
+  grid-column: 1/-1;
+  margin: 0;
+  text-align: left;
+}
+.retail-ui .products-ux :is(button, select, input, .product-more summary) {
+  min-height: 44px;
+}
+.retail-ui .products-ux .data-table {
+  width: 100%;
+  table-layout: fixed;
+}
+.retail-ui .products-ux .data-table :is(th, td) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.retail-ui .products-ux .data-table th:first-child {
+  width: 30%;
+}
+.retail-ui .products-ux .product-more summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+.retail-ui .products-ux .product-more-content {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.retail-ui .products-ux .product-meta {
+  line-height: 1.6;
+}
+.retail-ui .product-form-ux :is(label, fieldset, .form-grid) {
+  min-width: 0;
+}
+.retail-ui .product-form-ux :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+}
+.retail-ui .product-form-ux :is(p, small, label, legend, h2) {
+  overflow-wrap: anywhere;
+}
+.retail-ui .product-form-ux .product-fieldset {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+.retail-ui .product-form-ux legend {
+  padding-inline: 0.5rem;
+  font-weight: 600;
+}
+.retail-ui .product-form-ux label {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+.retail-ui .product-form-ux .form-grid {
+  align-items: start;
+}
+.retail-ui .product-form-ux .product-barcode-field {
+  display: grid;
+  gap: 0.5rem;
+}
+.retail-ui .product-form-ux .actions {
+  flex-wrap: wrap;
+}
+.retail-ui .product-form-ux button {
+  min-height: 44px;
+  white-space: normal;
+}
+@media (max-width: 1050px) {
+  .retail-ui .products-ux .catalog-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .retail-ui .products-ux .catalog-toolbar > label:first-child {
+    grid-column: 1/-1;
+  }
+  .retail-ui .products-ux .data-table,
+  .retail-ui .products-ux .data-table tbody {
+    display: block;
+  }
+  .retail-ui .products-ux .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .retail-ui .products-ux .data-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    margin: 1rem;
+  }
+  .retail-ui .products-ux .data-table th[scope="row"] {
+    grid-column: 1/-1;
+    width: auto;
+  }
+  .retail-ui .products-ux .data-table td {
+    display: block;
+    padding: 0;
+    min-width: 0;
+    border: 0;
+  }
+  .retail-ui .products-ux .data-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
+  }
+  .retail-ui .products-ux .data-table td[data-label="Código de barras"],
+  .retail-ui .products-ux .data-table td[data-label="Costo MXN"] {
+    display: block;
+  }
+  .retail-ui .products-ux .data-table td[data-label="Estado"],
+  .retail-ui .products-ux .data-table .price {
+    grid-column: auto;
+    grid-row: auto;
+    text-align: left;
+  }
+  .retail-ui .products-ux .data-table .row-actions {
+    grid-column: 1/-1;
+    grid-row: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    gap: 0.5rem;
+  }
+  .retail-ui .products-ux .desktop-product-edit {
+    display: block;
+  }
+  .retail-ui .products-ux .mobile-product-edit,
+  .retail-ui .products-ux .mobile-product-detail {
+    display: none;
+  }
+  .retail-ui .products-ux .row-actions button {
+    margin: 0;
+  }
+  .retail-ui .products-ux .table-scroll {
+    overflow: visible;
+  }
+}
+@media (max-width: 1050px) {
+  .retail-ui .products-ux .data-table .row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .retail-ui .products-ux .row-actions::before {
+    grid-column: 1/-1;
+  }
+  .retail-ui .products-ux .product-more {
+    margin-top: 0;
+  }
+}
+@media (max-width: 540px) {
+  .retail-ui .products-ux .catalog-toolbar,
+  .retail-ui .product-form-ux .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .retail-ui .products-ux .catalog-toolbar > * {
+    grid-column: 1;
+    min-width: 0;
+  }
+  .retail-ui .product-form-ux {
+    padding: 1rem;
+  }
+  .retail-ui .product-form-ux .actions > button {
+    flex: 1 1 100%;
+  }
+}
