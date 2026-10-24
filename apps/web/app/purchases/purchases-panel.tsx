@@ -16,7 +16,16 @@ import { PurchasePayable } from "../components/financial-panel";
 import PurchaseDocument from "../components/purchase-document";
 import { documentIdentity } from "../../lib/document-review";
 import AppNavigation, { companyLabel } from "../components/app-navigation";
-import { formatDateTime } from "../components/presentation";
+import {
+  purchaseAmount,
+  purchaseLineAmount,
+  purchaseReference,
+  filterPurchases,
+  emptyPurchaseFilters,
+  purchaseStatusText,
+  type PurchaseFilters,
+} from "../../lib/purchase-display";
+import { formatDateTime, unitLabel } from "../components/presentation";
 import {
   replenishmentPath,
   trustedPurchasePrefill,
@@ -39,13 +48,7 @@ import {
 
 type Receipt = ReturnType<typeof ReceivePurchaseOrderSchema.parse>;
 type Pending = { tenantId: string; purchaseId: string; input: Receipt };
-const statusText = {
-  draft: "Borrador",
-  ordered: "Ordenada",
-  partially_received: "Recibida parcialmente",
-  received: "Recibida",
-  cancelled: "Cancelada",
-};
+const statusText = purchaseStatusText;
 const remaining = (l: PurchaseOrderDto["lines"][number]) =>
   (
     BigInt(l.quantityOrdered.milliUnits) - BigInt(l.quantityReceived.milliUnits)
@@ -81,6 +84,25 @@ export default function PurchasesPanel({
     [storageBlocked, setStorageBlocked] = useState(false),
     [rejected, setRejected] = useState(false),
     [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [filterState, setFilterState] = useState<{
+    tenantId: string;
+    values: PurchaseFilters;
+  }>();
+  const [loadProblem, setLoadProblem] = useState("");
+  const filters =
+    filterState?.tenantId === company.tenantId
+      ? filterState.values
+      : emptyPurchaseFilters;
+  const updateFilter = (fields: Partial<PurchaseFilters>) =>
+    setFilterState({
+      tenantId: company.tenantId,
+      values: { ...filters, ...fields },
+    });
+  const invalidDates =
+    !!filters.from && !!filters.to && filters.from > filters.to;
+  const visibleOrders = invalidDates
+    ? []
+    : filterPurchases(orders, suppliers, filters);
   const sending = useRef(false);
   const consumedPrefill = useRef("");
   const [prefill, setPrefill] = useState<PurchasePrefill>();
@@ -187,6 +209,7 @@ export default function PurchasesPanel({
       .then(([p, s, pr, l, d, suggestion]) => {
         if (c.signal.aborted) return;
         setOrders(p.purchases);
+        setLoadProblem("");
         setSuppliers(s.suppliers);
         setProducts(pr.products);
         setLocations(l.locations);
@@ -225,6 +248,7 @@ export default function PurchasesPanel({
       .catch((e) => {
         if (c.signal.aborted) return;
         setError(e instanceof Error ? e.message : "No pudimos cargar compras.");
+        setLoadProblem(loadKey);
         setLoadedKey(loadKey);
         setEditor(undefined);
         setDetail(null);
@@ -437,7 +461,11 @@ export default function PurchasesPanel({
           permissions={company.permissions}
         />
       </header>
-      <main id="workspace-content" tabIndex={-1} className="workspace">
+      <main
+        id="workspace-content"
+        tabIndex={-1}
+        className="workspace purchases-workspace"
+      >
         <div className="page-heading">
           <div>
             <p className="eyebrow">Abastecimiento</p>
@@ -448,6 +476,22 @@ export default function PurchasesPanel({
           </div>
           <div className="actions">
             <Link href="/suppliers">Ver proveedores</Link>
+            <button
+              className="secondary"
+              disabled={
+                saving ||
+                loading ||
+                !!pending ||
+                !company.tenantId ||
+                editor !== undefined
+              }
+              onClick={() => {
+                setError("");
+                setReload((n) => n + 1);
+              }}
+            >
+              Actualizar compras
+            </button>
             {canWrite && !initialPurchaseId && !saving && !pending && (
               <Link
                 href={`/purchases/capture?tenantId=${encodeURIComponent(company.tenantId)}`}
@@ -588,8 +632,21 @@ export default function PurchasesPanel({
                   {suppliers.find((s) => s.id === detail.supplierId)?.name ??
                     "Proveedor de la orden"}
                 </h2>
-                <span className="badge">{statusText[detail.status]}</span>
+                <span
+                  className={`badge purchase-status purchase-status--${detail.status}`}
+                >
+                  {statusText[detail.status]}
+                </span>
               </div>
+              <p className="purchase-reference">{purchaseReference(detail)}</p>
+              <div className="purchase-total">
+                <span>Importe de la orden</span>
+                <strong>${purchaseAmount(detail)} MXN</strong>
+              </div>
+              <p className="muted">
+                Importe pedido, no saldo por pagar ni valor de una recepción
+                parcial.
+              </p>
               <p>
                 Ubicación:{" "}
                 {locations.find((l) => l.id === detail.locationId)?.name ??
@@ -629,6 +686,10 @@ export default function PurchasesPanel({
                 <summary>Referencia de la orden</summary>
                 <p className="sale-id">{detail.id}</p>
               </details>
+              <p className="muted">
+                El borrador no mueve existencias. Confirmar la orden permite
+                recibir mercancía; cancelar conserva las recepciones previas.
+              </p>
               <div className="actions">
                 {detail.status === "draft" && canWrite && (
                   <>
@@ -643,7 +704,7 @@ export default function PurchasesPanel({
                       disabled={saving || !!pending}
                       onClick={() => action("order")}
                     >
-                      Ordenar compra
+                      Confirmar orden
                     </button>
                   </>
                 )}
@@ -668,37 +729,57 @@ export default function PurchasesPanel({
               </div>
             </section>
             <section className="card">
-              <h2>Líneas de la orden</h2>
+              <h2>Productos de la orden</h2>
               <div className="responsive-table">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Producto</th>
-                      <th>Pedido</th>
-                      <th>Recibido</th>
-                      <th>Pendiente</th>
-                      <th>Costo unitario</th>
+                <table role="table" className="data-table">
+                  <thead role="rowgroup">
+                    <tr role="row">
+                      <th scope="col" role="columnheader">
+                        Producto
+                      </th>
+                      <th scope="col" role="columnheader">
+                        Pedido
+                      </th>
+                      <th scope="col" role="columnheader">
+                        Recibido
+                      </th>
+                      <th scope="col" role="columnheader">
+                        Pendiente
+                      </th>
+                      <th scope="col" role="columnheader">
+                        Costo unitario
+                      </th>
+                      <th scope="col" role="columnheader">
+                        Importe pedido
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody role="rowgroup">
                     {detail.lines.map((l) => (
-                      <tr key={l.productId}>
-                        <th scope="row">
+                      <tr role="row" key={l.productId}>
+                        <th scope="row" role="rowheader">
                           {products.find((p) => p.id === l.productId)?.name ??
                             "Producto"}
-                          <small>{l.quantityOrdered.unit}</small>
+                          <small>{unitLabel(l.quantityOrdered.unit)}</small>
                         </th>
-                        <td data-label="Pedido">
+                        <td role="cell" data-label="Pedido">
                           {milliUnitsToDecimal(l.quantityOrdered.milliUnits)}
                         </td>
-                        <td data-label="Recibido">
+                        <td role="cell" data-label="Recibido">
                           {milliUnitsToDecimal(l.quantityReceived.milliUnits)}
                         </td>
-                        <td data-label="Pendiente">
+                        <td role="cell" data-label="Pendiente">
                           <strong>{milliUnitsToDecimal(remaining(l))}</strong>
                         </td>
-                        <td data-label="Costo unitario">
+                        <td role="cell" data-label="Costo unitario">
                           ${minorUnitsToDecimal(l.unitCost.minorUnits)} MXN
+                        </td>
+                        <td role="cell" data-label="Importe pedido">
+                          $
+                          {minorUnitsToDecimal(
+                            purchaseLineAmount(l).toString(),
+                          )}{" "}
+                          MXN
                         </td>
                       </tr>
                     ))}
@@ -735,7 +816,8 @@ export default function PurchasesPanel({
                           <label key={l.productId}>
                             {products.find((p) => p.id === l.productId)?.name ??
                               "Producto"}{" "}
-                            — recibir ahora ({l.quantityOrdered.unit})
+                            — recibir ahora ({unitLabel(l.quantityOrdered.unit)}
+                            )
                             <span className="muted">
                               Pedido{" "}
                               {milliUnitsToDecimal(
@@ -816,75 +898,209 @@ export default function PurchasesPanel({
           </>
         )}
         {!initialPurchaseId && !loading && company.tenantId && (
-          <section className="card">
-            <h2>Órdenes de compra</h2>
-            <p className="muted">Hasta 100 órdenes recientes.</p>
-            {orders.length === 0 ? (
-              <p>
-                Aún no hay órdenes. Una orden prepara la compra; las existencias
-                cambian al recibir mercancía.{" "}
-                <Link href="/help/purchase-orders">
-                  Cómo preparar una compra
-                </Link>{" "}
-                {canWrite
-                  ? "Crea una con un proveedor activo y una ubicación."
-                  : "Solicita a un administrador que prepare una orden."}
+          <section
+            className="card purchase-orders"
+            aria-labelledby="purchase-orders-title"
+          >
+            <h2 id="purchase-orders-title">Órdenes de compra</h2>
+            <p id="purchase-filter-scope" className="muted">
+              Búsqueda en las últimas 100 órdenes consultadas. No incluye todo
+              el historial. Fechas de creación en horario de Ciudad de México.
+            </p>
+            {loadProblem === loadKey ? (
+              <p role="status">
+                No se pudo consultar el listado. Usa «Actualizar compras» para
+                reintentar.
               </p>
             ) : (
-              <div className="responsive-table">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Proveedor</th>
-                      <th>Ubicación</th>
-                      <th>Estado</th>
-                      <th>Cantidades</th>
-                      <th>Fecha</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((o) => (
-                      <tr key={o.id}>
-                        <th scope="row">
-                          {suppliers.find((s) => s.id === o.supplierId)?.name ??
-                            "Proveedor"}
-                        </th>
-                        <td data-label="Ubicación">
-                          {locations.find((l) => l.id === o.locationId)?.name ??
-                            "Ubicación"}
-                        </td>
-                        <td data-label="Estado">{statusText[o.status]}</td>
-                        <td data-label="Cantidades">
-                          {o.lines.map((l) => (
-                            <p key={l.productId}>
-                              {milliUnitsToDecimal(
-                                l.quantityReceived.milliUnits,
-                              )}{" "}
-                              /{" "}
-                              {milliUnitsToDecimal(
-                                l.quantityOrdered.milliUnits,
-                              )}{" "}
-                              {l.quantityOrdered.unit}
-                            </p>
-                          ))}
-                        </td>
-                        <td data-label="Fecha">
-                          {formatDateTime(o.createdAt)}
-                        </td>
-                        <td data-label="Acciones" className="row-actions">
-                          <Link
-                            className="button-link"
-                            href={`/purchases/${o.id}?tenantId=${company.tenantId}`}
-                          >
-                            Ver orden
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div
+                  className="purchase-filters"
+                  role="search"
+                  aria-label="Filtrar órdenes"
+                  aria-describedby="purchase-filter-scope"
+                >
+                  <label>
+                    Buscar proveedor o referencia
+                    <input
+                      type="search"
+                      maxLength={200}
+                      value={filters.query}
+                      onChange={(e) => updateFilter({ query: e.target.value })}
+                      placeholder="Proveedor, folio, referencia o nota"
+                    />
+                  </label>
+                  <label>
+                    Proveedor
+                    <select
+                      value={filters.supplier}
+                      onChange={(e) =>
+                        updateFilter({ supplier: e.target.value })
+                      }
+                    >
+                      <option value="">Todos los proveedores</option>
+                      {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {s.status !== "active" ? " (inactivo)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Estado
+                    <select
+                      value={filters.status}
+                      onChange={(e) => updateFilter({ status: e.target.value })}
+                    >
+                      <option value="">Todos los estados</option>
+                      {Object.entries(statusText).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Desde
+                    <input
+                      type="date"
+                      value={filters.from}
+                      aria-invalid={invalidDates}
+                      aria-describedby={
+                        invalidDates ? "purchase-date-error" : undefined
+                      }
+                      onChange={(e) => updateFilter({ from: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Hasta
+                    <input
+                      type="date"
+                      value={filters.to}
+                      aria-invalid={invalidDates}
+                      aria-describedby={
+                        invalidDates ? "purchase-date-error" : undefined
+                      }
+                      onChange={(e) => updateFilter({ to: e.target.value })}
+                    />
+                  </label>
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      setFilterState({
+                        tenantId: company.tenantId,
+                        values: emptyPurchaseFilters,
+                      })
+                    }
+                  >
+                    Limpiar filtros
+                  </button>
+                </div>
+                {invalidDates && (
+                  <p className="error" id="purchase-date-error" role="alert">
+                    La fecha «Desde» debe ser anterior o igual a «Hasta».
+                  </p>
+                )}
+                <p role="status" className="muted">
+                  {visibleOrders.length} de {orders.length} órdenes consultadas
+                </p>
+                {orders.length === 0 ? (
+                  <p>
+                    Aún no hay órdenes. Prepara una compra con un proveedor
+                    activo y una ubicación; las existencias cambian sólo al
+                    recibir mercancía.{" "}
+                    <Link href="/help/purchase-orders">
+                      Cómo preparar una compra
+                    </Link>
+                  </p>
+                ) : visibleOrders.length === 0 ? (
+                  <p>
+                    No hay coincidencias con estos filtros en las órdenes
+                    consultadas. Cambia los criterios o limpia los filtros.
+                  </p>
+                ) : (
+                  <div className="responsive-table">
+                    <table role="table" className="data-table purchase-list">
+                      <caption className="sr-only">
+                        Órdenes recientes, de la más nueva a la más antigua
+                      </caption>
+                      <thead role="rowgroup">
+                        <tr role="row">
+                          <th scope="col" role="columnheader">
+                            Proveedor y folio
+                          </th>
+                          <th scope="col" role="columnheader">
+                            Ubicación
+                          </th>
+                          <th scope="col" role="columnheader">
+                            Estado
+                          </th>
+                          <th scope="col" role="columnheader">
+                            Fecha de creación
+                          </th>
+                          <th scope="col" role="columnheader">
+                            Importe pedido
+                          </th>
+                          <th scope="col" role="columnheader">
+                            Acciones
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody role="rowgroup">
+                        {visibleOrders.map((o) => (
+                          <tr role="row" key={o.id}>
+                            <th scope="row" role="rowheader">
+                              <strong>
+                                {suppliers.find((s) => s.id === o.supplierId)
+                                  ?.name ?? "Proveedor"}
+                              </strong>
+                              <span className="purchase-reference">
+                                {purchaseReference(o)}
+                              </span>
+                            </th>
+                            <td role="cell" data-label="Ubicación">
+                              {locations.find((l) => l.id === o.locationId)
+                                ?.name ?? "Ubicación"}
+                            </td>
+                            <td role="cell" data-label="Estado">
+                              <span
+                                className={`badge purchase-status purchase-status--${o.status}`}
+                              >
+                                {statusText[o.status]}
+                              </span>
+                            </td>
+                            <td role="cell" data-label="Fecha de creación">
+                              <time dateTime={o.createdAt}>
+                                {formatDateTime(o.createdAt)}
+                              </time>
+                            </td>
+                            <td
+                              data-label="Importe pedido"
+                              className="purchase-money"
+                            >
+                              ${purchaseAmount(o)} MXN
+                            </td>
+                            <td
+                              role="cell"
+                              data-label="Acciones"
+                              className="row-actions"
+                            >
+                              <Link
+                                className="button-link"
+                                aria-label={`Ver orden ${purchaseReference(o)}`}
+                                href={`/purchases/${o.id}?tenantId=${company.tenantId}`}
+                              >
+                                Ver orden
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -1069,7 +1285,7 @@ function DraftForm({
                     value={p.id}
                     disabled={p.status !== "active"}
                   >
-                    {p.name} · {p.unit}
+                    {p.name} · {unitLabel(p.unit)}
                     {p.status !== "active" ? " (inactivo)" : ""}
                   </option>
                 ))}

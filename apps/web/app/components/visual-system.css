@@ -1995,3 +1995,205 @@ body.retail-ui:has(.app-sidebar) main.workspace {
     width: 100%;
   }
 }
+
+/* Compras: scoped presentation only; financial controls remain unchanged. */
+.retail-ui .purchases-workspace {
+  min-width: 0;
+}
+.retail-ui
+  .purchases-workspace
+  :is(.card, .form-grid, fieldset, label, .actions) {
+  min-width: 0;
+}
+.retail-ui .purchases-workspace :is(button, .button-link, select, input) {
+  min-height: 44px;
+}
+.retail-ui .purchases-workspace :is(button, .button-link) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.retail-ui .purchase-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: end;
+  margin-block: 1.5rem;
+}
+.retail-ui .purchase-filters label {
+  display: grid;
+  gap: 0.5rem;
+}
+.retail-ui .purchases-workspace :is(select, input, textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.retail-ui .purchase-reference {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  margin-top: 0.35rem;
+}
+.retail-ui .purchases-workspace .data-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.retail-ui
+  .purchases-workspace
+  :is(th, td, p, strong, span, small, summary, h2) {
+  overflow-wrap: anywhere;
+}
+.retail-ui .purchases-workspace .data-table :is(td, th) {
+  vertical-align: top;
+  white-space: normal;
+}
+.retail-ui .purchases-workspace .data-table small {
+  display: block;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+.retail-ui .purchase-money {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.retail-ui .purchase-list th:first-child {
+  width: 24%;
+}
+.retail-ui .purchase-status {
+  display: inline-flex;
+  white-space: normal;
+  text-align: left;
+  max-width: 100%;
+  line-height: 1.4;
+}
+.retail-ui .purchase-status--draft {
+  background: #f1f5f9;
+  color: #334155;
+}
+.retail-ui .purchase-status--ordered {
+  background: #eff6ff;
+  color: #1e40af;
+}
+.retail-ui .purchase-status--partially_received {
+  background: #fff7ed;
+  color: #9a3412;
+}
+.retail-ui .purchase-status--received {
+  background: #ecfdf5;
+  color: #065f46;
+}
+.retail-ui .purchase-status--cancelled {
+  background: #fef2f2;
+  color: #991b1b;
+}
+.retail-ui .purchase-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-block: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+}
+.retail-ui .purchase-total strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+.retail-ui .purchases-workspace .purchase-flow {
+  line-height: 1.8;
+}
+.retail-ui .purchases-workspace form.stack > label {
+  display: grid;
+  gap: 0.5rem;
+}
+.retail-ui .purchases-workspace .purchase-draft-line {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+.retail-ui .purchases-workspace .purchase-draft-line legend {
+  padding-inline: 0.5rem;
+  font-weight: 600;
+}
+@media (max-width: 1050px) {
+  .retail-ui .purchase-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .retail-ui .purchases-workspace .responsive-table {
+    overflow: visible;
+  }
+  .retail-ui .purchases-workspace .data-table,
+  .retail-ui .purchases-workspace .data-table tbody {
+    display: block;
+  }
+  .retail-ui .purchases-workspace .data-table thead {
+    position: absolute;
+    display: table-header-group;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .retail-ui .purchases-workspace .data-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    padding: 1rem;
+    margin-block: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+  }
+  .retail-ui .purchases-workspace .data-table th,
+  .retail-ui .purchases-workspace .data-table td {
+    display: block;
+    width: auto;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    min-width: 0;
+  }
+  .retail-ui .purchases-workspace .data-table th {
+    grid-column: 1/-1;
+  }
+  .retail-ui .purchases-workspace .data-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 400;
+    margin-bottom: 0.25rem;
+  }
+  .retail-ui .purchases-workspace .data-table .row-actions {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 540px) {
+  .retail-ui .purchase-filters,
+  .retail-ui .purchases-workspace .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .retail-ui .purchases-workspace .page-heading .actions {
+    width: 100%;
+    align-items: stretch;
+  }
+  .retail-ui .purchases-workspace .page-heading .actions > * {
+    flex: 1 1 100%;
+  }
+  .retail-ui .purchases-workspace .data-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .retail-ui .purchases-workspace .card {
+    padding: 1rem;
+  }
+  .retail-ui .purchases-workspace .actions > button {
+    flex: 1 1 auto;
+  }
+}
