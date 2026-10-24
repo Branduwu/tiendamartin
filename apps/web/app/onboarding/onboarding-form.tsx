@@ -127,7 +127,9 @@ export default function OnboardingForm({ actor }: { actor: string }) {
       });
       sessionStorage.removeItem(key);
       // A newly created membership must not reuse a prefetched anonymous route.
-      window.location.assign(new URL("/products", window.location.origin).href);
+      window.location.assign(
+        new URL("/help/first-steps", window.location.origin).href,
+      );
     } catch (e) {
       setError(
         e instanceof Error
