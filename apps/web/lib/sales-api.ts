@@ -5,6 +5,7 @@ import {
   SaleIdSchema,
   UuidSchema,
   SaleQuoteSchema,
+  SalesHistoryQuerySchema,
 } from "@smartretail/contracts";
 import {
   completeSaleTransaction,
@@ -73,14 +74,24 @@ export async function handleSales(
       });
     }
     if (operation === "list") {
-      if (new URL(request.url).search)
-        return reply({ error: "Consulta no soportada." }, 400);
-      const sales = await repo.listSales();
+      const params = new URL(request.url).searchParams;
+      const query: Record<string, string> = {};
+      for (const [key, value] of params) {
+        if (Object.hasOwn(query, key))
+          return reply({ error: "Revisa los filtros de ventas." }, 400);
+        Object.defineProperty(query, key, { value, enumerable: true });
+      }
+      const parsed = SalesHistoryQuerySchema.safeParse(query);
+      if (!parsed.success)
+        return reply(
+          { error: "Revisa los filtros de ventas y el intervalo de fechas." },
+          400,
+        );
+      const page = await repo.listSalesPage(parsed.data);
       return reply({
-        sales: sales.map(storedSaleDto),
-        returnedSaleIds: await repo.returnedSaleIds(
-          sales.map((s) => s.sale.id),
-        ),
+        sales: page.sales.map(storedSaleDto),
+        returnedSaleIds: page.returnedSaleIds,
+        nextCursor: page.nextCursor,
       });
     }
     if (operation === "read") {
@@ -212,7 +223,7 @@ export async function handleSales(
       );
     console.error(
       JSON.stringify({
-        operation: "sales.create",
+        operation: operation === "list" ? "sales.list" : "sales.create",
         correlationId,
         at: new Date().toISOString(),
         outcome: "unexpected_error",
@@ -221,7 +232,9 @@ export async function handleSales(
     return reply(
       {
         error:
-          "No se pudo confirmar la venta. Reintenta con el mismo identificador.",
+          operation === "list"
+            ? "No pudimos cargar las ventas. Intenta consultar de nuevo."
+            : "No se pudo confirmar la venta. Reintenta con el mismo identificador.",
         correlationId,
       },
       500,

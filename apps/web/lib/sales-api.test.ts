@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   read: vi.fn(),
   quote: vi.fn(),
+  list: vi.fn(),
 }));
 vi.mock("./auth", () => ({ verifiedUserId: mocks.user }));
 vi.mock("./database", () => ({ salesForUser: mocks.repo }));
@@ -79,9 +80,15 @@ beforeEach(() => {
     runSale: mocks.run,
     readSale: mocks.read,
     quoteSale: mocks.quote,
+    listSalesPage: mocks.list,
   });
   mocks.run.mockResolvedValue({ recorded, replayed: false });
   mocks.read.mockResolvedValue(recorded);
+  mocks.list.mockResolvedValue({
+    sales: [recorded],
+    returnedSaleIds: [],
+    nextCursor: null,
+  });
 });
 it("returns 401 without verified session before DB", async () => {
   mocks.user.mockResolvedValue(null);
@@ -180,4 +187,78 @@ it("sanitizes unavailable coupons and excessive manual discount responses", asyn
     expect(response.status).toBe(status);
     expect(await response.text()).not.toContain("SQL sensitive");
   }
+});
+
+const historyRequest = (query = "", business = tenant) =>
+  new Request(`https://example.test/api/v1/sales${query}`, {
+    headers: { "x-tenant-id": business },
+  });
+it("lists a bounded page using verified identity and validated filters", async () => {
+  const { GET: list } = await import("../app/api/v1/sales/route");
+  const cursor = `2026-10-02T12:00:00.123456Z~${id}`;
+  mocks.list.mockResolvedValue({
+    sales: [recorded],
+    returnedSaleIds: [id],
+    nextCursor: cursor,
+  });
+  const response = await list(
+    historyRequest(
+      `?q=Caf%C3%A9&from=2026-10-01&to=2026-10-02&payment=cash&locationId=${location}&cursor=${encodeURIComponent(cursor)}`,
+    ),
+  );
+  expect(response.status).toBe(200);
+  expect(mocks.repo).toHaveBeenCalledWith(user, tenant);
+  expect(mocks.list).toHaveBeenCalledWith({
+    q: "Café",
+    from: "2026-10-01",
+    to: "2026-10-02",
+    payment: "cash",
+    locationId: location,
+    cursor,
+  });
+  expect(await response.json()).toMatchObject({
+    sales: [dto],
+    returnedSaleIds: [id],
+    nextCursor: cursor,
+  });
+});
+it.each([
+  "?limit=10000",
+  "?q=a&q=b",
+  "?tenantId=forged",
+  "?__proto__=x",
+  "?cursor=invalid",
+  "?from=2026-02-30",
+  "?from=2026-10-03&to=2026-10-02",
+  "?payment=wire",
+  "?locationId=forged",
+  `?q=${"a".repeat(81)}`,
+])("rejects unsupported or invalid history query %s", async (query) => {
+  const { GET: list } = await import("../app/api/v1/sales/route");
+  expect((await list(historyRequest(query))).status).toBe(400);
+  expect(mocks.list).not.toHaveBeenCalled();
+});
+it("denies history without a session before creating a repository", async () => {
+  const { GET: list } = await import("../app/api/v1/sales/route");
+  mocks.user.mockResolvedValue(null);
+  expect((await list(historyRequest())).status).toBe(401);
+  expect(mocks.repo).not.toHaveBeenCalled();
+});
+it("does not treat a foreign tenant header as authorization", async () => {
+  const { GET: list } = await import("../app/api/v1/sales/route");
+  mocks.list.mockRejectedValue(new PermissionDeniedError());
+  expect(
+    (await list(historyRequest("", "550e8400-e29b-41d4-a716-446655440099")))
+      .status,
+  ).toBe(403);
+});
+it("sanitizes history failures and does not show a sale-confirmation error", async () => {
+  const { GET: list } = await import("../app/api/v1/sales/route");
+  mocks.list.mockRejectedValue(new Error("private database failure"));
+  const response = await list(historyRequest());
+  expect(response.status).toBe(500);
+  const text = await response.text();
+  expect(text).not.toContain("private database");
+  expect(text).not.toContain("confirmar la venta");
+  expect(text).toContain("cargar las ventas");
 });

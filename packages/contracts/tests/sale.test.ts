@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   SaleIdSchema,
+  SalesHistoryQuerySchema,
   SaleLineSchema,
   SaleSchema,
   SaleDraftSchema,
@@ -137,4 +138,30 @@ describe("sale contracts", () => {
       }).success,
     ).toBe(false);
   });
+});
+
+it("validates bounded history filters and precise tuple cursors", () => {
+  expect(
+    SalesHistoryQuerySchema.parse({
+      q: "  Café  ",
+      cursor: `2026-10-23T12:00:00.123456Z~${id}`,
+      from: "2026-10-01",
+      to: "2026-10-23",
+      payment: "card",
+    }).q,
+  ).toBe("Café");
+});
+it.each([
+  { q: "" },
+  { q: " ".repeat(3) },
+  { q: "a".repeat(81) },
+  { from: "2026-02-30" },
+  { from: "2026-10-24", to: "2026-10-23" },
+  { to: "9999-12-31" },
+  { cursor: `2026-10-23T12:00:00.123Z~${id}` },
+  { cursor: `2026-10-23T12:00:00.123456Z~bad` },
+  { payment: "wire" },
+  { page: 2 },
+])("rejects invalid history filters %j", (value) => {
+  expect(SalesHistoryQuerySchema.safeParse(value).success).toBe(false);
 });

@@ -65,6 +65,8 @@ export {
   CheckoutSchema,
   SalePaymentSchema,
   StoredSaleSchema,
+  SalesHistoryQuerySchema,
+  type SalesHistoryQueryDto,
   type CheckoutDto,
   type StoredSaleDto,
 } from "./checkout";

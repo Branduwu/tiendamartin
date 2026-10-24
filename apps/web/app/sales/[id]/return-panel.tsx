@@ -1,4 +1,5 @@
 "use client";
+import { unitLabel } from "../../components/presentation";
 import { useEffect, useRef, useState } from "react";
 import { completeSale, quantity, quoteSaleReturn } from "@smartretail/domain";
 import {
@@ -367,7 +368,8 @@ export default function ReturnPanel({
             <p key={l.productId}>
               {recorded.sale.lines.find((s) => s.productId === l.productId)
                 ?.name ?? l.productId}
-              : {milliUnitsToDecimal(l.quantity.milliUnits)} {l.quantity.unit} ·{" "}
+              : {milliUnitsToDecimal(l.quantity.milliUnits)}{" "}
+              {unitLabel(l.quantity.unit, l.quantity.milliUnits)} ·{" "}
               {mxn(l.refunded.minorUnits)}
             </p>
           ))}
@@ -426,7 +428,7 @@ export default function ReturnPanel({
                       Comprado: {milliUnitsToDecimal(l.quantity.milliUnits)} ·
                       Ya devuelto: {milliUnitsToDecimal(done.toString())} ·
                       Disponible: {milliUnitsToDecimal(remaining.toString())}{" "}
-                      {l.unit}
+                      {unitLabel(l.unit, l.quantity.milliUnits.toString())}
                     </p>
                     <p>
                       Importe de esta devolución:{" "}

@@ -1,3 +1,4 @@
+import { unitLabel } from "../../components/presentation";
 import TicketIdentity from "../../components/ticket-identity";
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
@@ -143,7 +144,8 @@ export default async function TicketPage({
             <strong>{l.name}</strong>
             <p>{l.sku}</p>
             <p>
-              {milliUnitsToDecimal(l.quantity.milliUnits.toString())} {l.unit} ×{" "}
+              {milliUnitsToDecimal(l.quantity.milliUnits.toString())}{" "}
+              {unitLabel(l.unit, l.quantity.milliUnits.toString())} ×{" "}
               {mxn(l.unitPrice.minorUnits)}
             </p>
             <p>Total línea: {mxn(l.lineTotal.minorUnits)}</p>

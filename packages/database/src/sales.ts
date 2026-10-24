@@ -97,7 +97,10 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
       "SELECT * FROM retail.sale_payments WHERE tenant_id=$1 AND sale_id=$2 ORDER BY method",
       [this.tenant, id],
     );
-    const snapshots: SaleLine[] = lines.rows.map((l) =>
+    return this.hydrateSale(row, lines.rows, payments.rows);
+  }
+  private hydrateSale(row: SaleRow, lines: LineRow[], payments: PaymentRow[]) {
+    const snapshots: SaleLine[] = lines.map((l) =>
       Object.freeze({
         productId: productId(l.product_id),
         sku: sku(l.sku),
@@ -136,7 +139,7 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
         : { customerName: row.customer_name }),
       sale,
       payments: salePayments(
-        payments.rows.map((p) => ({
+        payments.map((p) => ({
           method: p.method,
           amount: money(integer(p.amount_minor_units)),
         })),
@@ -162,6 +165,96 @@ export class PostgresSales extends PostgresInventory implements SaleUnitOfWork {
       if (!found) throw new SaleNotFoundError();
       return found.recorded;
     });
+  }
+  /** Keyset scan uses sales_history; child snapshots are loaded in two bounded queries. */
+  async listSalesPage(
+    options: {
+      cursor?: string;
+      q?: string;
+      from?: string;
+      to?: string;
+      locationId?: string;
+      payment?: "cash" | "card" | "credit";
+    } = {},
+  ) {
+    return this.transaction(
+      "sales.read",
+      async (client) => {
+        const values: unknown[] = [this.tenant];
+        const bind = (value: unknown) => {
+          values.push(value);
+          return `$${values.length}`;
+        };
+        const where = ["s.tenant_id=$1"];
+        if (options.cursor) {
+          const [at, id] = options.cursor.split("~");
+          where.push(
+            `(s.created_at,s.id)<(${bind(at)}::timestamptz,${bind(saleId(id!))}::uuid)`,
+          );
+        }
+        if (options.from)
+          where.push(
+            `s.created_at>=(${bind(options.from)}::date::timestamp AT TIME ZONE 'America/Mexico_City')`,
+          );
+        if (options.to)
+          where.push(
+            `s.created_at<((${bind(options.to)}::date+1)::timestamp AT TIME ZONE 'America/Mexico_City')`,
+          );
+        if (options.locationId)
+          where.push(
+            `s.location_id=${bind(inventoryLocationId(options.locationId))}::uuid`,
+          );
+        if (options.payment)
+          where.push(
+            `EXISTS (SELECT 1 FROM retail.sale_payments p WHERE p.tenant_id=s.tenant_id AND p.sale_id=s.id AND p.method=${bind(options.payment)})`,
+          );
+        if (options.q) {
+          const term = bind(`%${options.q.replace(/[!%_]/g, "!$&")}%`);
+          where.push(
+            `(s.id::text ILIKE ${term} ESCAPE '!' OR coalesce(s.customer_name,'Público general') ILIKE ${term} ESCAPE '!' OR coalesce(s.created_by_name,'') ILIKE ${term} ESCAPE '!' OR EXISTS (SELECT 1 FROM retail.sale_lines l WHERE l.tenant_id=s.tenant_id AND l.sale_id=s.id AND (l.product_name ILIKE ${term} ESCAPE '!' OR l.sku ILIKE ${term} ESCAPE '!')))`,
+          );
+        }
+        const result = await client.query<SaleRow & { cursor_at: string }>(
+          `SELECT s.*,to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at FROM retail.sales s WHERE ${where.join(" AND ")} ORDER BY s.created_at DESC,s.id DESC LIMIT 51`,
+          values,
+        );
+        const page = result.rows.slice(0, 50);
+        const ids = page.map((r) => r.id);
+        if (!ids.length)
+          return {
+            sales: [] as StoredSale[],
+            returnedSaleIds: [] as string[],
+            nextCursor: null,
+          };
+        const lines = await client.query<LineRow & { sale_id: string }>(
+          "SELECT * FROM retail.sale_lines WHERE tenant_id=$1 AND sale_id=ANY($2::uuid[]) ORDER BY sale_id,ordinal",
+          [this.tenant, ids],
+        );
+        const payments = await client.query<PaymentRow & { sale_id: string }>(
+          "SELECT * FROM retail.sale_payments WHERE tenant_id=$1 AND sale_id=ANY($2::uuid[]) ORDER BY sale_id,method",
+          [this.tenant, ids],
+        );
+        const returned = await client.query<{ sale_id: string }>(
+          "SELECT DISTINCT sale_id FROM retail.sale_returns WHERE tenant_id=$1 AND sale_id=ANY($2::uuid[])",
+          [this.tenant, ids],
+        );
+        const last = page[page.length - 1]!;
+        return {
+          sales: page.map(
+            (row) =>
+              this.hydrateSale(
+                row,
+                lines.rows.filter((l) => l.sale_id === row.id),
+                payments.rows.filter((p) => p.sale_id === row.id),
+              ).recorded,
+          ),
+          returnedSaleIds: returned.rows.map((r) => r.sale_id),
+          nextCursor:
+            result.rows.length > 50 ? `${last.cursor_at}~${last.id}` : null,
+        };
+      },
+      true,
+    );
   }
   async listSales(before?: string) {
     return this.transaction("sales.read", async (client) => {

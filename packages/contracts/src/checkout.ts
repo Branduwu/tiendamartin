@@ -48,5 +48,34 @@ export const SaleQuoteSchema = z.strictObject({
   discounts: DiscountIntentSchema.exactOptional(),
   taxes: TaxExpectationsSchema.exactOptional(),
 });
+const HistoryDateSchema = z.iso
+  .date()
+  .refine((v) => v >= "1900-01-01" && v <= "9998-12-31");
+const HistoryCursorSchema = z
+  .string()
+  .max(100)
+  .refine((value) => {
+    const parts = value.split("~");
+    return (
+      parts.length === 2 &&
+      z.iso.datetime({ precision: 6 }).safeParse(parts[0]).success &&
+      UuidSchema.safeParse(parts[1]).success
+    );
+  }, "Cursor de ventas inválido");
+export const SalesHistoryQuerySchema = z
+  .strictObject({
+    cursor: HistoryCursorSchema.exactOptional(),
+    q: z.string().trim().min(1).max(80).exactOptional(),
+    from: HistoryDateSchema.exactOptional(),
+    to: HistoryDateSchema.exactOptional(),
+    locationId: UuidSchema.exactOptional(),
+    payment: z.enum(["cash", "card", "credit"]).exactOptional(),
+  })
+  .refine(
+    (v) => !v.from || !v.to || v.from <= v.to,
+    "Revisa el intervalo de fechas",
+  );
+export type SalesHistoryQueryDto = z.infer<typeof SalesHistoryQuerySchema>;
+
 export type CheckoutDto = z.infer<typeof CheckoutSchema>;
 export type StoredSaleDto = z.infer<typeof StoredSaleSchema>;

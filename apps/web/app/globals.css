@@ -1343,3 +1343,130 @@ body:has(.navigation-dialog[open]) {
     justify-content: space-between;
   }
 }
+
+/* Sales history: keep the existing table/card pattern without squeezing columns. */
+.sales-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block: 1.5rem;
+  padding: 1.25rem;
+}
+.sales-search {
+  grid-column: span 2;
+}
+.sales-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}
+.sales-filter-actions button,
+.sales-pagination button,
+.sales-table .button-link {
+  white-space: nowrap;
+}
+.sales-filter-note {
+  grid-column: 1/-1;
+}
+.sales-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block: 1.5rem;
+}
+.sales-pagination p {
+  margin: 0;
+}
+.sales-table {
+  width: 100%;
+  table-layout: auto;
+}
+.sales-table caption {
+  text-align: left;
+  padding-block: 0.75rem;
+}
+.sales-table td,
+.sales-table th {
+  vertical-align: top;
+}
+.sales-table time span,
+.sales-table time small {
+  display: block;
+  white-space: nowrap;
+}
+.sales-table td:nth-child(2) {
+  min-width: 12rem;
+  max-width: 22rem;
+  overflow-wrap: anywhere;
+}
+.sales-table .sale-id {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.sales-table .sales-amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.sales-table td.amount {
+  min-width: 9rem;
+}
+.sales-table summary {
+  white-space: normal;
+}
+@media (min-width: 1001px) {
+  .sales-table {
+    min-width: 65rem;
+  }
+  .sales-results {
+    overflow-x: auto;
+  }
+}
+@media (max-width: 1000px) {
+  .sales-table caption {
+    display: block;
+    width: 100%;
+  }
+  .sales-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sales-table td:nth-child(2) {
+    min-width: 0;
+    max-width: none;
+  }
+  .sales-table td.amount {
+    min-width: 0;
+  }
+  .sales-table .row-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 540px) {
+  .sales-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 1rem;
+  }
+  .sales-search {
+    grid-column: auto;
+  }
+  .sales-filter-actions button {
+    flex: 1;
+  }
+  .sales-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sales-pagination {
+    gap: 0.5rem;
+  }
+  .sales-pagination p {
+    order: -1;
+    flex-basis: 100%;
+    text-align: center;
+  }
+  .sales-pagination button {
+    flex: 1;
+  }
+}
