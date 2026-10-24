@@ -12,6 +12,7 @@ afterEach(() => {
 });
 it.each([
   [{ code: "invalid_credentials" }, "credentials"],
+  [{ code: "email_not_confirmed" }, "confirmation"],
   [{ code: "refresh_token_not_found" }, "session"],
   [{ status: 502 }, "unavailable"],
   [{ status: 540 }, "unavailable"],
@@ -379,3 +380,71 @@ it("mutation transport preserves caller cancellation without retry or a read dea
   ).rejects.toThrow("SYNTHETIC_NETWORK_DISCONNECT");
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it.each([200, 429])(
+  "installed SDK confirmation resend uses PKCE without creating a session (HTTP %s)",
+  async (status) => {
+    vi.useRealTimers();
+    const storage = new Map<string, string>();
+    const calls: { url: string; body: Record<string, unknown> }[] = [];
+    const client = createClient(
+      "https://synthetic.invalid",
+      "synthetic-public-key",
+      {
+        auth: {
+          flowType: "pkce",
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          storage: {
+            getItem: (key: string) => storage.get(key) ?? null,
+            setItem: (key: string, value: string) => {
+              storage.set(key, value);
+            },
+            removeItem: (key: string) => {
+              storage.delete(key);
+            },
+          },
+        },
+        global: {
+          fetch: async (input, init) => {
+            calls.push({
+              url: String(input),
+              body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            });
+            return new Response(
+              JSON.stringify(
+                status === 200
+                  ? {}
+                  : {
+                      code: "over_email_send_rate_limit",
+                      msg: "PRIVATE_PROVIDER",
+                    },
+              ),
+              { status, headers: { "content-type": "application/json" } },
+            );
+          },
+        },
+      },
+    );
+    const result = await client.auth.resend({
+      type: "signup",
+      email: "synthetic@example.invalid",
+      options: { emailRedirectTo: "https://app.example.invalid/auth/callback" },
+    });
+    expect(calls).toHaveLength(1);
+    const call = calls[0]!;
+    expect(new URL(call.url).pathname).toBe("/auth/v1/resend");
+    expect(call.body.type).toBe("signup");
+    expect(typeof call.body.code_challenge).toBe("string");
+    expect(String(call.body.code_challenge).length).toBeGreaterThan(20);
+    const redirect = new URL(
+      new URL(call.url).searchParams.get("redirect_to")!,
+    );
+    expect(redirect.origin).toBe("https://app.example.invalid");
+    expect(redirect.pathname).toBe("/auth/callback");
+    expect((await client.auth.getSession()).data.session).toBeNull();
+    expect(result.data.session).toBeNull();
+    expect(!!result.error).toBe(status === 429);
+    await client.auth.stopAutoRefresh();
+  },
+);

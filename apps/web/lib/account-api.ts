@@ -16,6 +16,22 @@ import {
 export const INVALID_RECOVERY =
   "Este enlace ya no es válido. Solicita uno nuevo.";
 
+export const UNCONFIRMED_PASSWORD = {
+  code: "password_update_unconfirmed",
+  error:
+    "No pudimos confirmar el resultado del cambio. Comprueba el acceso con la nueva contraseña antes de solicitar otro enlace.",
+};
+function transientUpdate(
+  error: { status?: number | undefined; name?: string } | null,
+) {
+  return (
+    !!error &&
+    (error.status === 0 ||
+      (typeof error.status === "number" && error.status >= 500) ||
+      ["AuthRetryableFetchError", "TimeoutError"].includes(error.name ?? ""))
+  );
+}
+
 export async function handleAccount(
   request: Request,
   operation: "reset" | "change" | "reauthenticate",
@@ -23,7 +39,8 @@ export async function handleAccount(
   let recovery = false;
   let recoveryAccessToken = "",
     recoveryRevoked = false,
-    passwordUpdated = false;
+    passwordUpdated = false,
+    updateStarted = false;
   let client: Awaited<ReturnType<typeof serverAuth>> = null;
   try {
     requireSameOrigin(request);
@@ -68,7 +85,10 @@ export async function handleAccount(
       )
         return reply({ error: INVALID_RECOVERY }, 401);
       // Only the verified PKCE recovery purpose is accepted, never a login OTP.
+      updateStarted = true;
       const result = await client.auth.updateUser({ password: value.password });
+      if (transientUpdate(result.error))
+        return reply(UNCONFIRMED_PASSWORD, 503);
       if (
         result.error?.code === "current_password_invalid" ||
         result.error?.code === "current_password_mismatch" ||
@@ -103,11 +123,14 @@ export async function handleAccount(
             });
       }
       const value = ChangePasswordSchema.parse(body);
+      updateStarted = true;
       const result = await client.auth.updateUser({
         password: value.password,
         current_password: value.currentPassword,
         ...(value.nonce ? { nonce: value.nonce } : {}),
       });
+      if (transientUpdate(result.error))
+        return reply(UNCONFIRMED_PASSWORD, 503);
       if (
         result.error?.code === "current_password_invalid" ||
         result.error?.code === "current_password_mismatch" ||
@@ -166,6 +189,7 @@ export async function handleAccount(
         },
         503,
       );
+    if (updateStarted) return reply(UNCONFIRMED_PASSWORD, 503);
     if (error instanceof SameOriginError)
       return reply({ error: "Solicitud no permitida." }, 403);
     if (error instanceof InvalidInput)

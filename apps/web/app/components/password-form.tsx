@@ -7,7 +7,8 @@ import { browserAuth } from "../../lib/supabase/client";
 
 export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
   const [confirmationError, setConfirmationError] = useState(false),
-    [savedWithoutLogout, setSavedWithoutLogout] = useState(false);
+    [savedWithoutLogout, setSavedWithoutLogout] = useState(false),
+    [uncertain, setUncertain] = useState(false);
   const sending = useRef(false),
     code = useRef(""),
     flowId = useRef<string | undefined>(undefined);
@@ -74,6 +75,14 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
       );
       const result = await response.json();
       if (!response.ok) {
+        if (result.code === "password_update_unconfirmed") {
+          form.reset();
+          code.current = "";
+          flowId.current = undefined;
+          setReady(false);
+          setUncertain(true);
+          return;
+        }
         if (result.code === "password_saved_logout_failed") {
           form.reset();
           code.current = "";
@@ -100,12 +109,59 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
         setDone(true);
       }
     } catch {
-      setError("No pudimos conectar. Inténtalo de nuevo.");
+      // A lost response is not evidence that the provider rejected the update.
+      form.reset();
+      code.current = "";
+      flowId.current = undefined;
+      setReady(false);
+      setUncertain(true);
     } finally {
       sending.current = false;
       setBusy(false);
     }
   }
+  async function logoutForLogin() {
+    if (sending.current) return;
+    sending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await browserAuth().auth.signOut({ scope: "local" });
+      if (result.error) {
+        setError(
+          "No pudimos cerrar esta sesión. Inténtalo de nuevo; el resultado del cambio sigue sin confirmar.",
+        );
+        return;
+      }
+      window.location.assign(new URL("/login", window.location.origin).href);
+    } catch {
+      setError(
+        "No pudimos cerrar esta sesión. Inténtalo de nuevo; el resultado del cambio sigue sin confirmar.",
+      );
+    } finally {
+      sending.current = false;
+      setBusy(false);
+    }
+  }
+  if (uncertain)
+    return (
+      <div className="stack">
+        <p role="status">
+          No pudimos confirmar si se guardó la contraseña. No repitas el cambio
+          automáticamente. Comprueba el acceso con la nueva contraseña; si no
+          funciona, solicita un nuevo enlace.
+        </p>
+        <p className="muted">
+          Para comprobar la nueva contraseña, primero cierra esta sesión e
+          inicia sesión de nuevo.
+        </p>
+        <Button busy={busy} onClick={logoutForLogin}>
+          Cerrar sesión y comprobar acceso
+        </Button>
+        {error && <p role="alert">{error}</p>}
+        <Link href="/forgot-password">Solicitar un nuevo enlace</Link>
+      </div>
+    );
   if (savedWithoutLogout)
     return (
       <div className="stack">

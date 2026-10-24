@@ -3,6 +3,7 @@ export const AUTH_FETCH_TIMEOUT_MS = 8_000;
 export const AUTH_READ_TIMEOUT_MS = 5_000;
 export const LOGIN_TIMEOUT_MS = 12_000;
 export type AuthFailure =
+  | "confirmation"
   | "credentials"
   | "session"
   | "unavailable"
@@ -26,6 +27,7 @@ export function authFailure(error: unknown): AuthFailure {
     e.code === "refresh_token_already_used"
   )
     return "session";
+  if (e.code === "email_not_confirmed") return "confirmation";
   if (e.code === "invalid_credentials") return "credentials";
   if (
     e.name === "AuthRetryableFetchError" ||
@@ -36,6 +38,8 @@ export function authFailure(error: unknown): AuthFailure {
   return "unknown";
 }
 export const AUTH_MESSAGES: Record<AuthFailure, string> = {
+  confirmation:
+    "Verifica tu correo antes de iniciar sesión. Si el enlace venció, solicita otro desde «Verificar mi correo».",
   credentials: "No pudimos iniciar sesión. Revisa tu correo y contraseña.",
   session: "Tu sesión anterior ya no se puede renovar. Inicia sesión de nuevo.",
   unavailable:

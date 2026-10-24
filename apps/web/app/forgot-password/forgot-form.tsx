@@ -4,7 +4,15 @@ import { browserAuth } from "../../lib/supabase/client";
 import { Button } from "../components/ui";
 export const RECOVERY_MESSAGE =
   "Si existe una cuenta con ese correo, recibirás instrucciones para restablecer tu contraseña.";
-export default function ForgotForm({ configured }: { configured: boolean }) {
+export const CONFIRMATION_MESSAGE =
+  "Si el correo tiene una cuenta pendiente de verificación, recibirá un nuevo enlace. Si ya está verificado, puedes iniciar sesión.";
+export default function ForgotForm({
+  configured,
+  mode = "recovery",
+}: {
+  configured: boolean;
+  mode?: "recovery" | "confirmation";
+}) {
   const [busy, setBusy] = useState(false),
     [sent, setSent] = useState(false);
   const sending = useRef(false);
@@ -15,10 +23,20 @@ export default function ForgotForm({ configured }: { configured: boolean }) {
     setBusy(true);
     const form = event.currentTarget;
     try {
-      await browserAuth().auth.resetPasswordForEmail(
-        String(new FormData(form).get("email")).trim(),
-        { redirectTo: window.location.origin + "/reset-password" },
-      );
+      const email = String(new FormData(form).get("email")).trim();
+      if (mode === "confirmation") {
+        await browserAuth().auth.resend({
+          type: "signup",
+          email,
+          options: {
+            emailRedirectTo: window.location.origin + "/auth/callback",
+          },
+        });
+      } else {
+        await browserAuth().auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + "/reset-password",
+        });
+      }
     } catch {
       /* Identical account-independent response, including network/provider limits. */
     } finally {
@@ -30,7 +48,7 @@ export default function ForgotForm({ configured }: { configured: boolean }) {
   }
   return sent ? (
     <div role="status" className="stack">
-      <p>{RECOVERY_MESSAGE}</p>
+      <p>{mode === "confirmation" ? CONFIRMATION_MESSAGE : RECOVERY_MESSAGE}</p>
       <p className="muted">
         Revisa también spam. Si no llega, espera unos minutos antes de volver a
         intentarlo. Abre el enlace en este mismo navegador.
@@ -47,7 +65,7 @@ export default function ForgotForm({ configured }: { configured: boolean }) {
     <form className="stack" onSubmit={submit}>
       {!configured && (
         <p role="status">
-          La recuperación aún no está disponible. Contacta al administrador.
+          El envío de enlaces aún no está disponible. Contacta al administrador.
         </p>
       )}
       <label>
@@ -66,7 +84,7 @@ export default function ForgotForm({ configured }: { configured: boolean }) {
         disabled={!configured}
         type="submit"
       >
-        Enviar enlace
+        {mode === "confirmation" ? "Reenviar verificación" : "Enviar enlace"}
       </Button>
     </form>
   );

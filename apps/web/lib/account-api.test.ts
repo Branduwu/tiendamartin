@@ -241,3 +241,33 @@ it.each([false, true])(
     expect(m.clear).toHaveBeenCalledOnce();
   },
 );
+
+it.each(["reset", "change"] as const)(
+  "preserves uncertain %s result when the provider throws during update",
+  async (operation) => {
+    m.update.mockRejectedValue(new Error("PRIVATE_PROVIDER_SENTINEL"));
+    const r = await handleAccount(
+      request(operation === "reset" ? reset : change),
+      operation,
+    );
+    expect(r.status).toBe(503);
+    const body = await r.json();
+    expect(body.code).toBe("password_update_unconfirmed");
+    expect(JSON.stringify(body)).not.toContain("PRIVATE_PROVIDER_SENTINEL");
+    expect(m.update).toHaveBeenCalledOnce();
+    if (operation === "reset")
+      expect(m.revoke).toHaveBeenCalledWith("fake-test-only", "local");
+  },
+);
+it.each([{ status: 503 }, { name: "AuthRetryableFetchError", status: 0 }])(
+  "does not mistake transient provider update errors for a rejected password %#",
+  async (providerError) => {
+    m.update.mockResolvedValue({
+      error: { ...providerError, message: "PRIVATE_PROVIDER_SENTINEL" },
+    });
+    const r = await handleAccount(request(reset), "reset");
+    expect(r.status).toBe(503);
+    expect((await r.json()).code).toBe("password_update_unconfirmed");
+    expect(m.update).toHaveBeenCalledOnce();
+  },
+);

@@ -46,11 +46,16 @@ export default function RegisterForm({ configured }: { configured: boolean }) {
     <div className="stack">
       {!configured && <p role="status">El registro aún no está disponible.</p>}
       {sent ? (
-        <p role="status">
-          Si el correo puede registrarse, recibirás un enlace para verificarlo.
-          Revisa tu bandeja y después inicia sesión. Si ya tienes cuenta, puedes
-          entrar directamente.
-        </p>
+        <div className="stack">
+          <p role="status">
+            Si el correo puede registrarse, recibirás un enlace para
+            verificarlo. Revisa también spam y abre el enlace en este mismo
+            navegador. Si ya tienes cuenta, puedes iniciar sesión.
+          </p>
+          <Link href="/login?confirmation=retry">
+            Solicitar otra verificación de correo
+          </Link>
+        </div>
       ) : (
         <form className="stack" onSubmit={submit}>
           <label>

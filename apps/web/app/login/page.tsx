@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { verifiedUserId } from "../../lib/auth";
 import { authConfiguration } from "../../lib/supabase/config";
 import LoginForm from "./login-form";
+import ForgotForm from "../forgot-password/forgot-form";
 export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
@@ -26,6 +27,18 @@ export default async function LoginPage({
         configured={authConfiguration() !== null}
         destination={destination}
       />
+      <details className="stack">
+        <summary>Verificar mi correo</summary>
+        <p className="muted">
+          Si tu cuenta sigue pendiente o el enlace venció, solicita otra
+          verificación. Abre el nuevo enlace en este mismo navegador. Verificar
+          el correo no otorga acceso a ninguna empresa.
+        </p>
+        <ForgotForm
+          configured={authConfiguration() !== null}
+          mode="confirmation"
+        />
+      </details>
     </main>
   );
 }
