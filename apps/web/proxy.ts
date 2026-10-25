@@ -88,6 +88,8 @@ export async function proxy(request: NextRequest) {
       headers: { "Cache-Control": "private, no-store" },
     });
   response.headers.set("Cache-Control", "private, no-store");
+  if (request.nextUrl.pathname === "/reset-password")
+    response.headers.set("Referrer-Policy", "no-referrer");
   return response;
 }
 export const config = {

@@ -27,6 +27,7 @@ export function canonicalPageRedirect(
   if (
     authenticated ||
     source.hostname !== "smartretail-sepia.vercel.app" ||
+    source.pathname === "/reset-password" ||
     !["GET", "HEAD"].includes(request.method) ||
     /^\/(api|auth|_next)(\/|$)/.test(source.pathname)
   )

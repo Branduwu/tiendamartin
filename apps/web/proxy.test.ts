@@ -74,6 +74,27 @@ it("preserves verified legacy callback sessions through onboarding and products"
     ).toBe(200);
 });
 
+it.each([
+  "https://smartretail-sepia.vercel.app",
+  "https://app.smartretailapp.live",
+])(
+  "preserves recovery origin and suppresses referrers on %s",
+  async (origin) => {
+    vi.stubEnv("APP_ORIGIN", "https://app.smartretailapp.live");
+    m.claims.mockResolvedValue({ data: null, error: null });
+    const response = await proxy(
+      new NextRequest(origin + "/reset-password?code=synthetic-recovery-code"),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(m.client.mock.calls[0]?.[2].cookieOptions).not.toHaveProperty(
+      "domain",
+    );
+  },
+);
+
 describe("private session refresh routes", () => {
   it("sends authenticated people without a company to onboarding", async () => {
     m.tenants.mockResolvedValue([]);

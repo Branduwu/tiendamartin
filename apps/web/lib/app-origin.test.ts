@@ -43,6 +43,7 @@ it("preserves legacy callbacks, APIs and mutations during transition", () => {
   vi.stubEnv("APP_ORIGIN", origin);
   for (const path of [
     "/auth/callback?code=test",
+    "/reset-password?code=synthetic-recovery-code",
     "/auth",
     "/api/v1/health",
     "/api",

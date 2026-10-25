@@ -29,7 +29,8 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
       !!code.current &&
       code.current.length <= 4096 &&
       !url.searchParams.has("error");
-    window.history.replaceState(null, "", "/reset-password");
+    // Keep an unused code across a reload; clear it before any exchange.
+    if (!valid) window.history.replaceState(null, "", "/reset-password");
     setReady(valid);
     if (!valid) setError("Este enlace ya no es válido. Solicita uno nuevo.");
   }, [mode]);
@@ -50,6 +51,8 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
       return;
     }
     sending.current = true;
+    if (mode === "reset")
+      window.history.replaceState(null, "", "/reset-password");
     setBusy(true);
     setError("");
     try {
