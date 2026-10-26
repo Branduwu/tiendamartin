@@ -97,6 +97,8 @@ export default function PosPanel({ userId }: { userId: string }) {
   const feedback = useScanFeedback();
   const [notice, setNotice] = useState("");
   const scannerRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const confirmationRef = useRef<HTMLElement>(null);
   const scanQuantityRef = useRef<HTMLInputElement>(null);
   const [tenants, setTenants] = useState<
       {
@@ -174,11 +176,29 @@ export default function PosPanel({ userId }: { userId: string }) {
   const [error, setError] = useState(""),
     [confirmed, setConfirmed] = useState<StoredSaleDto | null>(null),
     [loading, setLoading] = useState(true);
+  const [stockWarning, setStockWarning] = useState("");
   const sendingRef = useRef(false);
   const [recoveryBlocked, setRecoveryBlocked] = useState(false);
   const locked =
     sending || pending !== null || pendingSuspend !== null || recoveryBlocked;
   const helpTarget = locked || !!draft?.lines.length ? "_blank" : undefined;
+  useEffect(() => {
+    if (!confirmed) return;
+    const frame = requestAnimationFrame(() => confirmationRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [confirmed]);
+  function nextSale() {
+    if (!confirmed || locked || sendingRef.current) return;
+    setConfirmed(null);
+    setSearch("");
+    setBarcode("");
+    setUnknownCode("");
+    setScanProduct(null);
+    setScanQuantity("");
+    setError("");
+    setNotice("Lista para una nueva venta. Busca o escanea un producto.");
+    searchRef.current?.focus();
+  }
   useEffect(() => {
     const controller = new AbortController();
     api<{
@@ -760,6 +780,8 @@ export default function PosPanel({ userId }: { userId: string }) {
         },
       );
       setConfirmed(result.recorded);
+      setNotice("");
+      setStockWarning("");
       setSuspended((current) =>
         current.filter((record) => record.id !== command.suspendedSaleId),
       );
@@ -780,7 +802,7 @@ export default function PosPanel({ userId }: { userId: string }) {
         );
         setStock(current.stock);
       } catch {
-        setError(
+        setStockWarning(
           "Venta confirmada. Consulta Inventario para actualizar las existencias.",
         );
       }
@@ -944,19 +966,57 @@ export default function PosPanel({ userId }: { userId: string }) {
             {error}
           </p>
         ) : null}
+        {stockWarning ? (
+          <p role="alert" className="error">
+            {stockWarning}
+          </p>
+        ) : null}
         {confirmed ? (
-          <section className="pos-confirmation" role="status" tabIndex={-1}>
-            <h2>Venta confirmada</h2>
-            <p>{mxn(confirmed.sale.total.minorUnits)}</p>
+          <section
+            ref={confirmationRef}
+            className="pos-confirmation"
+            role="status"
+            aria-labelledby="pos-confirmed-title"
+            tabIndex={-1}
+          >
+            <h2 id="pos-confirmed-title">Venta confirmada</h2>
+            <p>El servidor guardó la venta y descontó las existencias.</p>
+            <ul
+              className="pos-confirmed-lines"
+              aria-label="Productos vendidos"
+              tabIndex={0}
+            >
+              {confirmed.sale.lines.map((line) => (
+                <li key={line.productId}>
+                  <span>
+                    <strong>{line.name}</strong>
+                    <span>
+                      {milliUnitsToDecimal(line.quantity.milliUnits)}{" "}
+                      {unitLabel(line.unit, line.quantity.milliUnits)}
+                    </span>
+                  </span>
+                  <strong>{mxn(line.lineTotal.minorUnits)}</strong>
+                </li>
+              ))}
+            </ul>
+            <p className="pos-confirmed-total">
+              Total <strong>{mxn(confirmed.sale.total.minorUnits)}</strong>
+            </p>
             <p>Cliente: {confirmed.customerName ?? "Público general"}</p>
             <p>
               ID de venta:{" "}
               <strong className="sale-id">{confirmed.sale.id}</strong>
             </p>
-            <Link href={`/sales/${confirmed.sale.id}?tenantId=${tenant}`}>
-              Ver ticket
-            </Link>
-            <p>El servidor guardó la venta y descontó las existencias.</p>
+            <div className="pos-confirmed-actions">
+              <button type="button" disabled={locked} onClick={nextSale}>
+                Nueva venta
+              </button>
+              <Link
+                href={`/sales/${confirmed.sale.id}?tenantId=${confirmed.tenantId}`}
+              >
+                Ver ticket
+              </Link>
+            </div>
           </section>
         ) : null}
         {!pending && shift?.status !== "open" && (
@@ -1000,6 +1060,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                             setProducts([]);
                             setStock([]);
                             setConfirmed(null);
+                            setStockWarning("");
                             setShowSuspended(false);
                             setSuspended([]);
                             setScanProduct(null);
@@ -1199,6 +1260,7 @@ export default function PosPanel({ userId }: { userId: string }) {
                   <div className="pos-search-controls">
                     <input
                       id="pos-search"
+                      ref={searchRef}
                       type="search"
                       value={search}
                       maxLength={200}

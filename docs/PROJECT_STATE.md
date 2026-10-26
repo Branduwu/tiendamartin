@@ -1,5 +1,15 @@
 # Estado de SmartRetail
 
+## POS-UX-01 — SmartRetail 1.1: cierre y siguiente venta (26/10/2026)
+
+Rama local aislada `feature/pos-sale-completion` desde main publicado `3d8ba5581b1df436149f01b478933c9f5b2ab4df`. Ya existían confirmación, total, ticket y vaciado del carrito; faltaban el resumen de productos y una acción explícita para continuar. Ahora se muestran nombres, cantidades, unidades e importes del registro confirmado por el servidor. «Nueva venta» limpia filtros/lecturas transitorias y errores de formulario, enfoca la búsqueda y no envía peticiones ni modifica comandos pendientes. El aviso de fallo de actualización de existencias se conserva separado del resultado exitoso de la venta. Reglas, API, permisos, almacenamiento e idempotencia sin cambios.
+
+Validación final: 24 checks Chromium con servicios sintéticos PASS, 0 peticiones externas, en 1440/1024/390/320 px; resumen por renglón, ticket, Tab/Enter y desplazamiento de lista, nueva venta, estados de escáner, doble clic, respuesta tardía, rechazo, resultado incierto y conservación de su comando. TypeScript web, lint focal, formato y build Next.js 16.3.8/Turbopack PASS con Node 24.20.0 y pnpm 11.27.1, lockfile congelado e intacto. Hashes de fuentes estables durante la validación final. No se repitieron las suites 113/131 ni se usaron credenciales, servicios o datos productivos.
+
+QA James y SECURITY Ohm revisaron por separado el diff inicial sin bloqueos funcionales/de seguridad. Las dos brechas menores de cobertura QA se resolvieron mediante aserciones por renglón y recorrido real de teclado/escáner. La relectura independiente del ajuste final de mensajes no pudo completarse por disponibilidad/límite de uso; revisión final del implementador identificada como autorrevisión, con pruebas ejecutadas PASS. No se atribuye una revisión independiente a la versión final. Evidencias y capturas: `C:/Users/jivas/.codex/runs/pos-sale-completion`.
+
+Cambio terminado sólo localmente: sin push, despliegue, migraciones, nuevas dependencias ni cambios de infraestructura. Main, origin/main y trabajo pendiente preservados. Costo adicional $0. Próxima decisión: integrar el commit local en main con autorización separada; no publicado todavía.
+
 ## Auditoría inicial — TASK-001 — 2026-09-22
 
 Ruta auditada: `C:\Users\jivas\Desktop\Tienda`. La carpeta estaba completamente vacía, incluidos elementos ocultos: enumeración con `Get-ChildItem -Force`, cero entradas. No había código funcional.

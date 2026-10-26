@@ -153,7 +153,9 @@ async function session(width, mode = "normal", height = 960) {
   let catalogFailed = false,
     uncertain = false,
     hold = null,
-    release = null;
+    release = null,
+    refreshHold = null,
+    releaseRefresh = null;
   await context.exposeFunction("posMock", async (url, init) => {
     calls.push({ url, ...init });
     if (url === "/api/v1/tenants")
@@ -195,7 +197,17 @@ async function session(width, mode = "normal", height = 960) {
           ],
         },
       };
-    if (url.startsWith("/api/v1/inventory?"))
+    if (url.startsWith("/api/v1/products/lookup?"))
+      return {
+        status: 200,
+        body: url.includes("GRANEL-TEST")
+          ? { status: "active", product: products[1] }
+          : { status: "not_found" },
+      };
+    if (url.startsWith("/api/v1/inventory?")) {
+      if (sales.size && refreshHold) await refreshHold;
+      if (sales.size && mode === "inventory-refresh-error")
+        return { status: 503, body: { error: "Existencias no disponibles." } };
       return {
         status: 200,
         body: {
@@ -211,6 +223,7 @@ async function session(width, mode = "normal", height = 960) {
             })),
         },
       };
+    }
     if (url.startsWith("/api/v1/cash?"))
       return {
         status: 200,
@@ -232,10 +245,15 @@ async function session(width, mode = "normal", height = 960) {
     }
     if (url === "/api/v1/sales" && init.method === "POST") {
       const input = JSON.parse(init.body);
+      if (mode === "rejected")
+        return { status: 409, body: { error: "Venta rechazada para prueba." } };
       const previous = sales.get(input.draft.id);
       if (previous) assert.deepEqual(input, previous.command);
       else sales.set(input.draft.id, { command: input });
-      if (mode === "uncertain" && !uncertain) {
+      if (
+        (mode === "uncertain" && !uncertain) ||
+        (mode === "second-sale-error" && sales.size > 1)
+      ) {
         uncertain = true;
         return {
           status: 500,
@@ -252,7 +270,17 @@ async function session(width, mode = "normal", height = 960) {
             createdBy: user,
             createdAt: "2026-10-24T12:00:00.000Z",
             shiftId: shift,
-            sale: { ...input.draft, status: "completed" },
+            sale: {
+              ...input.draft,
+              lines: input.draft.lines.map((line) => ({
+                ...line,
+                name:
+                  mode === "recorded-summary" && line.productId === id(100)
+                    ? "Nombre registrado por servidor"
+                    : line.name,
+              })),
+              status: "completed",
+            },
             payments: input.payments,
           },
           replayed: !!previous,
@@ -285,6 +313,14 @@ async function session(width, mode = "normal", height = 960) {
     releaseCheckout() {
       release?.();
     },
+    holdInventoryRefresh() {
+      refreshHold = new Promise((resolve) => {
+        releaseRefresh = resolve;
+      });
+    },
+    releaseInventoryRefresh() {
+      releaseRefresh?.();
+    },
     async cart() {
       if (
         width <= 760 &&
@@ -302,6 +338,327 @@ const ready = (page) =>
   });
 const quantity = (page, name) =>
   page.getByRole("textbox", { name: `Cantidad de ${name}`, exact: true });
+const completed = (page) =>
+  page
+    .getByRole("heading", { name: "Venta confirmada", exact: true })
+    .waitFor();
+const submits = (s) =>
+  s.calls.filter((c) => c.url === "/api/v1/sales" && c.method === "POST");
+async function addCoffee(s) {
+  await s.page
+    .getByRole("button", { name: `Agregar ${coffee}`, exact: true })
+    .click();
+  await s.cart();
+  await ready(s.page);
+}
+async function completionChecks() {
+  const screenshots = process.argv[3];
+  if (screenshots) fs.mkdirSync(screenshots, { recursive: true });
+  for (const width of [1440, 1024, 390, 320]) {
+    const s = await session(width, "recorded-summary"),
+      p = s.page;
+    await addCoffee(s);
+    await p
+      .getByRole("button", { name: `Aumentar cantidad de ${coffee}` })
+      .click();
+    await ready(p);
+    if (width <= 760)
+      await p.getByRole("button", { name: "Cerrar venta actual" }).click();
+    for (const name of [rice, products[3].name]) {
+      await p
+        .getByRole("button", { name: `Agregar ${name}`, exact: true })
+        .click();
+      await ready(p);
+    }
+    await p.getByRole("searchbox").fill("CAFE");
+    await p
+      .getByRole("textbox", { name: "Código de barras", exact: true })
+      .fill("SIN-ENVIAR");
+    await s.cart();
+    await quantity(p, rice).fill("0.250");
+    await quantity(p, rice).blur();
+    await ready(p);
+    await p.locator(".pos-checkout").click();
+    await completed(p);
+    const summary = p.locator(".pos-confirmation");
+    await p.waitForFunction(() =>
+      document.activeElement?.classList.contains("pos-confirmation"),
+    );
+    assert.equal(await summary.getByRole("listitem").count(), 3);
+    assert.equal(await p.getByText(/agregado a la venta\.$/).count(), 0);
+    assert.ok(
+      (await summary.innerText()).includes("Nombre registrado por servidor"),
+    );
+    assert.ok((await summary.innerText()).includes("2.000 piezas"));
+    assert.ok((await summary.innerText()).includes("0.250 kg"));
+    for (const [name, amount, price] of [
+      ["Nombre registrado por servidor", "2.000 piezas", "$50.00 MXN"],
+      [rice, "0.250 kg", "$10.00 MXN"],
+      [products[3].name, "1.000 pieza", "$125.00 MXN"],
+    ]) {
+      const line = summary.getByRole("listitem").filter({ hasText: name });
+      assert.equal(await line.count(), 1);
+      assert.equal(await line.getByText(amount, { exact: true }).count(), 1);
+      assert.equal(await line.getByText(price, { exact: true }).count(), 1);
+    }
+    assert.ok(
+      (await summary.locator(".pos-confirmed-total").innerText()).includes(
+        "$185.00 MXN",
+      ),
+    );
+    pass("server-confirmed-summary-and-focus-" + width);
+    const command = [...s.sales.values()][0].command;
+    assert.equal(
+      await summary
+        .getByRole("link", { name: "Ver ticket" })
+        .getAttribute("href"),
+      `/sales/${command.draft.id}?tenantId=${tenant}`,
+    );
+    assert.equal(submits(s).length, 1);
+    pass("existing-ticket-and-single-submit-" + width);
+    assert.ok(
+      await p.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    );
+    assert.ok(
+      await summary.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+    );
+    const next = summary.getByRole("button", {
+      name: "Nueva venta",
+      exact: true,
+    });
+    const box = await next.boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44);
+    if (screenshots)
+      await p.screenshot({
+        path: path.join(screenshots, `pos-completed-${width}.png`),
+        fullPage: true,
+      });
+    pass("responsive-confirmation-" + width);
+    const callsBeforeNextSale = s.calls.length;
+    await p.keyboard.press("Tab");
+    assert.equal(
+      await summary
+        .getByRole("list")
+        .evaluate((el) => el === document.activeElement),
+      true,
+    );
+    if (
+      await summary
+        .getByRole("list")
+        .evaluate((el) => el.scrollHeight > el.clientHeight)
+    ) {
+      await p.keyboard.press("End");
+      await p.waitForFunction(
+        () => document.querySelector(".pos-confirmed-lines").scrollTop > 0,
+      );
+    }
+    await p.keyboard.press("Tab");
+    assert.equal(
+      await next.evaluate((el) => el === document.activeElement),
+      true,
+    );
+    await p.keyboard.press("Enter");
+    assert.equal(await summary.count(), 0);
+    assert.equal(await p.getByRole("searchbox").inputValue(), "");
+    assert.equal(
+      await p
+        .getByRole("textbox", { name: "Código de barras", exact: true })
+        .inputValue(),
+      "",
+    );
+    assert.equal(
+      await p
+        .getByRole("searchbox")
+        .evaluate((el) => el === document.activeElement),
+      true,
+    );
+    assert.equal(await p.locator(".pos-product").count(), 4);
+    assert.equal(
+      await p.evaluate(() =>
+        sessionStorage.getItem(
+          "smartretail.pending-sale.550e8400-e29b-41d4-a716-446655440020",
+        ),
+      ),
+      null,
+    );
+    assert.equal(submits(s).length, 1);
+    assert.equal(s.calls.length, callsBeforeNextSale);
+    assert.deepEqual(s.errors, []);
+    pass("next-sale-clears-filters-without-network-or-pending-reset-" + width);
+    await s.close();
+  }
+  const delayed = await session(1440);
+  await addCoffee(delayed);
+  delayed.holdCheckout();
+  await delayed.page.locator(".pos-checkout").evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  await delayed.page.waitForFunction(() =>
+    document
+      .querySelector(".pos-checkout")
+      ?.textContent.includes("Confirmando"),
+  );
+  assert.equal(submits(delayed).length, 1);
+  assert.equal(await delayed.page.locator(".pos-confirmation").count(), 0);
+  delayed.holdInventoryRefresh();
+  delayed.releaseCheckout();
+  await completed(delayed.page);
+  const delayedNext = delayed.page.getByRole("button", {
+    name: "Nueva venta",
+    exact: true,
+  });
+  assert.equal(await delayedNext.isDisabled(), true);
+  await delayedNext.evaluate((button) => button.click());
+  assert.equal(await delayed.page.locator(".pos-confirmation").count(), 1);
+  delayed.releaseInventoryRefresh();
+  await delayedNext.click();
+  assert.equal(submits(delayed).length, 1);
+  pass("late-response-double-click-and-refresh-lock");
+  await delayed.close();
+  const uncertain = await session(1440, "uncertain");
+  await addCoffee(uncertain);
+  await uncertain.page.locator(".pos-checkout").click();
+  await uncertain.page
+    .getByRole("button", { name: "Reintentar la misma venta", exact: true })
+    .waitFor();
+  assert.equal(await uncertain.page.locator(".pos-confirmation").count(), 0);
+  assert.equal(
+    await uncertain.page
+      .getByRole("button", { name: "Nueva venta", exact: true })
+      .count(),
+    0,
+  );
+  await uncertain.page
+    .getByRole("button", { name: "Reintentar la misma venta", exact: true })
+    .click();
+  await completed(uncertain.page);
+  assert.deepEqual(
+    JSON.parse(submits(uncertain)[0].body),
+    JSON.parse(submits(uncertain)[1].body),
+  );
+  assert.equal(uncertain.sales.size, 1);
+  pass("uncertain-response-never-shows-success-and-retries-same-command");
+  await uncertain.close();
+  const rejected = await session(1440, "rejected");
+  await addCoffee(rejected);
+  await rejected.page.locator(".pos-checkout").click();
+  await rejected.page
+    .getByText("Venta rechazada para prueba.", { exact: true })
+    .first()
+    .waitFor();
+  assert.equal(await rejected.page.locator(".pos-confirmation").count(), 0);
+  assert.equal(
+    await rejected.page
+      .getByRole("button", { name: "Nueva venta", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(submits(rejected).length, 1);
+  assert.equal(rejected.sales.size, 0);
+  pass("rejected-sale-never-shows-confirmation-or-next-sale");
+  await rejected.close();
+  const refresh = await session(1440, "inventory-refresh-error");
+  await addCoffee(refresh);
+  await refresh.page.locator(".pos-checkout").click();
+  await completed(refresh.page);
+  await refresh.page
+    .getByText(
+      "Venta confirmada. Consulta Inventario para actualizar las existencias.",
+      { exact: true },
+    )
+    .first()
+    .waitFor();
+  await refresh.page
+    .getByRole("button", { name: "Nueva venta", exact: true })
+    .click();
+  assert.equal(submits(refresh).length, 1);
+  assert.equal(refresh.sales.size, 1);
+  await refresh.page
+    .getByText(
+      "Venta confirmada. Consulta Inventario para actualizar las existencias.",
+      { exact: true },
+    )
+    .first()
+    .waitFor();
+  pass("post-sale-stock-warning-preserved-without-resubmission");
+  await refresh.close();
+  const second = await session(1440, "second-sale-error");
+  await addCoffee(second);
+  await second.page.locator(".pos-checkout").click();
+  await completed(second.page);
+  await second.page
+    .getByRole("button", { name: "Nueva venta", exact: true })
+    .click();
+  await addCoffee(second);
+  await second.page.locator(".pos-checkout").click();
+  await second.page
+    .getByRole("button", { name: "Reintentar la misma venta", exact: true })
+    .waitFor();
+  assert.equal(await second.page.locator(".pos-confirmation").count(), 0);
+  assert.notEqual(
+    JSON.parse(submits(second)[0].body).draft.id,
+    JSON.parse(submits(second)[1].body).draft.id,
+  );
+  pass("next-sale-has-new-id-and-does-not-inherit-success");
+  await second.close();
+  for (const code of ["UNKNOWN-TEST", "GRANEL-TEST"]) {
+    const s = await session(1440);
+    await addCoffee(s);
+    await s.page.locator(".pos-checkout").click();
+    await completed(s.page);
+    await s.page
+      .getByRole("textbox", { name: "Código de barras", exact: true })
+      .fill(code);
+    await s.page
+      .getByRole("button", { name: "Buscar código", exact: true })
+      .click();
+    if (code === "UNKNOWN-TEST")
+      await s.page
+        .getByRole("button", { name: "Escanear otro", exact: true })
+        .waitFor();
+    else {
+      await s.page
+        .getByRole("textbox", { name: "Cantidad a agregar (kg)" })
+        .fill("0.250");
+      await s.page
+        .getByRole("button", { name: "Agregar cantidad", exact: true })
+        .waitFor();
+    }
+    await s.page
+      .getByRole("button", { name: "Nueva venta", exact: true })
+      .click();
+    assert.equal(
+      await s.page
+        .getByRole("button", { name: "Escanear otro", exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await s.page
+        .getByRole("button", { name: "Agregar cantidad", exact: true })
+        .count(),
+      0,
+    );
+    assert.equal(await s.page.getByRole("alert").count(), 0);
+    assert.equal(submits(s).length, 1);
+    pass("next-sale-clears-active-scan-state-" + code);
+    await s.close();
+  }
+  assert.equal(externalRequests, 0);
+  pass("zero-external-service-requests");
+}
+if (process.argv.includes("--completion-only")) {
+  try {
+    await completionChecks();
+    console.log(JSON.stringify({ checks, externalRequests }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
+}
 try {
   const s = await session(1440),
     p = s.page;
