@@ -14,6 +14,9 @@ const empty = { firstName: "", lastName: "", phone: "" };
 export default function ProfilePanel() {
   const [profile, setProfile] = useState<ProfileOverview>();
   const [draft, setDraft] = useState<PersonalProfileInput>(empty);
+  const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const firstInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState(""),
@@ -28,6 +31,25 @@ export default function ProfilePanel() {
   const pending = useRef(false),
     previewRef = useRef("");
   const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing) firstInput.current?.focus();
+  }, [editing]);
+  function finishEditing() {
+    setEditing(false);
+    requestAnimationFrame(() => editButton.current?.focus());
+  }
+  function cancelEditing() {
+    if (!profile || busy || uncertain) return;
+    setDraft({
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      phone: profile.phone,
+    });
+    clearSelection();
+    setError("");
+    setNotice("");
+    finishEditing();
+  }
   function changed() {
     window.dispatchEvent(new Event("smartretail:profile-updated"));
   }
@@ -70,12 +92,12 @@ export default function ProfilePanel() {
       });
     return () => c.abort();
   }, []);
-  const dirty =
+  const personalDirty =
     !!profile &&
     (draft.firstName !== profile.firstName ||
       draft.lastName !== profile.lastName ||
-      draft.phone !== profile.phone ||
-      !!file);
+      draft.phone !== profile.phone);
+  const dirty = personalDirty || !!file;
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => {
@@ -110,6 +132,7 @@ export default function ProfilePanel() {
     }
   }
   async function refresh() {
+    const preserveDraft = dirty && !uncertain && !photoUncertain;
     await run(async () => {
       const r = await fetch("/api/v1/profile", { cache: "no-store" });
       if (!r.ok) {
@@ -118,11 +141,12 @@ export default function ProfilePanel() {
       }
       const value = (await r.json()) as ProfileOverview;
       setProfile(value);
-      setDraft({
-        firstName: value.firstName,
-        lastName: value.lastName,
-        phone: value.phone,
-      });
+      if (!preserveDraft)
+        setDraft({
+          firstName: value.firstName,
+          lastName: value.lastName,
+          phone: value.phone,
+        });
       if (value.photoEnabled) {
         const photo = await fetch(`/api/v1/profile/photo?v=${Date.now()}`, {
           cache: "no-store",
@@ -137,12 +161,17 @@ export default function ProfilePanel() {
         }
         if (resolved) setPhotoMissing(photo.status === 404);
       }
-      clearSelection();
+      if (!preserveDraft) clearSelection();
       setUncertain(false);
       setPhotoUncertain(false);
       setLoading(false);
       setVersion((v) => v + 1);
-      setNotice("Perfil consultado. Revisa los datos antes de guardar.");
+      setNotice(
+        preserveDraft
+          ? "Perfil consultado. Tu edición se conserva."
+          : "Perfil consultado. Revisa los datos antes de guardar.",
+      );
+      if (!preserveDraft) finishEditing();
       changed();
     }, "read");
   }
@@ -171,14 +200,16 @@ export default function ProfilePanel() {
     }, "photo");
   }
   return (
-    <section className="panel stack" aria-labelledby="profile-title">
-      <h2 id="profile-title">Datos personales</h2>
-      <p className="muted">
-        Estos datos identifican tu cuenta. Tus permisos y accesos a empresas se
-        administran por separado.
-      </p>
+    <section
+      id="account-profile"
+      className={`panel ${styles.profile}`}
+      aria-labelledby="profile-title"
+    >
+      <h2 id="profile-title" className={styles.sectionTitle}>
+        Perfil personal
+      </h2>
       {error && (
-        <p className="error" role="alert">
+        <p id="profile-error" className="error" role="alert">
           {error}
         </p>
       )}
@@ -192,8 +223,10 @@ export default function ProfilePanel() {
       ) : (
         <>
           <div className={styles.layout}>
-            <section className={styles.photo} aria-labelledby="photo-title">
-              <h3 id="photo-title">Fotografía</h3>
+            <section
+              className={styles.photo}
+              aria-label="Identidad de tu cuenta"
+            >
               <div className={styles.avatar}>
                 {preview ||
                 (profile.photoEnabled && !photoMissing && !photoReadFailed) ? (
@@ -223,25 +256,65 @@ export default function ProfilePanel() {
                         : "Sin fotografía"
                     }
                   >
-                    {(profile.displayName || profile.email || "?")
-                      .slice(0, 1)
-                      .toUpperCase()}
+                    {(
+                      [profile.firstName, profile.lastName]
+                        .filter(Boolean)
+                        .map((part) => part.slice(0, 1))
+                        .join("") || (profile.email || "?").slice(0, 1)
+                    ).toUpperCase()}
                   </span>
                 )}
               </div>
+              <div className={styles.identity}>
+                <h3>{profile.displayName || "Tu perfil"}</h3>
+                <p>{profile.email}</p>
+                <div className={styles.roles} aria-label="Roles actuales">
+                  {profile.platformAdmin && (
+                    <span className="badge">Administrador global</span>
+                  )}
+                  {[
+                    ...new Set(profile.roles.map((r) => roleLabel(r.role))),
+                  ].map((role) => (
+                    <span className="badge" key={role}>
+                      {role}
+                    </span>
+                  ))}
+                  {!profile.roles.length && !profile.platformAdmin && (
+                    <span className="muted">Sin empresa asignada</span>
+                  )}
+                </div>
+                {!profile.photoEnabled && (
+                  <small className="muted">Fotografía no habilitada</small>
+                )}
+              </div>
+              <button
+                ref={editButton}
+                type="button"
+                className="secondary"
+                disabled={busy || uncertain || editing}
+                aria-expanded={editing}
+                aria-controls="profile-details"
+                onClick={() => {
+                  setDraft({
+                    firstName: profile.firstName,
+                    lastName: profile.lastName,
+                    phone: profile.phone,
+                  });
+                  setError("");
+                  setNotice("");
+                  setEditing(true);
+                }}
+              >
+                {editing ? "Editando perfil" : "Editar perfil"}
+              </button>
               {photoReadFailed && (
                 <p role="alert" className="error">
                   No pudimos consultar tu fotografía. No significa que se haya
                   eliminado.
                 </p>
               )}
-              {!profile.photoEnabled ? (
-                <p className="muted">
-                  La fotografía estará disponible cuando se habilite el
-                  almacenamiento de perfiles.
-                </p>
-              ) : (
-                <>
+              {profile.photoEnabled && editing && (
+                <div className={styles.photoEditor}>
                   <label>
                     Seleccionar fotografía
                     <input
@@ -295,115 +368,168 @@ export default function ProfilePanel() {
                   >
                     Quitar fotografía
                   </button>
-                </>
+                </div>
               )}
             </section>
-            <form
-              className="stack"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (uncertain) return;
-                void run(async () => {
-                  const parsed = PersonalProfileSchema.safeParse(draft);
-                  if (!parsed.success) {
-                    setError(
-                      "Revisa nombre, apellidos y teléfono. El nombre es obligatorio.",
-                    );
-                    return;
-                  }
-                  const r = await fetch("/api/v1/profile", {
-                    method: "PATCH",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify(parsed.data),
-                  });
-                  const value = await r.json();
-                  if (!r.ok) {
-                    setUncertain(value.code === "profile_update_unconfirmed");
-                    setError(value.error ?? "No pudimos guardar tu perfil.");
-                    return;
-                  }
-                  const saved = value as PersonalProfile;
-                  setProfile((current) =>
-                    current ? { ...current, ...saved } : current,
-                  );
-                  setDraft({
-                    firstName: saved.firstName,
-                    lastName: saved.lastName,
-                    phone: saved.phone,
-                  });
-                  setNotice("Datos personales guardados.");
-                  changed();
-                });
-              }}
-            >
-              <fieldset disabled={busy || uncertain} className={styles.fields}>
-                <legend>Tu información</legend>
-                <label>
-                  Nombre <span aria-hidden="true">*</span>
-                  <input
-                    name="firstName"
-                    required
-                    maxLength={80}
-                    autoComplete="given-name"
-                    value={draft.firstName}
-                    onChange={(e) => {
-                      setDraft((v) => ({ ...v, firstName: e.target.value }));
-                      setNotice("");
-                    }}
-                  />
-                </label>
-                <label>
-                  Apellidos
-                  <input
-                    name="lastName"
-                    maxLength={80}
-                    autoComplete="family-name"
-                    value={draft.lastName}
-                    onChange={(e) => {
-                      setDraft((v) => ({ ...v, lastName: e.target.value }));
-                      setNotice("");
-                    }}
-                  />
-                </label>
-                <label>
-                  Teléfono de contacto <small>(opcional)</small>
-                  <input
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    maxLength={40}
-                    value={draft.phone}
-                    onChange={(e) => {
-                      setDraft((v) => ({ ...v, phone: e.target.value }));
-                      setNotice("");
-                    }}
-                  />
-                  <small>
-                    Dato de contacto; no cambia tu teléfono de autenticación.
-                  </small>
-                </label>
-                <label>
-                  Correo de acceso
-                  <input
-                    type="email"
-                    value={profile.email}
-                    readOnly
-                    autoComplete="off"
-                  />
-                  <small>
-                    Tu correo no se puede modificar desde este formulario.
-                  </small>
-                </label>
-                <button disabled={!dirty}>
-                  <LoadingLabel busy={busy} label="Guardando…">
-                    Guardar datos personales
-                  </LoadingLabel>
-                </button>
-              </fieldset>
-            </form>
+            <div id="profile-details">
+              {!editing ? (
+                <section
+                  className={styles.details}
+                  aria-label="Información personal"
+                >
+                  <h3>Información personal</h3>
+                  <dl className={styles.data}>
+                    <div>
+                      <dt>Nombre</dt>
+                      <dd>{profile.firstName || "Sin completar"}</dd>
+                    </div>
+                    <div>
+                      <dt>Apellidos</dt>
+                      <dd>{profile.lastName || "Sin completar"}</dd>
+                    </div>
+                    <div>
+                      <dt>Teléfono de contacto</dt>
+                      <dd>{profile.phone || "No registrado"}</dd>
+                    </div>
+                    <div>
+                      <dt>
+                        Correo de acceso <small>Solo lectura</small>
+                      </dt>
+                      <dd>{profile.email}</dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : (
+                <form
+                  className="stack"
+                  aria-busy={busy}
+                  aria-describedby={error ? "profile-error" : undefined}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (uncertain) return;
+                    void run(async () => {
+                      const parsed = PersonalProfileSchema.safeParse(draft);
+                      if (!parsed.success) {
+                        setError(
+                          "Revisa nombre, apellidos y teléfono. El nombre es obligatorio.",
+                        );
+                        return;
+                      }
+                      const r = await fetch("/api/v1/profile", {
+                        method: "PATCH",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify(parsed.data),
+                      });
+                      const value = await r.json();
+                      if (!r.ok) {
+                        setUncertain(
+                          value.code === "profile_update_unconfirmed",
+                        );
+                        setError(
+                          value.error ?? "No pudimos guardar tu perfil.",
+                        );
+                        return;
+                      }
+                      const saved = value as PersonalProfile;
+                      setProfile((current) =>
+                        current ? { ...current, ...saved } : current,
+                      );
+                      setDraft({
+                        firstName: saved.firstName,
+                        lastName: saved.lastName,
+                        phone: saved.phone,
+                      });
+                      setNotice(
+                        file
+                          ? "Datos personales guardados. La fotografía seleccionada aún no se ha guardado."
+                          : "Datos personales guardados.",
+                      );
+                      if (!file) finishEditing();
+                      changed();
+                    });
+                  }}
+                >
+                  <fieldset
+                    disabled={busy || uncertain}
+                    className={styles.fields}
+                  >
+                    <legend>Editar datos personales</legend>
+                    <label>
+                      <span>
+                        Nombre <span aria-hidden="true">*</span>
+                      </span>
+                      <input
+                        ref={firstInput}
+                        name="firstName"
+                        required
+                        maxLength={80}
+                        autoComplete="given-name"
+                        value={draft.firstName}
+                        onChange={(e) => {
+                          setDraft((v) => ({
+                            ...v,
+                            firstName: e.target.value,
+                          }));
+                          setNotice("");
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Apellidos
+                      <input
+                        name="lastName"
+                        maxLength={80}
+                        autoComplete="family-name"
+                        value={draft.lastName}
+                        onChange={(e) => {
+                          setDraft((v) => ({ ...v, lastName: e.target.value }));
+                          setNotice("");
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>
+                        Teléfono de contacto <small>(opcional)</small>
+                      </span>
+                      <input
+                        name="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        maxLength={40}
+                        value={draft.phone}
+                        onChange={(e) => {
+                          setDraft((v) => ({ ...v, phone: e.target.value }));
+                          setNotice("");
+                        }}
+                      />
+                      <small>
+                        Dato de contacto; no cambia tu teléfono de
+                        autenticación.
+                      </small>
+                    </label>
+                    <div className="actions">
+                      <button type="submit" disabled={!personalDirty}>
+                        <LoadingLabel busy={busy} label="Guardando…">
+                          Guardar cambios
+                        </LoadingLabel>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={cancelEditing}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
+              )}
+            </div>
           </div>
-          <div className="stack">
-            <h3>Tus accesos actuales</h3>
+          <div className={styles.access}>
+            <h3>
+              Accesos y permisos <small>Solo lectura</small>
+            </h3>
             {profile.platformAdmin && <p>Administrador global</p>}
             {!profile.roles.length && !profile.platformAdmin ? (
               <p>No tienes una empresa asignada.</p>
@@ -419,14 +545,16 @@ export default function ProfilePanel() {
               El perfil no permite cambiar roles, sucursales ni permisos.
             </small>
           </div>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => void refresh()}
-          >
-            Consultar perfil guardado
-          </button>
+          {(error || uncertain || photoUncertain || photoReadFailed) && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => void refresh()}
+            >
+              Consultar perfil guardado
+            </button>
+          )}
         </>
       )}
     </section>

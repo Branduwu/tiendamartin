@@ -1,66 +1,296 @@
+.account {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 64rem;
+  min-width: 0;
+}
+.pageHeading h1 {
+  margin: 0 0 0.4rem;
+}
+.pageHeading p {
+  margin: 0;
+}
+.sections {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.sections a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 600;
+}
+.profile,
+.security {
+  min-width: 0;
+  scroll-margin-top: 1rem;
+}
+.profile .sectionTitle {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
-  gap: 2rem;
-  align-items: start;
+  gap: 1.5rem;
+  min-width: 0;
 }
-.layout > * {
+.layout > *,
+.photo > *,
+.identity {
   min-width: 0;
 }
 .photo {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.9rem;
-  overflow-wrap: anywhere;
-}
-.photo input {
-  max-width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
 }
 .avatar {
-  width: 128px;
-  height: 128px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: var(--surface-muted, #e8edf2);
-  color: var(--text, #172333);
-  font-size: 2.5rem;
+  background: var(--primary-subtle);
+  color: var(--primary);
+  border: 1px solid var(--border);
+  font-size: 1.6rem;
+  font-weight: 600;
 }
 .avatar img {
   object-fit: cover;
   width: 100%;
   height: 100%;
 }
+.profile .identity h3 {
+  margin: 0;
+  font-size: 1.4rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.identity p {
+  margin: 0.3rem 0 0.5rem;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.roles {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.photoEditor {
+  grid-column: 1/-1;
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+.photoEditor input {
+  max-width: 100%;
+}
+.details {
+  border-top: 1px solid var(--border);
+  padding-top: 1.25rem;
+}
+.profile h3,
+.security h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+.data {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2rem;
+  margin: 0;
+}
+.data > div {
+  padding: 0.8rem 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+.data dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.3rem;
+}
+.data dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.data small,
+.access h3 small {
+  font-weight: 400;
+  margin-left: 0.35rem;
+}
 .fields {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   min-width: 0;
   border: 0;
-  padding: 0;
+  padding: 1rem 0 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
 }
 .fields legend {
-  margin-bottom: 1rem;
+  padding-top: 1rem;
   font-weight: 600;
+}
+.fields label {
+  min-width: 0;
+}
+.fields input {
+  min-width: 0;
+  max-width: 100%;
+}
+.fields > label:last-of-type,
+.fields > div {
+  grid-column: 1/-1;
+}
+.fields > label:last-of-type {
+  max-width: 28rem;
 }
 .fields button,
 .photo button {
   min-height: 44px;
   white-space: normal;
 }
+.access {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.access p {
+  margin: 0.5rem 0;
+}
+.access > small {
+  color: var(--muted);
+}
+.securityHeading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: start;
+}
+.securityHeading svg {
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+.security .securityHeading h2 {
+  margin: 0;
+}
+.securityHeading p {
+  margin: 0.35rem 0 0;
+}
+.passwordChange {
+  margin-top: 1rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.passwordChange summary {
+  min-height: 44px;
+  padding-block: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.passwordBody {
+  max-width: 38rem;
+  padding-bottom: 1rem;
+}
+.passwordBody > p {
+  margin-top: 0;
+}
+.passwordBody fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.passwordBody :is(input, .password-field, label) {
+  min-width: 0;
+}
+.passwordBody fieldset > div:has(> label > input) {
+  position: relative;
+  gap: 0;
+}
+.passwordBody fieldset > div:has(> label > input) input {
+  min-height: 48px;
+  padding-right: 5rem;
+}
+.passwordBody fieldset > div:has(> label > input) > button {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 4.5rem;
+  min-height: 44px;
+  padding: 0 0.4rem;
+  border: 0;
+  font-size: 0;
+  background: transparent;
+  color: var(--primary);
+}
+.passwordBody fieldset > div:has(> label > input) > button::after {
+  content: "Mostrar";
+  font-size: 0.875rem;
+}
+.passwordBody
+  fieldset
+  > div:has(> label > input)
+  > button[aria-pressed="true"]::after {
+  content: "Ocultar";
+}
+.future {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: start;
+  margin-top: 0.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.future h3 {
+  margin: 0 0 0.3rem;
+}
+.future p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+.future > span {
+  flex-shrink: 0;
+}
 @media (max-width: 640px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-  }
   .photo {
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+  .photo > button {
+    grid-column: 1/-1;
+    justify-self: start;
   }
   .avatar {
-    align-self: center;
+    width: 64px;
+    height: 64px;
+    font-size: 1.3rem;
   }
-  .fields input {
-    min-width: 0;
+  .profile .identity h3 {
+    font-size: 1.2rem;
+  }
+  .data,
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fields > label:last-of-type {
+    max-width: none;
+  }
+  .future {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .account {
+    gap: 1.1rem;
   }
 }

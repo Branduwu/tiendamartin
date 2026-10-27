@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { verifiedUserId } from "../../../lib/auth";
-import PasswordForm from "../../components/password-form";
+import AccountSecurity from "./account-security";
 import Link from "next/link";
 import ProfilePanel from "./profile-panel";
 import AppNavigation from "../../components/app-navigation";
+import styles from "./profile-panel.module.css";
 export const dynamic = "force-dynamic";
 export default async function AccountPage() {
   if (!(await verifiedUserId())) redirect("/login");
@@ -14,18 +15,17 @@ export default async function AccountPage() {
         <AppNavigation current="/settings/account" />
       </header>
       <main className="workspace" id="workspace-content" tabIndex={-1}>
-        <div className="stack" style={{ maxWidth: "60rem" }}>
-          <p className="brand">SmartRetail · Tu cuenta</p>
-          <h1>Mi perfil</h1>
+        <div className={styles.account}>
+          <div className={styles.pageHeading}>
+            <h1>Mi cuenta</h1>
+            <p className="muted">Tu perfil y la seguridad de tu acceso.</p>
+          </div>
+          <nav className={styles.sections} aria-label="Secciones de mi cuenta">
+            <a href="#account-profile">Perfil</a>
+            <a href="#account-security">Seguridad</a>
+          </nav>
           <ProfilePanel />
-          <section className="panel stack">
-            <h2>Cambiar contraseña</h2>
-            <p className="muted">
-              Este cambio sólo afecta a tu cuenta. Al guardar cerrarás las
-              sesiones abiertas.
-            </p>
-            <PasswordForm mode="change" />
-          </section>
+          <AccountSecurity />
           <Link href="/onboarding">Volver a mis empresas</Link>
         </div>
       </main>

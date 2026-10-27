@@ -101,6 +101,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
     profileReads = 0;
   const creationNonces = new Set();
   let mailAttempts = 0;
+  let photoReadFailure = mode === "photo-load-error";
   let logoutFailed = mode === "logout-error",
     hold = null,
     release = null;
@@ -114,10 +115,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
         operation: "/api/v1/profile/photo",
         init: { method: "GET" },
       });
-      if (
-        mode === "photo-load-error" ||
-        (mode === "photo-read-error" && hasPhoto)
-      )
+      if (photoReadFailure || (mode === "photo-read-error" && hasPhoto))
         return route.fulfill({ status: 503, body: "Read unavailable" });
       if (!hasPhoto) return route.fulfill({ status: 404, body: "No photo" });
       const sharp = require(
@@ -406,6 +404,11 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
   await page
     .getByRole("heading", { name: "Acceso de prueba", exact: true })
     .waitFor();
+  if (path === "/settings/account" && mode !== "profile-load-error") {
+    await page
+      .getByRole("button", { name: "Editar perfil", exact: true })
+      .click();
+  }
   return {
     page,
     calls,
@@ -422,6 +425,9 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
     },
     logoutRecover() {
       logoutFailed = false;
+    },
+    photoReadRecover() {
+      photoReadFailure = false;
     },
     async close() {
       assert.deepEqual(errors, []);
@@ -617,7 +623,7 @@ async function profileChecks() {
       .getByLabel("Teléfono de contacto", { exact: false })
       .fill("555-9876");
     await p
-      .getByRole("button", { name: "Guardar datos personales", exact: true })
+      .getByRole("button", { name: "Guardar cambios", exact: true })
       .click();
     await p.getByText("Datos personales guardados.", { exact: true }).waitFor();
     await p.getByLabel("Menú de usuario").click();
@@ -625,10 +631,8 @@ async function profileChecks() {
       .locator(".account-identity")
       .filter({ hasText: "Ana Pérez" })
       .waitFor();
-    assert.equal(
-      await p.getByLabel("Correo de acceso").getAttribute("readonly"),
-      "",
-    );
+    assert.equal(await p.locator('input[type="email"]').count(), 0);
+    await p.getByText("Correo de acceso", { exact: false }).waitFor();
     assert.equal(mutations(s).length, 1);
     assert.ok((await p.locator("body").innerText()).includes("Cajero"));
     assert.equal(await p.locator('select[name="role"]').count(), 0);
@@ -651,6 +655,7 @@ async function profileChecks() {
       });
     }
     await p.reload();
+    await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
     await p.getByLabel("Nombre", { exact: false }).waitFor();
     assert.equal(
       await p.getByLabel("Nombre", { exact: false }).inputValue(),
@@ -668,9 +673,7 @@ async function profileChecks() {
   let p = s.page;
   await ready(s);
   await p.getByLabel("Nombre", { exact: false }).fill("");
-  await p
-    .getByRole("button", { name: "Guardar datos personales", exact: true })
-    .click();
+  await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   assert.equal(
     await p
       .getByLabel("Nombre", { exact: false })
@@ -681,9 +684,7 @@ async function profileChecks() {
   await p
     .getByLabel("Teléfono de contacto", { exact: false })
     .fill("invalid-phone");
-  await p
-    .getByRole("button", { name: "Guardar datos personales", exact: true })
-    .click();
+  await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await p.getByRole("alert").filter({ hasText: "Revisa nombre" }).waitFor();
   assert.equal(mutations(s).length, 0);
   pass("profile-required-name-invalid-phone-no-request");
@@ -708,9 +709,7 @@ async function profileChecks() {
   s = await session({ path: "/settings/account", mode: "profile-rejected" });
   p = s.page;
   await ready(s);
-  await p
-    .getByRole("button", { name: "Guardar datos personales", exact: true })
-    .click();
+  await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await p
     .getByRole("alert")
     .filter({ hasText: "Revisa los datos personales" })
@@ -724,16 +723,14 @@ async function profileChecks() {
   s = await session({ path: "/settings/account", mode: "profile-uncertain" });
   p = s.page;
   await ready(s);
-  await p
-    .getByRole("button", { name: "Guardar datos personales", exact: true })
-    .click();
+  await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await p
     .getByRole("alert")
     .filter({ hasText: "No pudimos confirmar" })
     .waitFor();
   assert.equal(
     await p
-      .getByRole("button", { name: "Guardar datos personales", exact: true })
+      .getByRole("button", { name: "Guardar cambios", exact: true })
       .isDisabled(),
     true,
   );
@@ -745,6 +742,7 @@ async function profileChecks() {
       exact: true,
     })
     .waitFor();
+  await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
   assert.equal(
     await p.getByLabel("Nombre", { exact: false }).inputValue(),
     "Ana",
@@ -755,14 +753,13 @@ async function profileChecks() {
   s = await session({ path: "/settings/account", mode: "profile-load-error" });
   p = s.page;
   await p.getByRole("button", { name: "Volver a consultar perfil" }).click();
+  await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
   await p.getByLabel("Nombre", { exact: false }).waitFor();
   pass("profile-load-error-explicit-read-retry");
   await s.close();
   s = await session({ path: "/settings/account", mode: "photo-disabled" });
   p = s.page;
-  await p
-    .getByText("La fotografía estará disponible", { exact: false })
-    .waitFor();
+  await p.getByText("Fotografía no habilitada", { exact: false }).waitFor();
   assert.equal(await p.locator('input[type="file"]').count(), 0);
   pass("profile-photo-pending-dependency-visible");
   await s.close();
@@ -774,6 +771,36 @@ async function profileChecks() {
   })
     .png()
     .toBuffer();
+  s = await session({ path: "/settings/account" });
+  p = s.page;
+  await p
+    .getByLabel("Seleccionar fotografía", { exact: false })
+    .setInputFiles({ name: "draft.png", mimeType: "image/png", buffer: image });
+  await p.getByLabel("Nombre", { exact: false }).fill("Borrador");
+  await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
+  await p
+    .getByText("La fotografía seleccionada aún no se ha guardado.", {
+      exact: false,
+    })
+    .waitFor();
+  assert.equal(
+    await p
+      .getByRole("button", { name: "Guardar fotografía", exact: true })
+      .isEnabled(),
+    true,
+  );
+  assert.ok(
+    (
+      await p
+        .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
+        .getAttribute("src")
+    ).startsWith("blob:"),
+  );
+  assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 0);
+  await p.getByRole("button", { name: "Cancelar", exact: true }).click();
+  assert.equal(await p.locator("input[type=file]").count(), 0);
+  pass("profile-personal-save-keeps-unsaved-photo-explicit-until-cancel");
+  await s.close();
   s = await session({ path: "/settings/account", width: 320 });
   p = s.page;
   await p.getByLabel("Seleccionar fotografía", { exact: false }).waitFor();
@@ -792,6 +819,7 @@ async function profileChecks() {
     .click();
   await p.getByText("Fotografía guardada.", { exact: true }).waitFor();
   await p.reload();
+  await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
   await p
     .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
     .waitFor();
@@ -830,6 +858,30 @@ async function profileChecks() {
       0,
     );
     assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+    if (mode === "photo-rejected") {
+      await p
+        .getByRole("button", { name: "Consultar perfil guardado", exact: true })
+        .click();
+      await p
+        .getByText("Perfil consultado. Tu edición se conserva.", {
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(
+        await p
+          .getByRole("button", { name: "Guardar fotografía", exact: true })
+          .isEnabled(),
+        true,
+      );
+      assert.ok(
+        (
+          await p
+            .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
+            .getAttribute("src")
+        ).startsWith("blob:"),
+      );
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+    }
     if (mode !== "photo-rejected") {
       await p
         .getByRole("button", { name: "Consultar perfil guardado", exact: true })
@@ -854,6 +906,9 @@ async function profileChecks() {
             exact: true,
           })
           .waitFor();
+        await p
+          .getByRole("button", { name: "Editar perfil", exact: true })
+          .click();
         assert.equal(
           await p
             .getByLabel("Seleccionar fotografía", { exact: false })
@@ -876,6 +931,21 @@ async function profileChecks() {
     0,
   );
   pass("profile-photo-read-error-is-not-absence");
+  await p.getByLabel("Nombre", { exact: false }).fill("Borrador conservado");
+  s.photoReadRecover();
+  await p
+    .getByRole("button", { name: "Consultar perfil guardado", exact: true })
+    .click();
+  await p
+    .getByText("Perfil consultado. Tu edición se conserva.", { exact: true })
+    .waitFor();
+  assert.equal(
+    await p.getByLabel("Nombre", { exact: false }).inputValue(),
+    "Borrador conservado",
+  );
+  await p.getByLabel("Sin fotografía", { exact: true }).waitFor();
+  assert.equal(mutations(s).length, 0);
+  pass("profile-photo-read-retry-preserves-draft");
   await s.close();
   s = await session({ path: "/settings/account" });
   p = s.page;
