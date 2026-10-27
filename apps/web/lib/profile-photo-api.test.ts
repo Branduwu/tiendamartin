@@ -81,7 +81,9 @@ it("writes only the verified user's private avatar with the user's own storage c
 it("serves the own private photo without public URLs, cache or MIME sniffing", async () => {
   const r = await handleProfilePhoto(request());
   expect(r.status).toBe(200);
-  expect(m.download).toHaveBeenCalledWith(id + "/avatar.jpg");
+  expect(m.download).toHaveBeenCalledWith(id + "/avatar.jpg", {
+    cacheNonce: expect.any(String),
+  });
   expect(r.headers.get("cache-control")).toBe("private, no-store");
   expect(r.headers.get("x-content-type-options")).toBe("nosniff");
   expect(r.headers.get("content-type")).toBe("image/jpeg");
@@ -172,4 +174,34 @@ it("distinguishes no photo from storage failure", async () => {
   const r = await handleProfilePhoto(request());
   expect(r.status).toBe(503);
   expect(JSON.stringify(await r.json())).not.toContain("PRIVATE");
+});
+it("uses a fresh upstream cache nonce on each read of the fixed avatar path", async () => {
+  await handleProfilePhoto(request());
+  await handleProfilePhoto(request());
+  expect(m.download.mock.calls[0]?.[0]).toBe(id + "/avatar.jpg");
+  expect(m.download.mock.calls[1]?.[0]).toBe(id + "/avatar.jpg");
+  expect(m.download.mock.calls[0]?.[1].cacheNonce).not.toBe(
+    m.download.mock.calls[1]?.[1].cacheNonce,
+  );
+});
+it("accepts a DELETE represented by an empty stream as in Next.js", async () => {
+  const req = new Request("https://example.test/api/v1/profile/photo", {
+    method: "DELETE",
+    headers: { origin: "https://example.test" },
+    body: new ReadableStream<Uint8Array>({
+      start(c) {
+        c.close();
+      },
+    }),
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+  expect((await handleProfilePhoto(req)).status).toBe(200);
+  expect(m.remove).toHaveBeenCalledWith([id + "/avatar.jpg"]);
+});
+it("rejects a nonempty DELETE body before attempting removal", async () => {
+  const response = await handleProfilePhoto(
+    request("DELETE", Buffer.from("unexpected")),
+  );
+  expect(response.status).toBe(400);
+  expect(m.remove).not.toHaveBeenCalled();
 });

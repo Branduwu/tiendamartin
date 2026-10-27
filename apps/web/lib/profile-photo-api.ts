@@ -14,9 +14,9 @@ export async function normalizedProfilePhoto(bytes: Uint8Array, mime: string) {
     .jpeg({ quality: 82 })
     .toBuffer();
 }
-async function boundedImage(request: Request) {
+async function boundedBody(request: Request, maxBytes = 3 * 1024 * 1024) {
   const reader = request.body?.getReader();
-  if (!reader) throw new TypeError("Missing image");
+  if (!reader) return Buffer.alloc(0);
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
@@ -24,7 +24,7 @@ async function boundedImage(request: Request) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > 3 * 1024 * 1024) {
+      if (total > maxBytes) {
         await reader.cancel();
         throw new TypeError("Image too large");
       }
@@ -69,7 +69,9 @@ export async function handleProfilePhoto(request: Request) {
     // The authenticated user's own Storage client enforces RLS. No service key.
     const storage = client.storage.from("profile-photos");
     if (request.method === "GET") {
-      const result = await storage.download(path);
+      // A fixed avatar path can retain old CDN bytes after a successful upsert.
+      // Downstream no-store does not bypass that upstream cache.
+      const result = await storage.download(path, { cacheNonce: randomUUID() });
       if (result.error) {
         if (
           ["404", "NoSuchKey", "ObjectNotFound", "not_found"].includes(
@@ -92,7 +94,7 @@ export async function handleProfilePhoto(request: Request) {
     }
     if (request.method === "PUT") {
       const image = await normalizedProfilePhoto(
-        await boundedImage(request),
+        await boundedBody(request),
         request.headers.get("content-type")?.split(";")[0]?.trim() ?? "",
       );
       mutationStarted = true;
@@ -103,7 +105,9 @@ export async function handleProfilePhoto(request: Request) {
       });
       if (result.error) throw new Error("Storage write unconfirmed");
     } else {
-      if (request.body) throw new TypeError("Unexpected body");
+      // Next may wrap a bodyless DELETE in an empty stream. Reject bytes,
+      // rather than rejecting the stream itself, and keep the read bounded.
+      await boundedBody(request, 0);
       mutationStarted = true;
       const result = await storage.remove([path]);
       if (result.error) throw new Error("Storage delete unconfirmed");
