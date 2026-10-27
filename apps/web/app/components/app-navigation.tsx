@@ -131,6 +131,20 @@ export default function AppNavigation({
           {member ? "No hay herramientas disponibles." : "Cargando tu acceso…"}
         </p>
       )}
+      {disabled ? (
+        <span className="nav-help" aria-disabled="true">
+          Ayuda
+        </span>
+      ) : (
+        <Link
+          className="nav-help"
+          prefetch={false}
+          href={companyHref("/help", selectedTenant)}
+          aria-current={current.startsWith("/help") ? "page" : undefined}
+        >
+          <span aria-hidden="true">ⓘ</span> Ayuda
+        </Link>
+      )}
     </nav>
   );
   return (

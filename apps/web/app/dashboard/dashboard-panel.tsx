@@ -1,5 +1,7 @@
 "use client";
 import InitialSetupPanel from "../help/initial-setup";
+import InventoryAlertScope from "../components/inventory-alert-scope";
+import { companyHref } from "../../lib/company-selection";
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type {
@@ -255,8 +257,8 @@ export default function DashboardPanel() {
         ["Impuestos devueltos", mxn(report.sales.taxRefunded)],
         ["Neto sin impuestos", mxn(report.sales.netCommercial)],
         ["Compras recibidas", mxn(report.purchases.receivedAmount)],
-        ["Stock bajo", report.inventory.low],
-        ["Agotados", report.inventory.empty],
+        ["Stock bajo con mínimo", report.inventory.low],
+        ["Agotados con mínimo", report.inventory.empty],
       ]
     : [];
   const primaryLabels = [
@@ -279,7 +281,7 @@ export default function DashboardPanel() {
         />
       </header>
       <main id="workspace-content" tabIndex={-1} className="workspace stack">
-        <div className="heading">
+        <div className="heading dashboard-welcome">
           <div>
             <h1>Inicio</h1>
             {report?.context && (
@@ -287,12 +289,31 @@ export default function DashboardPanel() {
                 {report.context.businessName} · {report.context.branchName}
               </p>
             )}
-            <p className="muted">
-              Ventas y operación de tu empresa, en un solo lugar.
-            </p>
           </div>
+          {company.tenantId && (
+            <div
+              className="actions dashboard-shortcuts"
+              aria-label="Acciones del negocio"
+            >
+              {company.permissions.includes("sales.create") && (
+                <Link
+                  className="button-link"
+                  href={companyHref("/pos", company.tenantId)}
+                >
+                  Ir al punto de venta
+                </Link>
+              )}
+              {company.permissions.includes("cash.read") && (
+                <Link
+                  className="button-link secondary"
+                  href={companyHref("/cash", company.tenantId)}
+                >
+                  Revisar caja
+                </Link>
+              )}
+            </div>
+          )}
         </div>
-        <InitialSetupPanel compact preferred={company.tenantId} />
         {company.tenants.length > 1 && (
           <label hidden>
             Empresa
@@ -405,19 +426,15 @@ export default function DashboardPanel() {
                     </label>
                   </div>
                   <p className="muted">
-                    Mínimos configurados por producto y ubicación. Sin mínimo no
-                    se genera alerta automática. Selectores: primeras 100
-                    referencias.
+                    Selectores: primeras 100 referencias. Las existencias y los
+                    saldos son actuales, independientes del periodo. Zona
+                    horaria: {report?.timezone ?? "America/Mexico_City"}.
+                  </p>
+                  <p id="dashboard-filter-help" className="muted">
+                    El periodo y los filtros cambian al pulsar «Aplicar
+                    filtros».
                   </p>
                 </details>
-                <p
-                  id="dashboard-filter-help"
-                  className="muted dashboard-filter-help"
-                >
-                  El periodo y los filtros cambian al pulsar «Aplicar filtros».
-                  Las existencias y los saldos actuales se identifican por
-                  separado.
-                </p>
                 <div className="actions">
                   <button className="secondary" disabled={exporting}>
                     Aplicar filtros
@@ -462,19 +479,6 @@ export default function DashboardPanel() {
                     <p role="status">
                       {humanPeriod(report.filters.from, report.filters.to)}
                     </p>
-                    <p className="muted">
-                      {[
-                        report.context?.businessName,
-                        report.context?.branchName,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "Empresa y ubicación consultadas"}{" "}
-                      · Zona horaria: {report.timezone}
-                    </p>
-                    <p className="muted">
-                      Importes en MXN. Los indicadores siguientes corresponden
-                      al periodo consultado.
-                    </p>
                   </section>
                   <dl className="report-kpis">
                     {metrics
@@ -491,6 +495,7 @@ export default function DashboardPanel() {
                         </div>
                       ))}
                   </dl>
+                  <InitialSetupPanel compact preferred={company.tenantId} />
                   <details className="dashboard-breakdown">
                     <summary>
                       Ver desglose completo de ventas y operación
@@ -629,17 +634,25 @@ export default function DashboardPanel() {
                           : "productos necesitan"}{" "}
                         atención
                       </h2>
-                      <p className="muted">
-                        Stock actual · Mínimos configurados
-                      </p>
-                      <Link
-                        href={`/inventory/alerts?tenantId=${company.tenantId}`}
-                        className="button secondary"
-                      >
-                        Ver alertas y reabastecimiento
-                      </Link>
+                      <InventoryAlertScope
+                        tenantId={company.tenantId}
+                        locationId={report.filters.locationId}
+                        permissions={company.permissions}
+                      />
+                      {company.permissions.includes("inventory.read") && (
+                        <Link
+                          href={`/inventory/alerts?${new URLSearchParams({ tenantId: company.tenantId, ...(report.filters.locationId ? { locationId: report.filters.locationId } : {}) })}`}
+                          className="button secondary"
+                        >
+                          Ver alertas y reabastecimiento
+                        </Link>
+                      )}
                       {!report.inventory.alerts.length ? (
-                        <p>No hay productos agotados ni con stock bajo.</p>
+                        <p>
+                          No hay alertas dentro de los mínimos configurados.
+                          Revisa Existencias para consultar también productos
+                          sin mínimo.
+                        </p>
                       ) : (
                         <ul className="report-alerts">
                           {report.inventory.alerts.map((p) => (

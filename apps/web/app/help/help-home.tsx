@@ -9,12 +9,12 @@ export default function HelpHome() {
   const results = searchHelp(search, permissions);
   return (
     <>
-      <div className="heading">
+      <div className="heading help-heading">
         <div>
           <h1>Ayuda</h1>
           <p>Encuentra cómo hacerlo, paso a paso.</p>
         </div>
-        <Link href="/help/support">Ayuda y soporte</Link>
+        <Link href="/help/support">Contactar soporte</Link>
       </div>
       <label className="field">
         Buscar en la guía

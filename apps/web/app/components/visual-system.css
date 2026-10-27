@@ -1413,6 +1413,45 @@ body.retail-ui:has(.app-sidebar) main.workspace {
 }
 .help-layout {
   max-width: 1120px;
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+.help-layout .help-heading {
+  margin-bottom: 0;
+}
+.retail-ui .help-layout {
+  gap: 0.75rem;
+}
+.help-layout .help-heading h1 {
+  margin-block: 0 0.25rem;
+}
+.help-layout .help-heading p {
+  margin-block: 0;
+}
+.help-layout > .field {
+  max-width: 42rem;
+}
+.help-layout .help-shortcuts {
+  gap: 0.5rem 1.25rem;
+}
+.help-layout .help-shortcuts a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.help-layout .help-categories {
+  display: block;
+  columns: 2;
+  column-gap: 20px;
+}
+.help-layout .help-categories > section {
+  break-inside: avoid;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) {
+  .help-layout .help-categories {
+    columns: 1;
+  }
 }
 .help-categories {
   display: grid;
@@ -2477,6 +2516,73 @@ body.retail-ui:has(.app-sidebar) main.workspace {
 }
 
 /* Dashboard: existing report values, scoped responsive presentation. */
+.retail-ui .dashboard-ux .dashboard-welcome {
+  align-items: center;
+  gap: 1rem;
+}
+.retail-ui .dashboard-shortcuts {
+  gap: 0.5rem;
+}
+.retail-ui .dashboard-shortcuts > a {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  text-decoration: none;
+}
+.retail-ui .dashboard-ux .dashboard-context {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+.retail-ui .dashboard-ux .dashboard-filter-form {
+  gap: 0.5rem 1rem;
+}
+.retail-ui .alert-scope {
+  border-left: 3px solid var(--primary);
+  padding: 0.25rem 0.875rem;
+  margin-block: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+.retail-ui .alert-scope p {
+  margin-block: 0.25rem 0.5rem;
+  max-width: 68ch;
+}
+.retail-ui .alert-scope .actions {
+  gap: 0.5rem 1rem;
+}
+.retail-ui .alert-scope a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.retail-ui .nav-help {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 600px) {
+  .retail-ui .dashboard-welcome {
+    align-items: stretch;
+  }
+  .retail-ui .dashboard-shortcuts {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .retail-ui .dashboard-shortcuts > :only-child {
+    grid-column: 1/-1;
+  }
+  .retail-ui .inventory-alerts-ux .report-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .retail-ui
   .dashboard-ux
   :is(

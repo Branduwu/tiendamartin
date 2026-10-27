@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { InventoryLocationDto } from "@smartretail/contracts";
 import AppNavigation, { companyLabel } from "./app-navigation";
 import InventoryStateBadge from "./inventory-state-badge";
+import InventoryAlertScope from "./inventory-alert-scope";
 import {
   purchasingApi,
   PurchasingApiError,
@@ -123,17 +124,25 @@ export default function InventoryAlertsPanel({
           }
         />
       </header>
-      <main id="workspace-content" tabIndex={-1} className="workspace stack">
+      <main
+        id="workspace-content"
+        tabIndex={-1}
+        className="workspace stack inventory-alerts-ux"
+      >
         <div className="heading">
           <div>
-            <p className="eyebrow">Operaciones</p>
             <h1>Alertas de inventario</h1>
             <p className="muted">
-              Necesita reabastecimiento: compara existencia y mínimo por
-              sucursal.
+              Reabastecimiento según los mínimos de cada ubicación.
             </p>
           </div>
-          <Link href="/inventory">Volver a inventario</Link>
+          {tenantId && (
+            <Link
+              href={`/inventory?${new URLSearchParams({ tenantId, ...(locationId ? { locationId } : {}) })}`}
+            >
+              Ver existencias
+            </Link>
+          )}
         </div>
         {!!tenants.length && (
           <div className="form-grid">
@@ -217,18 +226,23 @@ export default function InventoryAlertsPanel({
           <>
             <dl className="report-kpis">
               <div>
-                <dt>Stock bajo</dt>
+                <dt>Stock bajo con mínimo</dt>
                 <dd>{alerts.low}</dd>
               </div>
               <div>
-                <dt>Agotados</dt>
+                <dt>Agotados con mínimo</dt>
                 <dd>{alerts.empty}</dd>
               </div>
             </dl>
             <section className="card" aria-label="Productos con alerta">
-              <p className="muted">
-                Configura un mínimo para detectar qué productos reabastecer.
-              </p>
+              <InventoryAlertScope
+                tenantId={tenantId}
+                locationId={locationId}
+                permissions={
+                  tenants.find((t) => t.tenantId === tenantId)?.permissions ??
+                  []
+                }
+              />
               <details>
                 <summary>Cómo se calculan las alertas</summary>
                 <p className="muted">
@@ -239,7 +253,14 @@ export default function InventoryAlertsPanel({
                 </p>
               </details>
               {!alerts.alerts.length ? (
-                <p role="status">No hay alertas para esta ubicación.</p>
+                <div className="dashboard-empty" role="status">
+                  <strong>No hay alertas con los mínimos configurados.</strong>
+                  <p>
+                    Esto no confirma que todos los productos tengan existencias
+                    ni que todos tengan un mínimo. Revisa Existencias; si tienes
+                    permiso, configura sus mínimos.
+                  </p>
+                </div>
               ) : (
                 <div
                   className="table-scroll responsive-table"
