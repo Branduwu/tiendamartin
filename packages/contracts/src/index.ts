@@ -1,4 +1,10 @@
 export { MoneySchema, type MoneyDto } from "./money";
+export {
+  PersonalProfileSchema,
+  type PersonalProfileInput,
+  type PersonalProfile,
+  type ProfileOverview,
+} from "./profile";
 export { UuidSchema } from "./identifiers";
 export { UnitCodeSchema, type UnitCodeDto } from "./unit";
 export { QuantitySchema, type QuantityDto } from "./quantity";

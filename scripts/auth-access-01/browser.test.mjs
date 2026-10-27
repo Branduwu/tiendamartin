@@ -89,6 +89,16 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
     logs = [],
     navigation = [];
   const invitations = [];
+  let profile = {
+    firstName: "María",
+    lastName: "Prueba",
+    phone: "555-1234",
+    displayName: "María Prueba",
+    email,
+    photoEnabled: mode !== "photo-disabled",
+  };
+  let hasPhoto = false,
+    profileReads = 0;
   const creationNonces = new Set();
   let mailAttempts = 0;
   let logoutFailed = mode === "logout-error",
@@ -97,8 +107,29 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (e) => logs.push(e.text()));
   const origin = "http://127.0.0.1:55998";
-  await page.route("**/*", (route) => {
+  await page.route("**/*", async (route) => {
     const u = new URL(route.request().url());
+    if (u.origin === origin && u.pathname === "/api/v1/profile/photo") {
+      calls.push({
+        operation: "/api/v1/profile/photo",
+        init: { method: "GET" },
+      });
+      if (
+        mode === "photo-load-error" ||
+        (mode === "photo-read-error" && hasPhoto)
+      )
+        return route.fulfill({ status: 503, body: "Read unavailable" });
+      if (!hasPhoto) return route.fulfill({ status: 404, body: "No photo" });
+      const sharp = require(
+        require.resolve("sharp", { paths: [root + "/apps/web"] }),
+      );
+      const image = await sharp({
+        create: { width: 16, height: 16, channels: 3, background: "#166f69" },
+      })
+        .png()
+        .toBuffer();
+      return route.fulfill({ contentType: "image/png", body: image });
+    }
     if (u.origin === origin && u.pathname === "/onboarding")
       return route.fulfill({
         contentType: "text/html",
@@ -115,6 +146,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
         "/change",
         "/invite",
         "/settings/users",
+        "/settings/account",
       ].includes(u.pathname)
     )
       return route.fulfill({ contentType: "text/html", body: html });
@@ -155,6 +187,92 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
   });
   await page.exposeFunction("fetchMock", async (url, body, init) => {
     calls.push({ operation: url, body, init });
+    if (url === "/api/v1/tenants")
+      return {
+        status: 200,
+        body: {
+          tenants: [
+            {
+              tenantId: "550e8400-e29b-41d4-a716-446655440001",
+              tenantName: "Negocio sintético",
+              tenantStatus: "active",
+              role: "cashier",
+              displayName: "Usuario anterior",
+              permissions: [
+                "sales.create",
+                "products.read",
+                "cash.read",
+                "inventory.read",
+              ],
+            },
+          ],
+        },
+      };
+    if (url === "/api/v1/platform")
+      return { status: 403, body: { error: "No platform" } };
+    if (url === "/api/v1/profile?summary=1")
+      return {
+        status: 200,
+        body: {
+          displayName: profile.displayName,
+          photoEnabled: profile.photoEnabled,
+        },
+      };
+    if (url === "/api/v1/profile") {
+      if (init.method === "GET") {
+        profileReads++;
+        if (mode === "profile-load-error" && profileReads === 1)
+          return { status: 503, body: { error: "Consulta no disponible." } };
+        return {
+          status: 200,
+          body: {
+            ...profile,
+            roles: [
+              {
+                company: "Negocio sintético",
+                role: "cashier",
+                status: "active",
+              },
+            ],
+            platformAdmin: false,
+          },
+        };
+      }
+      if (hold) await hold;
+      if (mode === "profile-rejected")
+        return { status: 400, body: { error: "Revisa los datos personales." } };
+      const input = JSON.parse(body);
+      assert.deepEqual(Object.keys(input).sort(), [
+        "firstName",
+        "lastName",
+        "phone",
+      ]);
+      profile = {
+        ...profile,
+        ...input,
+        displayName: [input.firstName, input.lastName]
+          .filter(Boolean)
+          .join(" "),
+      };
+      if (mode === "profile-uncertain")
+        throw Error("SYNTHETIC_LOST_PROFILE_RESPONSE");
+      return { status: 200, body: profile };
+    }
+    if (url === "/api/v1/profile/photo") {
+      if (mode === "photo-rejected")
+        return {
+          status: 400,
+          body: { error: "Elige una imagen válida de hasta 3 MB." },
+        };
+      if (init.method === "PUT") {
+        assert.ok(init.bodySize > 0);
+        hasPhoto = true;
+      } else if (init.method === "DELETE") hasPhoto = false;
+      else throw Error("UNEXPECTED_PHOTO_OPERATION");
+      if (mode === "photo-uncertain" || mode === "photo-read-error")
+        throw Error("SYNTHETIC_LOST_PHOTO_RESPONSE");
+      return { status: 200, body: { saved: true } };
+    }
     if (url === "/api/v1/invitations") {
       assert.equal(
         init.headers["x-tenant-id"],
@@ -482,6 +600,314 @@ async function invitationChecks() {
   pass("invitation-existing-private-acceptance-contract-preserved");
   await s.close();
   assert.equal(externalRequests, 0);
+}
+async function profileChecks() {
+  const mutations = (s, path = "/api/v1/profile", method = "PATCH") =>
+    s.calls.filter((c) => c.operation === path && c.init.method === method);
+  async function ready(s) {
+    await s.page.getByLabel("Nombre", { exact: false }).waitFor();
+    await s.page.getByLabel("Nombre", { exact: false }).fill("Ana");
+  }
+  for (const width of [1280, 768, 390, 320]) {
+    const s = await session({ path: "/settings/account", width });
+    const p = s.page;
+    await ready(s);
+    await p.getByLabel("Apellidos", { exact: true }).fill("Pérez");
+    await p
+      .getByLabel("Teléfono de contacto", { exact: false })
+      .fill("555-9876");
+    await p
+      .getByRole("button", { name: "Guardar datos personales", exact: true })
+      .click();
+    await p.getByText("Datos personales guardados.", { exact: true }).waitFor();
+    await p.getByLabel("Menú de usuario").click();
+    await p
+      .locator(".account-identity")
+      .filter({ hasText: "Ana Pérez" })
+      .waitFor();
+    assert.equal(
+      await p.getByLabel("Correo de acceso").getAttribute("readonly"),
+      "",
+    );
+    assert.equal(mutations(s).length, 1);
+    assert.ok((await p.locator("body").innerText()).includes("Cajero"));
+    assert.equal(await p.locator('select[name="role"]').count(), 0);
+    assert.ok(
+      await p.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+    if (width === 1280) {
+      const sidebar = await p.locator(".app-sidebar").boundingBox();
+      const main = await p.locator("main.workspace").boundingBox();
+      assert.ok(sidebar && main && main.x >= sidebar.x + sidebar.width);
+      assert.equal(await p.locator("#workspace-content").count(), 1);
+    }
+    if (process.argv[3] && (width === 1280 || width === 320)) {
+      fs.mkdirSync(process.argv[3], { recursive: true });
+      await p.screenshot({
+        path: path.join(process.argv[3], `profile-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await p.reload();
+    await p.getByLabel("Nombre", { exact: false }).waitFor();
+    assert.equal(
+      await p.getByLabel("Nombre", { exact: false }).inputValue(),
+      "Ana",
+    );
+    assert.equal(
+      await p.getByLabel("Apellidos", { exact: true }).inputValue(),
+      "Pérez",
+    );
+    assert.equal(mutations(s).length, 1);
+    pass(`profile-save-reload-live-identity-readonly-role-${width}px`);
+    await s.close();
+  }
+  let s = await session({ path: "/settings/account" });
+  let p = s.page;
+  await ready(s);
+  await p.getByLabel("Nombre", { exact: false }).fill("");
+  await p
+    .getByRole("button", { name: "Guardar datos personales", exact: true })
+    .click();
+  assert.equal(
+    await p
+      .getByLabel("Nombre", { exact: false })
+      .evaluate((i) => i.validity.valueMissing),
+    true,
+  );
+  await p.getByLabel("Nombre", { exact: false }).fill("Ana");
+  await p
+    .getByLabel("Teléfono de contacto", { exact: false })
+    .fill("invalid-phone");
+  await p
+    .getByRole("button", { name: "Guardar datos personales", exact: true })
+    .click();
+  await p.getByRole("alert").filter({ hasText: "Revisa nombre" }).waitFor();
+  assert.equal(mutations(s).length, 0);
+  pass("profile-required-name-invalid-phone-no-request");
+  await s.close();
+  s = await session({ path: "/settings/account" });
+  p = s.page;
+  await ready(s);
+  s.hold();
+  await p
+    .locator("form")
+    .first()
+    .evaluate((f) => {
+      f.requestSubmit();
+      f.requestSubmit();
+    });
+  await p.getByText("Guardando…", { exact: true }).first().waitFor();
+  assert.equal(mutations(s).length, 1);
+  s.release();
+  await p.getByText("Datos personales guardados.", { exact: true }).waitFor();
+  pass("profile-double-click-one-update");
+  await s.close();
+  s = await session({ path: "/settings/account", mode: "profile-rejected" });
+  p = s.page;
+  await ready(s);
+  await p
+    .getByRole("button", { name: "Guardar datos personales", exact: true })
+    .click();
+  await p
+    .getByRole("alert")
+    .filter({ hasText: "Revisa los datos personales" })
+    .waitFor();
+  assert.equal(
+    await p.getByText("Datos personales guardados.", { exact: true }).count(),
+    0,
+  );
+  pass("profile-rejection-no-false-success");
+  await s.close();
+  s = await session({ path: "/settings/account", mode: "profile-uncertain" });
+  p = s.page;
+  await ready(s);
+  await p
+    .getByRole("button", { name: "Guardar datos personales", exact: true })
+    .click();
+  await p
+    .getByRole("alert")
+    .filter({ hasText: "No pudimos confirmar" })
+    .waitFor();
+  assert.equal(
+    await p
+      .getByRole("button", { name: "Guardar datos personales", exact: true })
+      .isDisabled(),
+    true,
+  );
+  await p
+    .getByRole("button", { name: "Consultar perfil guardado", exact: true })
+    .click();
+  await p
+    .getByText("Perfil consultado. Revisa los datos antes de guardar.", {
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(
+    await p.getByLabel("Nombre", { exact: false }).inputValue(),
+    "Ana",
+  );
+  assert.equal(mutations(s).length, 1);
+  pass("profile-unknown-write-reconciled-without-repeat");
+  await s.close();
+  s = await session({ path: "/settings/account", mode: "profile-load-error" });
+  p = s.page;
+  await p.getByRole("button", { name: "Volver a consultar perfil" }).click();
+  await p.getByLabel("Nombre", { exact: false }).waitFor();
+  pass("profile-load-error-explicit-read-retry");
+  await s.close();
+  s = await session({ path: "/settings/account", mode: "photo-disabled" });
+  p = s.page;
+  await p
+    .getByText("La fotografía estará disponible", { exact: false })
+    .waitFor();
+  assert.equal(await p.locator('input[type="file"]').count(), 0);
+  pass("profile-photo-pending-dependency-visible");
+  await s.close();
+  const sharp = require(
+    require.resolve("sharp", { paths: [path.join(root, "apps/web")] }),
+  );
+  const image = await sharp({
+    create: { width: 16, height: 16, channels: 3, background: "red" },
+  })
+    .png()
+    .toBuffer();
+  s = await session({ path: "/settings/account", width: 320 });
+  p = s.page;
+  await p.getByLabel("Seleccionar fotografía", { exact: false }).waitFor();
+  await p.getByLabel("Seleccionar fotografía", { exact: false }).setInputFiles({
+    name: "invalid.svg",
+    mimeType: "image/svg+xml",
+    buffer: Buffer.from("<svg/>"),
+  });
+  await p.getByRole("alert").filter({ hasText: "hasta 3 MB" }).waitFor();
+  assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 0);
+  await p
+    .getByLabel("Seleccionar fotografía", { exact: false })
+    .setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: image });
+  await p
+    .getByRole("button", { name: "Guardar fotografía", exact: true })
+    .click();
+  await p.getByText("Fotografía guardada.", { exact: true }).waitFor();
+  await p.reload();
+  await p
+    .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
+    .waitFor();
+  await p.waitForFunction(() => {
+    const img = document.querySelector('img[alt="Tu fotografía de perfil"]');
+    return img?.complete && img.naturalWidth > 0;
+  });
+  await p
+    .getByRole("button", { name: "Quitar fotografía", exact: true })
+    .click();
+  await p.getByText("Fotografía eliminada.", { exact: true }).waitFor();
+  assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+  assert.equal(mutations(s, "/api/v1/profile/photo", "DELETE").length, 1);
+  pass("profile-photo-invalid-valid-reload-remove-mobile");
+  await s.close();
+  for (const mode of [
+    "photo-rejected",
+    "photo-uncertain",
+    "photo-read-error",
+  ]) {
+    s = await session({ path: "/settings/account", mode });
+    p = s.page;
+    await p
+      .getByLabel("Seleccionar fotografía", { exact: false })
+      .setInputFiles({
+        name: "photo.png",
+        mimeType: "image/png",
+        buffer: image,
+      });
+    await p
+      .getByRole("button", { name: "Guardar fotografía", exact: true })
+      .click();
+    await p.getByRole("alert").waitFor();
+    assert.equal(
+      await p.getByText("Fotografía guardada.", { exact: true }).count(),
+      0,
+    );
+    assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+    if (mode !== "photo-rejected") {
+      await p
+        .getByRole("button", { name: "Consultar perfil guardado", exact: true })
+        .click();
+      if (mode === "photo-read-error") {
+        await p
+          .getByRole("alert")
+          .filter({ hasText: "No pudimos confirmar la fotografía." })
+          .waitFor();
+        assert.equal(
+          await p
+            .getByLabel("Seleccionar fotografía", { exact: false })
+            .isDisabled(),
+          true,
+        );
+        await p
+          .getByText("No significa que se haya eliminado.", { exact: false })
+          .waitFor();
+      } else {
+        await p
+          .getByText("Perfil consultado. Revisa los datos antes de guardar.", {
+            exact: true,
+          })
+          .waitFor();
+        assert.equal(
+          await p
+            .getByLabel("Seleccionar fotografía", { exact: false })
+            .isDisabled(),
+          false,
+        );
+      }
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+    }
+    pass(`profile-${mode}-no-automatic-repeat`);
+    await s.close();
+  }
+  s = await session({ path: "/settings/account", mode: "photo-load-error" });
+  p = s.page;
+  await p
+    .getByText("No significa que se haya eliminado.", { exact: false })
+    .waitFor();
+  assert.equal(
+    await p.getByLabel("Sin fotografía", { exact: true }).count(),
+    0,
+  );
+  pass("profile-photo-read-error-is-not-absence");
+  await s.close();
+  s = await session({ path: "/settings/account" });
+  p = s.page;
+  await p
+    .locator('input[name="currentPassword"]')
+    .fill("Anterior sintética 123!");
+  await p.locator('input[name="password"]').fill(password);
+  await p.locator('input[name="confirmation"]').fill(password);
+  const passwordButton = p
+    .locator("form")
+    .filter({ has: p.locator('input[name="currentPassword"]') })
+    .getByRole("button", { name: /Guardar|Cambiar/ });
+  await passwordButton.click();
+  await p
+    .getByText(
+      "Contraseña actualizada. Inicia sesión con tu nueva contraseña.",
+      { exact: true },
+    )
+    .waitFor();
+  assert.equal(mutations(s).length, 0);
+  pass("profile-existing-password-change-is-separate");
+  await s.close();
+  assert.equal(externalRequests, 0);
+}
+if (process.argv.includes("--profile-only")) {
+  try {
+    await profileChecks();
+    console.log(JSON.stringify({ checks, externalRequests }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
 }
 if (process.argv.includes("--invitations-only")) {
   try {

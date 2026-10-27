@@ -1,0 +1,66 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.layout > * {
+  min-width: 0;
+}
+.photo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.photo input {
+  max-width: 100%;
+}
+.avatar {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface-muted, #e8edf2);
+  color: var(--text, #172333);
+  font-size: 2.5rem;
+}
+.avatar img {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+.fields {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+.fields legend {
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+.fields button,
+.photo button {
+  min-height: 44px;
+  white-space: normal;
+}
+@media (max-width: 640px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .photo {
+    align-items: stretch;
+  }
+  .avatar {
+    align-self: center;
+  }
+  .fields input {
+    min-width: 0;
+  }
+}

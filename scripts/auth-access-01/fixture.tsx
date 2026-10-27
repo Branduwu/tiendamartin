@@ -6,6 +6,8 @@ import RegisterForm from "../../apps/web/app/register/register-form";
 import PasswordForm from "../../apps/web/app/components/password-form";
 import InviteForm from "../../apps/web/app/invite/invite-form";
 import InvitationsPanel from "../../apps/web/app/settings/users/invitations-panel";
+import ProfilePanel from "../../apps/web/app/settings/account/profile-panel";
+import AppNavigation from "../../apps/web/app/components/app-navigation";
 import "../../apps/web/app/globals.css";
 import "../../apps/web/app/components/visual-system.css";
 const testWindow = window as typeof window & {
@@ -13,17 +15,28 @@ const testWindow = window as typeof window & {
   fetchMock: (
     url: string,
     body: string | undefined,
-    init: { method: string; headers: Record<string, string> },
+    init: {
+      method: string;
+      headers: Record<string, string>;
+      bodySize?: number;
+    },
   ) => Promise<{ status: number; body: unknown }>;
 };
 testWindow.React = React;
+const nativeFetch = window.fetch.bind(window);
 window.fetch = (async (input, init) => {
+  if (
+    String(input).startsWith("/api/v1/profile/photo") &&
+    (!init?.method || init.method === "GET")
+  )
+    return nativeFetch(input, init);
   const r = await testWindow.fetchMock(
     String(input),
     typeof init?.body === "string" ? init.body : undefined,
     {
       method: init?.method ?? "GET",
       headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      ...(init?.body instanceof Blob ? { bodySize: init.body.size } : {}),
     },
   );
   return new Response(JSON.stringify(r.body), { status: r.status });
@@ -31,7 +44,16 @@ window.fetch = (async (input, init) => {
 const url = new URL(window.location.href),
   configured = url.searchParams.get("configured") !== "no";
 const view =
-  url.pathname === "/settings/users" ? (
+  url.pathname === "/settings/account" ? (
+    <>
+      <h2>Mi perfil</h2>
+      <ProfilePanel />
+      <section className="panel stack">
+        <h2>Cambiar contraseña</h2>
+        <PasswordForm mode="change" />
+      </section>
+    </>
+  ) : url.pathname === "/settings/users" ? (
     <InvitationsPanel
       tenantId="550e8400-e29b-41d4-a716-446655440001"
       onBusy={() => {}}
@@ -58,8 +80,27 @@ const view =
     </>
   );
 createRoot(document.getElementById("root")!).render(
-  <main className="login">
-    <h1>Acceso de prueba</h1>
-    {view}
-  </main>,
+  <>
+    {url.pathname === "/settings/account" && (
+      <header className="topbar">
+        <strong>SmartRetail</strong>
+        <AppNavigation current="/settings/account" />
+      </header>
+    )}
+    <main
+      className={url.pathname === "/settings/account" ? "workspace" : "login"}
+      id="workspace-content"
+      tabIndex={-1}
+    >
+      <div
+        className="stack"
+        style={
+          url.pathname === "/settings/account" ? { maxWidth: "60rem" } : {}
+        }
+      >
+        <h1>Acceso de prueba</h1>
+        {view}
+      </div>
+    </main>
+  </>,
 );

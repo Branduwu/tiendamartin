@@ -16,6 +16,7 @@ const router = {
   refresh: () => {},
 };
 export const useRouter = () => router;
+export const usePathname = () => window.location.pathname;
 const mock = (operation: string, ...args: unknown[]) =>
   (
     window as typeof window & {
