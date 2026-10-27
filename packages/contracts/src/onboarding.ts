@@ -31,6 +31,10 @@ export const CreateInvitationSchema = z
       .max(100)
       .refine((v) => new Set(v.map((x) => x.toLowerCase())).size === v.length),
     expiresInDays: z.number().int().min(1).max(14),
+    creationNonce: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
   })
   .refine((v) => v.role !== "admin" || v.locationIds.length === 0);
 export const AcceptInvitationSchema = z.strictObject({
@@ -38,3 +42,9 @@ export const AcceptInvitationSchema = z.strictObject({
 });
 export type OnboardingInput = z.infer<typeof OnboardingSchema>;
 export type CreateInvitationInput = z.infer<typeof CreateInvitationSchema>;
+export const InvitationEmailStatusSchema = z.enum([
+  "accepted",
+  "not_sent",
+  "unknown",
+]);
+export type InvitationEmailStatus = z.infer<typeof InvitationEmailStatusSchema>;

@@ -110,8 +110,13 @@ export {
   OnboardingSchema,
   CreateInvitationSchema,
   AcceptInvitationSchema,
+  InvitationEmailStatusSchema,
 } from "./onboarding";
-export type { OnboardingInput, CreateInvitationInput } from "./onboarding";
+export type {
+  OnboardingInput,
+  CreateInvitationInput,
+  InvitationEmailStatus,
+} from "./onboarding";
 export {
   NewPasswordSchema,
   ResetPasswordSchema,

@@ -41,12 +41,19 @@ it("normalizes invitation email and denies owner or ambiguous assignments", () =
     expiresInDays: 7,
   };
   expect(CreateInvitationSchema.parse(invite).email).toBe("user@example.test");
+  expect(
+    CreateInvitationSchema.safeParse({
+      ...invite,
+      creationNonce: "c".repeat(64),
+    }).success,
+  ).toBe(true);
   for (const changes of [
     { role: "owner" },
     { role: "admin" },
     { locationIds: [id, id] },
     { locations: [id] },
     { expiresInDays: "7" },
+    { creationNonce: "short" },
   ])
     expect(
       CreateInvitationSchema.safeParse({ ...invite, ...changes }).success,

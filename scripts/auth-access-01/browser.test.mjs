@@ -88,6 +88,9 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
     errors = [],
     logs = [],
     navigation = [];
+  const invitations = [];
+  const creationNonces = new Set();
+  let mailAttempts = 0;
   let logoutFailed = mode === "logout-error",
     hold = null,
     release = null;
@@ -111,6 +114,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
         "/register",
         "/change",
         "/invite",
+        "/settings/users",
       ].includes(u.pathname)
     )
       return route.fulfill({ contentType: "text/html", body: html });
@@ -149,8 +153,84 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
           : null,
     };
   });
-  await page.exposeFunction("fetchMock", async (url, body) => {
-    calls.push({ operation: url, body });
+  await page.exposeFunction("fetchMock", async (url, body, init) => {
+    calls.push({ operation: url, body, init });
+    if (url === "/api/v1/invitations") {
+      assert.equal(
+        init.headers["x-tenant-id"],
+        "550e8400-e29b-41d4-a716-446655440001",
+      );
+      if (init.method === "GET")
+        return {
+          status: 200,
+          body: {
+            invitations,
+            locations: [
+              {
+                id: "550e8400-e29b-41d4-a716-446655440011",
+                name: "Sucursal ficticia",
+                status: "active",
+              },
+            ],
+          },
+        };
+      const value = JSON.parse(body);
+      if (creationNonces.has(value.creationNonce))
+        return {
+          status: 409,
+          body: {
+            error:
+              "Esta solicitud de invitación ya se registró. Consulta las invitaciones; no repitas el envío.",
+          },
+        };
+      if (
+        mode === "create-denied" ||
+        (mode === "second-create-denied" && invitations.length)
+      )
+        return {
+          status: 403,
+          body: { error: "No tienes permiso para crear esta invitación." },
+        };
+      const invitation = {
+        id: `550e8400-e29b-41d4-a716-${String(invitations.length + 1).padStart(12, "0")}`,
+        email: value.email.toLowerCase(),
+        role: value.role,
+        locationIds: value.locationIds,
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        acceptedAt: null,
+        revokedAt: null,
+      };
+      invitations.push(invitation);
+      creationNonces.add(value.creationNonce);
+      mailAttempts++;
+      if (hold) await hold;
+      if (mode === "create-unknown") throw new Error("SYNTHETIC_RESPONSE_LOST");
+      return {
+        status: 201,
+        body: {
+          invitation,
+          token,
+          ...(mode === "legacy"
+            ? {}
+            : {
+                emailDelivery: {
+                  status:
+                    mode === "not-sent"
+                      ? "not_sent"
+                      : mode === "mail-unknown"
+                        ? "unknown"
+                        : "accepted",
+                },
+              }),
+        },
+      };
+    }
+    if (url.startsWith("/api/v1/invitations/") && init?.method === "PATCH") {
+      const record = invitations.find((i) => url.endsWith("/" + i.id));
+      assert.ok(record);
+      record.revokedAt = "2026-10-26T00:00:00Z";
+      return { status: 200, body: { saved: true } };
+    }
     if (hold) await hold;
     if (mode === "network" && url.includes("password"))
       throw new Error("PROVIDER_PRIVATE");
@@ -193,6 +273,17 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
       document.body.dataset.next = e.detail;
     }),
   );
+  if (path === "/settings/users")
+    await page.addInitScript(() =>
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.invitationCopied = text;
+          },
+        },
+      }),
+    );
   await page.goto(origin + path);
   await page
     .getByRole("heading", { name: "Acceso de prueba", exact: true })
@@ -202,6 +293,8 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
     calls,
     context,
     mode,
+    invitations,
+    mailAttempts: () => mailAttempts,
     hold() {
       hold = new Promise((r) => (release = r));
     },
@@ -228,6 +321,176 @@ async function fillPasswords(p, mode = "reset") {
     await input(p, "currentPassword").fill("Anterior ficticia 123!");
   await input(p, "password").fill(password);
   await input(p, "confirmation").fill(password);
+}
+async function invitationChecks() {
+  const posts = (s) =>
+    s.calls.filter(
+      (c) => c.operation === "/api/v1/invitations" && c.init.method === "POST",
+    );
+  async function create(s, recipient = email) {
+    await s.page.getByLabel("Correo de la persona").fill(recipient);
+    await s.page.getByLabel("Sucursal ficticia").check();
+    await s.page
+      .getByRole("button", { name: "Crear invitación", exact: true })
+      .click();
+  }
+  for (const [mode, message] of [
+    ["ok", "correo aceptado por el proveedor"],
+    ["not-sent", "el correo no se envió"],
+    ["mail-unknown", "No pudimos confirmar el envío"],
+    ["legacy", "No pudimos confirmar el envío"],
+  ]) {
+    const s = await session({ path: "/settings/users", mode, width: 320 });
+    await create(s);
+    await s.page.getByText(message, { exact: false }).waitFor();
+    const link = s.page.getByLabel("Enlace privado · visible sólo ahora");
+    assert.equal(
+      await link.inputValue(),
+      "http://127.0.0.1:55998/invite#token=" + token,
+    );
+    await s.page
+      .getByRole("button", { name: "Copiar enlace de invitación" })
+      .click();
+    assert.equal(
+      await s.page.evaluate(() => window.invitationCopied),
+      await link.inputValue(),
+    );
+    await s.page.getByText(message, { exact: false }).waitFor();
+    assert.equal(posts(s).length, 1);
+    assert.equal(s.mailAttempts(), 1);
+    assert.equal(s.invitations.length, 1);
+    assert.equal(s.invitations[0].email, email);
+    assert.equal(s.invitations[0].role, "cashier");
+    assert.deepEqual(s.invitations[0].locationIds, [
+      "550e8400-e29b-41d4-a716-446655440011",
+    ]);
+    assert.ok(
+      await s.page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+    pass(`invitation-${mode}-status-copy-no-resend-mobile`);
+    await s.close();
+  }
+  let s = await session({ path: "/settings/users" });
+  await s.page.getByLabel("Correo de la persona").fill(email);
+  s.hold();
+  await s.page.locator("form").evaluate((form) => {
+    form.requestSubmit();
+    form.requestSubmit();
+  });
+  await s.page.getByText("Creando y enviando…").waitFor();
+  assert.equal(posts(s).length, 1);
+  s.release();
+  await s.page
+    .getByText("correo aceptado por el proveedor", { exact: false })
+    .waitFor();
+  assert.equal(s.invitations.length, 1);
+  assert.equal(s.mailAttempts(), 1);
+  pass("invitation-double-submit-one-create-and-mail");
+  await s.close();
+  s = await session({ path: "/settings/users", mode: "create-denied" });
+  await create(s);
+  await s.page.getByRole("alert").waitFor();
+  assert.equal(s.mailAttempts(), 0);
+  assert.equal(
+    await s.page.getByLabel("Enlace privado · visible sólo ahora").count(),
+    0,
+  );
+  pass("invitation-create-denied-no-mail-or-false-success");
+  await s.close();
+  s = await session({ path: "/settings/users", mode: "create-unknown" });
+  await create(s);
+  await s.page.getByRole("alert").waitFor();
+  await s.page.getByRole("button", { name: "Reintentar consulta" }).click();
+  await s.page.locator("article").filter({ hasText: email }).waitFor();
+  assert.equal(posts(s).length, 1);
+  assert.equal(s.mailAttempts(), 1);
+  assert.equal(
+    await s.page.getByLabel("Enlace privado · visible sólo ahora").count(),
+    0,
+  );
+  await create(s);
+  await s.page
+    .getByRole("alert")
+    .filter({ hasText: "Esta solicitud de invitación ya se registró" })
+    .waitFor();
+  const retried = posts(s);
+  assert.equal(retried.length, 2);
+  assert.equal(
+    JSON.parse(retried[0].body).creationNonce,
+    JSON.parse(retried[1].body).creationNonce,
+  );
+  assert.equal(s.invitations.length, 1);
+  assert.equal(s.mailAttempts(), 1);
+  pass("invitation-lost-response-same-creation-nonce-no-duplicate-or-resend");
+  await s.close();
+  s = await session({ path: "/settings/users", mode: "second-create-denied" });
+  await create(s);
+  await s.page
+    .getByText("correo aceptado por el proveedor", { exact: false })
+    .waitFor();
+  await create(s, "other@example.invalid");
+  await s.page.getByRole("alert").waitFor();
+  await s.page.getByText("Invitación para " + email, { exact: true }).waitFor();
+  assert.equal(s.invitations.length, 1);
+  assert.equal(s.mailAttempts(), 1);
+  assert.equal(
+    await s.page.getByLabel("Enlace privado · visible sólo ahora").count(),
+    1,
+  );
+  pass("invitation-failed-new-create-preserves-previous-private-link");
+  await s.close();
+  s = await session({ path: "/settings/users" });
+  await create(s);
+  await s.page
+    .getByText("correo aceptado por el proveedor", { exact: false })
+    .waitFor();
+  await create(s, "other@example.invalid");
+  await s.page
+    .getByText("Invitación para other@example.invalid", { exact: true })
+    .waitFor();
+  await s.page
+    .locator("article")
+    .filter({ hasText: email })
+    .getByRole("button", { name: "Revocar invitación" })
+    .click();
+  await s.page.getByText("Invitación revocada.", { exact: true }).waitFor();
+  assert.equal(
+    await s.page.getByLabel("Enlace privado · visible sólo ahora").count(),
+    1,
+  );
+  await s.page
+    .locator("article")
+    .filter({ hasText: "other@example.invalid" })
+    .getByRole("button", { name: "Revocar invitación" })
+    .click();
+  await s.page
+    .getByLabel("Enlace privado · visible sólo ahora")
+    .waitFor({ state: "detached" });
+  pass("invitation-revoke-clears-only-matching-link");
+  await s.close();
+  s = await session({ path: "/invite#token=" + token });
+  await s.page
+    .getByRole("button", { name: "Aceptar invitación", exact: true })
+    .click();
+  await s.page.waitForURL("**/onboarding");
+  const accept = s.calls.find(
+    (c) => c.operation === "/api/v1/invitations/accept",
+  );
+  assert.deepEqual(JSON.parse(accept.body), { token });
+  pass("invitation-existing-private-acceptance-contract-preserved");
+  await s.close();
+  assert.equal(externalRequests, 0);
+}
+if (process.argv.includes("--invitations-only")) {
+  try {
+    await invitationChecks();
+    console.log(JSON.stringify({ checks, externalRequests }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
 }
 try {
   for (const [mode, message] of [

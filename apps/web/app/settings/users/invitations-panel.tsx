@@ -1,7 +1,11 @@
 "use client";
 import { LoadingLabel } from "../../components/ui";
 import { useEffect, useRef, useState } from "react";
-import type { InventoryLocationDto } from "@smartretail/contracts";
+import {
+  InvitationEmailStatusSchema,
+  type InvitationEmailStatus,
+  type InventoryLocationDto,
+} from "@smartretail/contracts";
 import { purchasingApi } from "../../components/purchasing-client";
 type Invitation = {
   id: string;
@@ -40,6 +44,24 @@ export default function InvitationsPanel({
     [revision, setRevision] = useState(0),
     [observedAt, setObservedAt] = useState(0);
   const sending = useRef(false);
+  const creation = useRef<{ intent: string; nonce: string } | null>(null);
+  const [linkInvitationId, setLinkInvitationId] = useState("");
+  const [emailDelivery, setEmailDelivery] =
+    useState<InvitationEmailStatus | null>(null);
+  const linkedInvitation = invitations.find((i) => i.id === linkInvitationId);
+  const validLink =
+    link &&
+    linkedInvitation &&
+    !linkedInvitation.acceptedAt &&
+    !linkedInvitation.revokedAt &&
+    Date.parse(linkedInvitation.expiresAt) > observedAt;
+  useEffect(() => {
+    if (!linkedInvitation) return;
+    const remaining = Date.parse(linkedInvitation.expiresAt) - Date.now();
+    if (remaining <= 0 || remaining > 2_147_483_646) return;
+    const timeout = setTimeout(() => setObservedAt(Date.now()), remaining + 1);
+    return () => clearTimeout(timeout);
+  }, [linkedInvitation]);
   useEffect(() => {
     const c = new AbortController();
     purchasingApi<{
@@ -91,8 +113,9 @@ export default function InvitationsPanel({
     >
       <h2 id="invitations-title">Invitar a tu equipo</h2>
       <p className="muted">
-        Comparte un enlace privado. La persona deberá verificar el mismo correo
-        antes de aceptar. No enviamos invitaciones por email automáticamente.
+        Al crear la invitación intentaremos enviar un correo. También puedes
+        compartir su enlace privado. La persona deberá verificar el mismo correo
+        antes de aceptar.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -121,27 +144,50 @@ export default function InvitationsPanel({
             onSubmit={(e) => {
               e.preventDefault();
               void run(async () => {
-                setLink("");
+                const intent = {
+                  email: email.trim().toLowerCase(),
+                  role,
+                  locationIds: role === "admin" ? [] : [...ids].sort(),
+                  expiresInDays: Number(days),
+                };
+                const fingerprint = JSON.stringify(intent);
+                if (creation.current?.intent !== fingerprint) {
+                  const bytes = crypto.getRandomValues(new Uint8Array(32));
+                  creation.current = {
+                    intent: fingerprint,
+                    nonce: Array.from(bytes, (v) =>
+                      v.toString(16).padStart(2, "0"),
+                    ).join(""),
+                  };
+                }
                 const result = await purchasingApi<{
                   invitation: Invitation;
                   token: string;
+                  emailDelivery?: { status: InvitationEmailStatus };
                 }>("/api/v1/invitations", tenantId, {
                   method: "POST",
                   body: JSON.stringify({
-                    email: email.trim(),
-                    role,
-                    locationIds: role === "admin" ? [] : ids,
-                    expiresInDays: Number(days),
+                    ...intent,
+                    creationNonce: creation.current.nonce,
                   }),
                 });
-                setInvitations((v) => [result.invitation, ...v].slice(0, 100));
+                setInvitations((v) =>
+                  [
+                    result.invitation,
+                    ...v.filter((i) => i.id !== result.invitation.id),
+                  ].slice(0, 100),
+                );
+                setObservedAt(Date.now());
+                setLinkInvitationId(result.invitation.id);
                 setLink(
                   window.location.origin + "/invite#token=" + result.token,
                 );
-                setEmail("");
-                setNotice(
-                  "Invitación creada. Copia el enlace ahora: no se guardará en texto plano.",
+                const delivery = InvitationEmailStatusSchema.safeParse(
+                  result.emailDelivery?.status,
                 );
+                setEmailDelivery(delivery.success ? delivery.data : "unknown");
+                setEmail("");
+                creation.current = null;
               });
             }}
           >
@@ -235,14 +281,22 @@ export default function InvitationsPanel({
                 )}
               </fieldset>
               <button>
-                <LoadingLabel busy={busy} label="Creando…">
+                <LoadingLabel busy={busy} label="Creando y enviando…">
                   Crear invitación
                 </LoadingLabel>
               </button>
             </fieldset>
           </form>
-          {link && (
+          {validLink && (
             <div className="stack">
+              <p role={emailDelivery === "unknown" ? "alert" : "status"}>
+                {emailDelivery === "accepted"
+                  ? "Invitación creada y correo aceptado por el proveedor. Esto no confirma su entrega al buzón."
+                  : emailDelivery === "not_sent"
+                    ? "Invitación creada, pero el correo no se envió. Comparte el enlace privado."
+                    : "Invitación creada. No pudimos confirmar el envío del correo; podría haberse aceptado. No lo repitas: puedes compartir el enlace privado."}
+              </p>
+              <p>Invitación para {linkedInvitation.email}</p>
               <label>
                 Enlace privado · visible sólo ahora
                 <input value={link} readOnly autoComplete="off" />
@@ -298,7 +352,10 @@ export default function InvitationsPanel({
                           tenantId,
                           { method: "PATCH", body: "{}" },
                         );
-                        setLink("");
+                        if (i.id === linkInvitationId) {
+                          setLink("");
+                          setEmailDelivery(null);
+                        }
                         setRevision((n) => n + 1);
                         setNotice("Invitación revocada.");
                       })

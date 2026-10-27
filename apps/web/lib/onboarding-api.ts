@@ -5,6 +5,7 @@ import {
   CreateInvitationSchema,
   AcceptInvitationSchema,
   UuidSchema,
+  type InvitationEmailStatus,
 } from "@smartretail/contracts";
 import { PermissionDeniedError } from "@smartretail/application";
 import {
@@ -12,6 +13,7 @@ import {
   InvitationUnavailableError,
 } from "@smartretail/database";
 import { verifiedUserId } from "./auth";
+import { sendInvitationEmail } from "./invitation-email";
 import {
   onboardingForUser,
   tenantsForUser,
@@ -68,14 +70,44 @@ export async function handleOnboarding(
     if (operation === "create") {
       const p = CreateInvitationSchema.safeParse(await jsonBody(request));
       if (!p.success) throw new InvalidInput();
-      const token = randomBytes(32).toString("hex");
+      const { creationNonce, ...intent } = p.data;
+      // Stable only for this authorized creation attempt. The existing unique
+      // token_hash prevents duplicate commits (and mail) across workers/retries.
+      const token = creationNonce
+        ? createHash("sha256")
+            .update(
+              [
+                "smartretail.invitation.v1",
+                actor.toLowerCase(),
+                tenant.data.toLowerCase(),
+                creationNonce,
+              ].join("\0"),
+              "utf8",
+            )
+            .digest("hex")
+        : randomBytes(32).toString("hex");
       const invitation = await repo.create(
         tenant.data,
-        p.data,
+        intent,
         createHash("sha256").update(token, "utf8").digest("hex"),
         correlation,
       );
-      return reply({ invitation, token }, 201);
+      let emailDelivery: { status: InvitationEmailStatus } = {
+        status: "unknown",
+      };
+      try {
+        emailDelivery = await sendInvitationEmail(invitation, token);
+      } catch {
+        // Persistence already committed. Never turn a mail failure into a create retry.
+      }
+      console.info("Invitation email outcome", {
+        correlationId: correlation,
+        actorId: actor,
+        tenantId: tenant.data,
+        invitationId: invitation.id,
+        status: emailDelivery.status,
+      });
+      return reply({ invitation, token, emailDelivery }, 201);
     }
     const target = UuidSchema.safeParse(id),
       body = await jsonBody(request);
@@ -89,6 +121,20 @@ export async function handleOnboarding(
       throw new InvalidInput();
     return reply(await repo.revoke(tenant.data, target.data, correlation));
   } catch (e) {
+    if (
+      e instanceof Error &&
+      "code" in e &&
+      e.code === "23505" &&
+      "constraint" in e &&
+      e.constraint === "tenant_invitations_token_hash_key"
+    )
+      return reply(
+        {
+          error:
+            "Esta solicitud de invitación ya se registró. Consulta las invitaciones; no repitas el envío.",
+        },
+        409,
+      );
     if (e instanceof PermissionDeniedError || e instanceof SameOriginError)
       return reply(
         {

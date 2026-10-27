@@ -5,6 +5,7 @@ import ForgotForm from "../../apps/web/app/forgot-password/forgot-form";
 import RegisterForm from "../../apps/web/app/register/register-form";
 import PasswordForm from "../../apps/web/app/components/password-form";
 import InviteForm from "../../apps/web/app/invite/invite-form";
+import InvitationsPanel from "../../apps/web/app/settings/users/invitations-panel";
 import "../../apps/web/app/globals.css";
 import "../../apps/web/app/components/visual-system.css";
 const testWindow = window as typeof window & {
@@ -12,6 +13,7 @@ const testWindow = window as typeof window & {
   fetchMock: (
     url: string,
     body: string | undefined,
+    init: { method: string; headers: Record<string, string> },
   ) => Promise<{ status: number; body: unknown }>;
 };
 testWindow.React = React;
@@ -19,13 +21,22 @@ window.fetch = (async (input, init) => {
   const r = await testWindow.fetchMock(
     String(input),
     typeof init?.body === "string" ? init.body : undefined,
+    {
+      method: init?.method ?? "GET",
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
+    },
   );
   return new Response(JSON.stringify(r.body), { status: r.status });
 }) as typeof fetch;
 const url = new URL(window.location.href),
   configured = url.searchParams.get("configured") !== "no";
 const view =
-  url.pathname === "/forgot-password" ? (
+  url.pathname === "/settings/users" ? (
+    <InvitationsPanel
+      tenantId="550e8400-e29b-41d4-a716-446655440001"
+      onBusy={() => {}}
+    />
+  ) : url.pathname === "/forgot-password" ? (
     <ForgotForm configured={configured} />
   ) : url.pathname === "/register" ? (
     <RegisterForm configured={configured} />
