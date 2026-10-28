@@ -32,7 +32,9 @@ export default function LocationSelector({
           if (disabled && ["Enter", " "].includes(e.key)) e.preventDefault();
         }}
       >
-        {selected.length} seleccionadas · Elegir sucursales
+        {selected.length}{" "}
+        {selected.length === 1 ? "seleccionada" : "seleccionadas"} · Elegir
+        sucursales
       </summary>
       <label htmlFor={searchId}>
         Buscar sucursal
@@ -76,8 +78,9 @@ export default function LocationSelector({
         )}
       </div>
       <p className="muted" role="status">
-        {selected.length} de {locations.length} seleccionadas. La búsqueda no
-        cambia tu selección.
+        {selected.length} de {locations.length}{" "}
+        {selected.length === 1 ? "seleccionada" : "seleccionadas"}. La búsqueda
+        no cambia tu selección.
       </p>
     </details>
   );

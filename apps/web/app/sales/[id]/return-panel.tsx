@@ -1,5 +1,6 @@
 "use client";
 import { unitLabel } from "../../components/presentation";
+import styles from "../../components/operational-ux.module.css";
 import { useEffect, useRef, useState } from "react";
 import { completeSale, quantity, quoteSaleReturn } from "@smartretail/domain";
 import {
@@ -81,7 +82,23 @@ export default function ReturnPanel({
     [error, setError] = useState(""),
     [confirmed, setConfirmed] = useState<SaleReturnDto | null>(null);
   const sendingRef = useRef(false),
+    triggerRef = useRef<HTMLButtonElement>(null),
+    editorRef = useRef<HTMLHeadingElement>(null),
     locked = sending || pending !== null || blocked || !ready;
+  useEffect(() => {
+    if (opened) editorRef.current?.focus();
+  }, [opened]);
+  function cancelDraft() {
+    if (locked) return;
+    setTexts({});
+    setCash("0.00");
+    setMethod(
+      recorded.payments.some((p) => p.method === "cash") ? "cash" : "card",
+    );
+    setError("");
+    setOpened(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
   useEffect(() => {
     // Browser-only recovery after mount; controls remain disabled until ready.
     const frame = requestAnimationFrame(() => {
@@ -399,6 +416,7 @@ export default function ReturnPanel({
         <div className="no-print">
           {!opened && (
             <button
+              ref={triggerRef}
               type="button"
               disabled={locked}
               onClick={() => setOpened(true)}
@@ -412,8 +430,12 @@ export default function ReturnPanel({
                 e.preventDefault();
                 void submit();
               }}
-              className="stack"
+              className={`stack ${styles.returnEditor}`}
+              aria-labelledby="return-editor-title"
             >
+              <h3 id="return-editor-title" ref={editorRef} tabIndex={-1}>
+                Devolver productos de este ticket
+              </h3>
               <p>
                 Usamos los precios de la venta original. No reservamos ni
                 ajustamos existencias hasta confirmar.
@@ -499,11 +521,32 @@ export default function ReturnPanel({
                 {mxn(available("cash").toString())}; tarjeta{" "}
                 {mxn(available("card").toString())}.
               </p>
-              <p>
-                Valor de mercancía devuelta: {mxn(total.toString())}. Primero
-                reduce deuda: {mxn(debtReduction.toString())}; sólo el excedente
-                se reembolsa en dinero.
-              </p>
+              <section
+                className={styles.consequences}
+                aria-label="Resumen de la devolución"
+                aria-live="polite"
+              >
+                <h4>Antes de confirmar</h4>
+                <dl className={styles.breakdown}>
+                  <div>
+                    <dt>Mercancía devuelta</dt>
+                    <dd>{mxn(total.toString())}</dd>
+                  </div>
+                  <div>
+                    <dt>Reducción de deuda</dt>
+                    <dd>{mxn(debtReduction.toString())}</dd>
+                  </div>
+                  <div>
+                    <dt>Reembolso en dinero</dt>
+                    <dd>{mxn(refundTotal.toString())}</dd>
+                  </div>
+                </dl>
+                <p>
+                  La devolución reduce primero la deuda pendiente. Solo el
+                  excedente se reembolsa; reducir deuda no retira dinero de
+                  caja.
+                </p>
+              </section>
               <label>
                 Método de reembolso
                 <select
@@ -570,20 +613,37 @@ export default function ReturnPanel({
                   duplicar stock ni efectivo.
                 </p>
               )}
-              <button
-                disabled={
-                  sending ||
-                  blocked ||
-                  !ready ||
-                  (!pending && (!selections.length || !!previewError))
-                }
-              >
-                {sending
-                  ? "Registrando devolución…"
-                  : pending
-                    ? "Reintentar la misma devolución"
-                    : "Registrar devolución"}
-              </button>
+              <div className="actions">
+                <button
+                  disabled={
+                    sending ||
+                    blocked ||
+                    !ready ||
+                    (!pending && (!selections.length || !!previewError))
+                  }
+                >
+                  {sending
+                    ? "Registrando devolución…"
+                    : pending
+                      ? "Reintentar la misma devolución"
+                      : "Registrar devolución"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={locked}
+                  onClick={cancelDraft}
+                >
+                  Cancelar
+                </button>
+              </div>
+              {(pending || blocked) && (
+                <p className="field-help">
+                  No se puede descartar una operación pendiente de confirmar.
+                  Conserva su referencia y consulta su resultado antes de
+                  continuar.
+                </p>
+              )}
             </form>
           )}
         </div>

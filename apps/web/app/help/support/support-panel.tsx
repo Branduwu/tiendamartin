@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import styles from "../../components/operational-ux.module.css";
 import Link from "next/link";
 import type {
   SupportRequest,
@@ -82,8 +83,21 @@ export default function SupportPanel({
     [filter, setFilter] = useState<SupportStatus | "">(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false),
+    [operation, setOperation] = useState<"read" | "send" | "update" | null>(
+      null,
+    ),
     [reload, setReload] = useState(0);
+  const busy = operation !== null;
+  const detailTrigger = useRef<HTMLButtonElement | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  function closeDetail() {
+    const trigger = detailTrigger.current;
+    detailTrigger.current = null;
+    setDetail(null);
+    requestAnimationFrame(() => {
+      if (trigger?.isConnected) trigger.focus();
+    });
+  }
   const [subject, setSubject] = useState(""),
     [description, setDescription] = useState(""),
     [category, setCategory] = useState<SupportCategory>("function"),
@@ -118,6 +132,10 @@ export default function SupportPanel({
         setRecovery(null);
         setSubject("");
         setDescription("");
+        detailTrigger.current =
+          formRef.current?.querySelector<HTMLButtonElement>(
+            'button[type="submit"]',
+          ) ?? null;
         setDetail(r);
         setNotice(`Solicitud confirmada · ${supportFolio(r.id)}`);
       })
@@ -183,16 +201,17 @@ export default function SupportPanel({
       });
     return () => c.abort();
   }, [base, tenant, page, filter, requestKey, reload, platform]);
-  async function open(id: string) {
+  async function open(id: string, trigger: HTMLButtonElement) {
     if (busy) return;
-    setBusy(true);
+    detailTrigger.current = trigger;
+    setOperation("read");
     setError("");
     try {
       setDetail(await purchasingApi<SupportRequest>(`${base}/${id}`, tenant));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Solicitud no disponible.");
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   }
   async function submit(e: FormEvent) {
@@ -237,8 +256,11 @@ export default function SupportPanel({
       return;
     }
     setPending({ tenant, value: p.data });
+    detailTrigger.current = e.currentTarget.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    );
     rememberSupport(supportStorage(), { tenant, id: p.data.id });
-    setBusy(true);
+    setOperation("send");
     setError("");
     try {
       const r = await purchasingApi<SupportRequest>(base, tenant, {
@@ -290,12 +312,12 @@ export default function SupportPanel({
           : "No pudimos confirmar la solicitud. Reintenta la misma.",
       );
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   }
   async function status(value: SupportStatus) {
     if (!detail || busy) return;
-    setBusy(true);
+    setOperation("update");
     setError("");
     try {
       const result = await purchasingApi<SupportRequest>(
@@ -314,12 +336,12 @@ export default function SupportPanel({
         e instanceof Error ? e.message : "No pudimos actualizar el estado.",
       );
     } finally {
-      setBusy(false);
+      setOperation(null);
     }
   }
   const rows = listing?.key === requestKey ? listing.value : null;
   return (
-    <>
+    <div className={styles.support}>
       <div className="heading">
         <div>
           <h1>{platform ? "Soporte de SmartRetail" : "Ayuda y soporte"}</h1>
@@ -380,7 +402,11 @@ export default function SupportPanel({
             )
           )}
           {tenant && (
-            <form className="panel stack support-form" onSubmit={submit}>
+            <form
+              ref={formRef}
+              className="panel stack support-form"
+              onSubmit={submit}
+            >
               <h2>Contactar SmartRetail</h2>
               <p>
                 No incluyas contraseñas, tokens, datos de pago ni enlaces de
@@ -458,8 +484,8 @@ export default function SupportPanel({
               )}
               <Button
                 type="submit"
-                disabled={reconciling}
-                busy={busy}
+                disabled={reconciling || busy}
+                busy={operation === "send"}
                 busyLabel="Enviando…"
               >
                 {pending || recovery
@@ -492,6 +518,7 @@ export default function SupportPanel({
             </select>
           </label>
           {!rows && !error && <p role="status">Cargando solicitudes…</p>}
+          {operation === "read" && <p role="status">Cargando solicitud…</p>}
           {rows && !rows.requests.length && (
             <p>
               Aún no hay solicitudes en esta vista. Puedes consultar las guías o
@@ -505,7 +532,7 @@ export default function SupportPanel({
                   type="button"
                   className="ghost"
                   disabled={busy}
-                  onClick={() => open(r.id)}
+                  onClick={(e) => open(r.id, e.currentTarget)}
                 >
                   {r.subject}
                 </button>
@@ -540,7 +567,7 @@ export default function SupportPanel({
       <Dialog
         open={!!detail}
         title={detail ? supportFolio(detail.id) : "Solicitud"}
-        onClose={() => setDetail(null)}
+        onClose={closeDetail}
       >
         {detail && (
           <div className="stack">
@@ -577,6 +604,6 @@ export default function SupportPanel({
           </div>
         )}
       </Dialog>
-    </>
+    </div>
   );
 }

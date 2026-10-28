@@ -1364,13 +1364,31 @@ export default function PosPanel({ userId }: { userId: string }) {
                             <strong>{mxn(p.salePrice.minorUnits)}</strong>
                             <button
                               type="button"
-                              disabled={locked || !location}
+                              disabled={
+                                locked ||
+                                !location ||
+                                (!!current &&
+                                  BigInt(current.quantity.milliUnits) <= 0n)
+                              }
                               className="secondary"
                               onClick={() => add(p)}
                               aria-label={`Agregar ${p.name}`}
+                              aria-describedby={
+                                current &&
+                                BigInt(current.quantity.milliUnits) <= 0n
+                                  ? `stock-help-${p.id}`
+                                  : undefined
+                              }
                             >
                               Agregar
                             </button>
+                            {current &&
+                              BigInt(current.quantity.milliUnits) <= 0n && (
+                                <small id={`stock-help-${p.id}`}>
+                                  Registra una entrada de inventario o elige
+                                  otra ubicación para venderlo.
+                                </small>
+                              )}
                           </div>
                         </article>
                       );

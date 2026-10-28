@@ -9,6 +9,7 @@ import {
   type CashShiftDto,
 } from "@smartretail/contracts";
 import AppNavigation from "../components/app-navigation";
+import styles from "../components/operational-ux.module.css";
 import {
   purchasingApi,
   PurchasingApiError,
@@ -123,6 +124,31 @@ function AccountList({
               <td data-label="Pagado">{mxn(r.paidAmount.minorUnits)}</td>
               <td data-label="Pendiente">
                 {mxn(r.outstandingAmount.minorUnits)}
+                <details className={styles.balanceDetail}>
+                  <summary>Desglose del saldo</summary>
+                  <dl className={styles.breakdown}>
+                    <div>
+                      <dt>Crédito original</dt>
+                      <dd>{mxn(r.originalAmount.minorUnits)}</dd>
+                    </div>
+                    <div>
+                      <dt>Abonos cobrados</dt>
+                      <dd>− {mxn(r.paidAmount.minorUnits)}</dd>
+                    </div>
+                    <div>
+                      <dt>Deuda cancelada por devoluciones</dt>
+                      <dd>− {mxn(r.returnedAmount.minorUnits)}</dd>
+                    </div>
+                    <div>
+                      <dt>Saldo pendiente</dt>
+                      <dd>{mxn(r.outstandingAmount.minorUnits)}</dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Crédito original menos abonos y deuda cancelada por
+                    devoluciones. El importe original no cambia.
+                  </p>
+                </details>
               </td>
               <td data-label="Estado">{status(r.status)}</td>
               <td data-label="Acciones">

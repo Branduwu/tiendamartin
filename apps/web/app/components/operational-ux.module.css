@@ -1,0 +1,87 @@
+.returnEditor {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.returnEditor h3 {
+  margin: 0;
+}
+.consequences {
+  padding: 16px;
+  background: var(--surface-muted, var(--background));
+  border-radius: 8px;
+}
+.consequences h4 {
+  margin: 0 0 12px;
+}
+.breakdown {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.breakdown > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.breakdown dt {
+  color: var(--muted);
+}
+.breakdown dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.breakdown > div:last-child {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.balanceDetail {
+  margin-top: 8px;
+  max-width: 32rem;
+  white-space: normal;
+  min-width: 0;
+}
+.balanceDetail summary {
+  cursor: pointer;
+  padding-block: 8px;
+  font-weight: 600;
+}
+.balanceDetail p,
+.consequences p {
+  font-size: 0.875rem;
+  margin-bottom: 0;
+}
+.support {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.support :global(.ui-dialog) {
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  overflow-wrap: anywhere;
+}
+.support :global(.ui-dialog) > *,
+.support :global(.dialog-heading) h2 {
+  min-width: 0;
+}
+.support :global(.help-articles) button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .returnEditor,
+  .support :global(.ui-dialog) {
+    padding: 16px;
+  }
+  .breakdown > div {
+    display: grid;
+    gap: 4px;
+  }
+}
