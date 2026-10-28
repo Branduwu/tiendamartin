@@ -85,7 +85,7 @@ export function PublicThemeControl() {
     "/forgot-password",
     "/reset-password",
     "/settings/account",
-  ].includes(path) ? (
+  ].includes(path ?? "") ? (
     <header className="public-theme no-print">
       <ThemeToggle />
     </header>

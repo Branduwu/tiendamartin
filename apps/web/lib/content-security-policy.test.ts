@@ -6,8 +6,20 @@ import {
 } from "./content-security-policy";
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import nextConfig from "../next.config";
 const nonce = Buffer.alloc(32, 1).toString("base64");
 afterEach(() => vi.unstubAllEnvs());
+it("denies scripts on static responses while allowing the fixed worker assets", async () => {
+  const rules = await nextConfig.headers!();
+  const global = rules
+    .find((r) => r.source === "/:path*")!
+    .headers.find((h) => h.key === "Content-Security-Policy")!.value;
+  expect(global).toContain("script-src 'none'");
+  expect(global).not.toContain("unsafe-inline");
+  const worker = rules.find((r) => r.source === "/document-engine/:asset*")!
+    .headers[0]!.value;
+  expect(worker).toContain("script-src 'self' 'wasm-unsafe-eval'");
+});
 it("covers current page routes without attaching nonces to unknown static fallbacks", () => {
   const files = readdirSync(resolve("apps/web/app"), { recursive: true }).map(
     String,

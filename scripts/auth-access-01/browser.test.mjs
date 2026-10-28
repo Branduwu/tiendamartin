@@ -155,6 +155,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
         "/invite",
         "/settings/users",
         "/settings/account",
+        "/csp-error-boundary",
       ].includes(u.pathname)
     )
       return route.fulfill({
@@ -1051,6 +1052,15 @@ if (process.argv.includes("--csp-only")) {
     assert.equal(s.mailAttempts(), 0);
     await s.close();
     pass("csp-invitation-cancel-no-mail");
+    s = await session({ path: "/csp-error-boundary" });
+    await s.page
+      .getByRole("button", { name: "Reintentar", exact: true })
+      .click();
+    await s.page
+      .getByRole("heading", { name: "Recuperación lista", exact: true })
+      .waitFor();
+    await s.close();
+    pass("csp-interactive-error-reset-preserved");
     console.log(JSON.stringify({ checks, externalRequests, csp: true }));
   } finally {
     await browser.close();

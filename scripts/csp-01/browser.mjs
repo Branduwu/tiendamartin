@@ -164,8 +164,12 @@ try {
     assert.equal(fallback.status(), 404);
     const policy = fallback.headers()["content-security-policy"];
     assert.ok(policy.includes("frame-ancestors 'none'"));
-    assert.ok(!policy.includes("script-src"));
-    assert.deepEqual(await page.evaluate(() => window.cspViolations), []);
+    assert.ok(policy.includes("script-src 'none'"));
+    assert.ok(
+      (await page.evaluate(() => window.cspViolations)).every((v) =>
+        v.directive.startsWith("script-src"),
+      ),
+    );
     checks++;
   }
   console.log(
@@ -173,7 +177,7 @@ try {
       mode: process.argv[2],
       checks,
       escapedRequests,
-      staticFallbackScriptProtection: false,
+      staticFallbackScriptProtection: true,
     }),
   );
   await context.close();

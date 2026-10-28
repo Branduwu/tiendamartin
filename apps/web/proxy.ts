@@ -24,6 +24,11 @@ export async function proxy(request: NextRequest) {
   }
   const secured = (result: NextResponse) => {
     if (policy) result.headers.set(policy.header, policy.value);
+    if (policy?.header === "Content-Security-Policy-Report-Only")
+      result.headers.set(
+        "Content-Security-Policy",
+        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+      );
     return result;
   };
   let authenticated = false;

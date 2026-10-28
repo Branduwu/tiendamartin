@@ -19,6 +19,18 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: m.client,
 }));
 import { config, proxy } from "./proxy";
+it("keeps ReportOnly functional locally without enforcing the static deny policy on pages", async () => {
+  vi.stubEnv("APP_ORIGIN", "http://127.0.0.1:3076");
+  vi.stubEnv("CSP_REPORT_ONLY", "true");
+  vi.stubEnv("VERCEL", "");
+  const response = await proxy(new NextRequest("http://127.0.0.1:3076/login"));
+  expect(response.headers.get("Content-Security-Policy-Report-Only")).toContain(
+    "'nonce-",
+  );
+  expect(response.headers.get("Content-Security-Policy")).not.toContain(
+    "script-src",
+  );
+});
 it("keeps policy forwarding after cookie response reconstruction", async () => {
   m.client.mockImplementationOnce((_url, _key, options) => {
     options.cookies.setAll([

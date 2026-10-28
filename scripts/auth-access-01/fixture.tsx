@@ -1,5 +1,6 @@
 import "../../apps/web/instrumentation-client";
 import React from "react";
+import ErrorPage from "../../apps/web/app/error";
 import { createRoot } from "react-dom/client";
 import LoginForm from "../../apps/web/app/login/login-form";
 import ForgotForm from "../../apps/web/app/forgot-password/forgot-form";
@@ -44,8 +45,18 @@ window.fetch = (async (input, init) => {
 }) as typeof fetch;
 const url = new URL(window.location.href),
   configured = url.searchParams.get("configured") !== "no";
+function BoundaryFixture() {
+  const [reset, setReset] = React.useState(false);
+  return reset ? (
+    <h2>Recuperación lista</h2>
+  ) : (
+    <ErrorPage reset={() => setReset(true)} />
+  );
+}
 const view =
-  url.pathname === "/settings/account" ? (
+  url.pathname === "/csp-error-boundary" ? (
+    <BoundaryFixture />
+  ) : url.pathname === "/settings/account" ? (
     <>
       <h2>Mi perfil</h2>
       <ProfilePanel />

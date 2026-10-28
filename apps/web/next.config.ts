@@ -35,17 +35,26 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: [
-          // Static fallbacks keep their existing interactive HTML. This base
-          // policy does not claim script protection; known dynamic documents
-          // receive the nonce policy from proxy.ts instead.
+          // Static fallbacks use native HTML navigation. Functional documents
+          // receive the existing nonce policy from proxy.ts instead.
           {
             key: "Content-Security-Policy",
             value:
-              "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+              "script-src 'none'; script-src-attr 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
           },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+      {
+        source: "/document-engine/:asset*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value:
+              "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+          },
         ],
       },
     ];
