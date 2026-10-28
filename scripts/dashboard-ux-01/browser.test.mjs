@@ -1,3 +1,10 @@
+import {
+  fixturePolicy,
+  cspHtml,
+  observePolicy,
+  assertPolicyClean,
+} from "../csp-01/fixture-policy.mjs";
+const cspPolicy = await fixturePolicy();
 // Real DashboardPanel/contracts/display/controls. Services and transactions are synthetic.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -54,7 +61,9 @@ const result = await build({
       },
     ],
   },
-  define: { "process.env.NODE_ENV": '"development"' },
+  define: {
+    "process.env.NODE_ENV": cspPolicy ? '"production"' : '"development"',
+  },
   build: {
     write: false,
     minify: false,
@@ -254,7 +263,13 @@ async function session({
   const address = "http://127.0.0.1:55997/";
   await page.route("**/*", (route) => {
     if (route.request().url() === address)
-      return route.fulfill({ contentType: "text/html", body: html });
+      return route.fulfill({
+        contentType: "text/html",
+        body: cspHtml(html, cspPolicy),
+        ...(cspPolicy
+          ? { headers: { [cspPolicy.header]: cspPolicy.value } }
+          : {}),
+      });
     externalRequests++;
     return route.abort();
   });
@@ -296,6 +311,7 @@ async function session({
     return { status: 404, body: { error: "Unmocked request" } };
   });
   if (mode === "loading") hold = new Promise((r) => (release = r));
+  if (cspPolicy) await observePolicy(page);
   await page.goto(address);
   await page.getByRole("heading", { level: 1 }).waitFor();
   if (mode !== "loading" && permission)
@@ -336,6 +352,20 @@ async function openDetails(p) {
     .locator("details")
     .evaluateAll((nodes) => nodes.forEach((n) => (n.open = true)));
 }
+if (process.argv.includes("--csp-smoke")) {
+  try {
+    const s = await session();
+    await assertPolicyClean(s.page);
+    assert.equal(s.errors.length, 0);
+    assert.ok(s.calls.some((c) => c.url.startsWith("/api/v1/reports?")));
+    await s.close();
+    console.log(JSON.stringify({ cspDashboard: "PASS", externalRequests }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
+}
+
 try {
   let s = await session(),
     p = s.page;

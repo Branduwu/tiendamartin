@@ -6,8 +6,26 @@ import { platformForUser, tenantsForUser } from "./lib/database";
 import { authConfiguration } from "./lib/supabase/config";
 import { canonicalPageRedirect } from "./lib/app-origin";
 import { authRead, authTransport } from "./lib/supabase/resilience";
+import { pageSecurityPolicy } from "./lib/content-security-policy";
 
 export async function proxy(request: NextRequest) {
+  const policy = pageSecurityPolicy(
+    request.nextUrl.pathname,
+    authConfiguration()?.url,
+    request.nextUrl.protocol === "https:",
+  );
+  // Always replace client-supplied policy/nonce before Next renders a document.
+  request.headers.delete("x-nonce");
+  request.headers.delete("Content-Security-Policy");
+  request.headers.delete("Content-Security-Policy-Report-Only");
+  if (policy) {
+    request.headers.set("x-nonce", policy.nonce);
+    request.headers.set("Content-Security-Policy", policy.value);
+  }
+  const secured = (result: NextResponse) => {
+    if (policy) result.headers.set(policy.header, policy.value);
+    return result;
+  };
   let authenticated = false;
   let response = NextResponse.next({ request });
   const config = authConfiguration();
@@ -55,7 +73,7 @@ export async function proxy(request: NextRequest) {
         );
         response.cookies.getAll().forEach((c) => handoff.cookies.set(c));
         handoff.headers.set("Cache-Control", "private, no-store");
-        return handoff;
+        return secured(handoff);
       }
       if (
         !error &&
@@ -74,7 +92,7 @@ export async function proxy(request: NextRequest) {
             { status: 403, headers: { "Cache-Control": "private, no-store" } },
           );
           response.cookies.getAll().forEach((c) => denied.cookies.set(c));
-          return denied;
+          return secured(denied);
         }
       }
     } catch {
@@ -83,14 +101,16 @@ export async function proxy(request: NextRequest) {
   }
   const canonical = canonicalPageRedirect(request, authenticated);
   if (canonical)
-    return NextResponse.redirect(canonical, {
-      status: 307,
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    return secured(
+      NextResponse.redirect(canonical, {
+        status: 307,
+        headers: { "Cache-Control": "private, no-store" },
+      }),
+    );
   response.headers.set("Cache-Control", "private, no-store");
   if (request.nextUrl.pathname === "/reset-password")
     response.headers.set("Referrer-Policy", "no-referrer");
-  return response;
+  return secured(response);
 }
 export const config = {
   matcher: [

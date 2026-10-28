@@ -1,3 +1,10 @@
+import {
+  fixturePolicy,
+  cspHtml,
+  observePolicy,
+  assertPolicyClean,
+} from "../csp-01/fixture-policy.mjs";
+const cspPolicy = await fixturePolicy();
 // Real POS, domain quantities, quote UI and dialog. All services are synthetic.
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -48,7 +55,9 @@ const result = await build({
       },
     ],
   },
-  define: { "process.env.NODE_ENV": '"development"' },
+  define: {
+    "process.env.NODE_ENV": cspPolicy ? '"production"' : '"development"',
+  },
   build: {
     write: false,
     minify: false,
@@ -144,7 +153,13 @@ async function session(width, mode = "normal", height = 960) {
   });
   await context.route("**/*", (r) => {
     if (r.request().url() === "http://127.0.0.1:55993/")
-      return r.fulfill({ contentType: "text/html", body: html });
+      return r.fulfill({
+        contentType: "text/html",
+        body: cspHtml(html, cspPolicy),
+        ...(cspPolicy
+          ? { headers: { [cspPolicy.header]: cspPolicy.value } }
+          : {}),
+      });
     externalRequests++;
     return r.abort();
   });
@@ -292,6 +307,7 @@ async function session(width, mode = "normal", height = 960) {
   const page = await context.newPage(),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  if (cspPolicy) await observePolicy(page);
   await page.goto("http://127.0.0.1:55993/");
   if (mode === "catalog-error") {
     await page.getByRole("button", { name: "Reintentar catálogo" }).click();
@@ -659,6 +675,19 @@ if (process.argv.includes("--completion-only")) {
   }
   process.exit(0);
 }
+if (process.argv.includes("--csp-smoke")) {
+  try {
+    const s = await session(1366);
+    await assertPolicyClean(s.page);
+    assert.ok(s.calls.every((c) => !c.method || c.method === "GET"));
+    await s.context.close();
+    console.log(JSON.stringify({ cspPOS: "PASS", externalRequests }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
+}
+
 try {
   const s = await session(1440),
     p = s.page;

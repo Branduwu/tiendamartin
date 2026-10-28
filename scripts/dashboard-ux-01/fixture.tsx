@@ -1,3 +1,4 @@
+import "../../apps/web/instrumentation-client";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import DashboardPanel from "../../apps/web/app/dashboard/dashboard-panel";

@@ -4,6 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
+import {
+  fixturePolicy,
+  cspHtml,
+  observePolicy,
+  assertPolicyClean,
+} from "../csp-01/fixture-policy.mjs";
+const cspPolicy = await fixturePolicy();
 const require = createRequire(import.meta.url);
 const { build } = await import(
   pathToFileURL(
@@ -42,7 +49,9 @@ const result = await build({
       },
     ],
   },
-  define: { "process.env.NODE_ENV": '"development"' },
+  define: {
+    "process.env.NODE_ENV": cspPolicy ? '"production"' : '"development"',
+  },
   build: {
     write: false,
     minify: false,
@@ -108,6 +117,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (e) => logs.push(e.text()));
   const origin = "http://127.0.0.1:55998";
+  if (cspPolicy) await observePolicy(page);
   await page.route("**/*", async (route) => {
     const u = new URL(route.request().url());
     if (u.origin === origin && u.pathname === "/api/v1/profile/photo") {
@@ -147,7 +157,13 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
         "/settings/account",
       ].includes(u.pathname)
     )
-      return route.fulfill({ contentType: "text/html", body: html });
+      return route.fulfill({
+        contentType: "text/html",
+        body: cspHtml(html, cspPolicy),
+        ...(cspPolicy
+          ? { headers: { [cspPolicy.header]: cspPolicy.value } }
+          : {}),
+      });
     externalRequests++;
     return route.abort();
   });
@@ -430,6 +446,7 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
       photoReadFailure = false;
     },
     async close() {
+      if (cspPolicy) await assertPolicyClean(page);
       assert.deepEqual(errors, []);
       const text = await page.locator("body").innerText();
       assert.ok(!text.includes("PROVIDER_PRIVATE"));
@@ -987,6 +1004,58 @@ async function profileChecks() {
   pass("profile-existing-password-change-is-separate");
   await s.close();
   assert.equal(externalRequests, 0);
+}
+if (process.argv.includes("--csp-only")) {
+  try {
+    let s = await session();
+    let p = s.page;
+    await input(p, "email").first().fill(email);
+    await input(p, "password").fill(password);
+    await p
+      .getByRole("button", { name: "Iniciar sesi\u00f3n", exact: true })
+      .click();
+    await p.getByText("Sesi\u00f3n iniciada.", { exact: false }).waitFor();
+    assert.equal(
+      await p.locator("body").getAttribute("data-next"),
+      "/onboarding",
+    );
+    await s.close();
+    pass("csp-login");
+    s = await session({ path: "/reset-password?code=PRIVATE_RECOVERY_CODE" });
+    p = s.page;
+    await fillPasswords(p);
+    await p
+      .getByRole("button", { name: "Guardar contrase\u00f1a", exact: true })
+      .click();
+    await p
+      .getByRole("status")
+      .filter({ hasText: "Contrase\u00f1a actualizada" })
+      .waitFor();
+    await s.close();
+    pass("csp-pkce-reset");
+    s = await session({ path: "/settings/account", mode: "photo-disabled" });
+    await s.page
+      .getByRole("heading", { name: "Cambiar contrase\u00f1a", exact: true })
+      .waitFor();
+    await s.close();
+    pass("csp-profile-security");
+    s = await session({ path: "/settings/users" });
+    p = s.page;
+    await p
+      .getByRole("button", { name: "Invitar empleado", exact: true })
+      .click();
+    await p.getByLabel("Correo de la persona").fill(email);
+    await p
+      .getByRole("button", { name: "Cancelar invitaci\u00f3n", exact: true })
+      .click();
+    assert.equal(s.mailAttempts(), 0);
+    await s.close();
+    pass("csp-invitation-cancel-no-mail");
+    console.log(JSON.stringify({ checks, externalRequests, csp: true }));
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
 }
 if (process.argv.includes("--profile-only")) {
   try {

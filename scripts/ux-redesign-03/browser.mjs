@@ -1,3 +1,10 @@
+import {
+  fixturePolicy,
+  cspHtml,
+  observePolicy,
+  assertPolicyClean,
+} from "../csp-01/fixture-policy.mjs";
+const cspPolicy = await fixturePolicy();
 // Team and business settings UI only. All service calls are synthetic and all external HTTP blocked.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -88,7 +95,7 @@ const result = await build({
         replacement: path.join(root, "scripts/ux-redesign-02/shims.tsx"),
       },
       {
-        find: "@smartretail/contracts",
+        find: /^@smartretail\/contracts$/,
         replacement: path.join(root, "packages/contracts/src/index.ts"),
       },
       {
@@ -101,7 +108,9 @@ const result = await build({
       },
     ],
   },
-  define: { "process.env.NODE_ENV": '"development"' },
+  define: {
+    "process.env.NODE_ENV": cspPolicy ? '"production"' : '"development"',
+  },
   build: {
     write: false,
     minify: false,
@@ -197,7 +206,13 @@ async function session(view = "/settings/users", width = 1366, mode = "ok") {
       r.request().isNavigationRequest() &&
       r.request().url().startsWith("http://127.0.0.1:55994/")
     )
-      return r.fulfill({ contentType: "text/html", body: html });
+      return r.fulfill({
+        contentType: "text/html",
+        body: cspHtml(html, cspPolicy),
+        ...(cspPolicy
+          ? { headers: { [cspPolicy.header]: cspPolicy.value } }
+          : {}),
+      });
     external++;
     return r.abort();
   });
@@ -334,6 +349,7 @@ async function session(view = "/settings/users", width = 1366, mode = "ok") {
     }
     return { status: 404, body: { error: "Unmocked request" } };
   });
+  if (cspPolicy) await observePolicy(page);
   await page.goto("http://127.0.0.1:55994" + view);
   await page.getByRole("heading", { level: 1 }).waitFor();
   if (!["loading", "denied", "error"].includes(mode)) {
@@ -369,6 +385,25 @@ async function branchesView(p) {
   if (phase === "after")
     await p.getByRole("tab", { name: "Sucursales", exact: true }).click();
 }
+if (process.argv.includes("--csp-smoke")) {
+  try {
+    const s = await session("/settings/users");
+    await s.page
+      .getByRole("button", { name: "Invitar empleado", exact: true })
+      .click();
+    await s.page.getByRole("button", { name: /Cancelar invitaci/ }).click();
+    await assertPolicyClean(s.page);
+    assert.equal(mutations(s).length, 0);
+    await s.context.close();
+    console.log(
+      JSON.stringify({ cspTeam: "PASS", externalRequests: external }),
+    );
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
+}
+
 try {
   for (const width of [1366, 768, 390, 360])
     for (const view of ["/settings/users", "/settings/business"]) {

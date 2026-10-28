@@ -19,6 +19,43 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: m.client,
 }));
 import { config, proxy } from "./proxy";
+it("keeps policy forwarding after cookie response reconstruction", async () => {
+  m.client.mockImplementationOnce((_url, _key, options) => {
+    options.cookies.setAll([
+      {
+        name: "synthetic-session",
+        value: "synthetic",
+        options: { secure: true, sameSite: "lax" },
+      },
+    ]);
+    return { auth: { getClaims: m.claims } };
+  });
+  const request = new NextRequest("https://app.smartretailapp.live/login");
+  const response = await proxy(request);
+  expect(response.cookies.getAll().map((c) => c.name)).toContain(
+    "synthetic-session",
+  );
+  expect(
+    response.headers.get("x-middleware-request-content-security-policy"),
+  ).toBe(response.headers.get("Content-Security-Policy"));
+  expect(response.headers.get("x-middleware-request-cookie")).toContain(
+    "synthetic-session=",
+  );
+});
+it("replaces client supplied CSP and carries matching request/response nonce", async () => {
+  const request = new NextRequest("https://app.smartretailapp.live/login", {
+    headers: {
+      "x-nonce": "forged",
+      "Content-Security-Policy": "script-src 'unsafe-inline'",
+    },
+  });
+  const response = await proxy(request);
+  const csp = response.headers.get("Content-Security-Policy");
+  expect(csp).toContain("script-src 'self' 'nonce-");
+  expect(csp).not.toContain("forged");
+  expect(request.headers.get("Content-Security-Policy")).toBe(csp);
+  expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+});
 const actor = "550e8400-e29b-41d4-a716-446655440020",
   tenant = "550e8400-e29b-41d4-a716-446655440001";
 beforeEach(() => {
