@@ -4,14 +4,16 @@ const state = process.env.E2E_STORAGE_STATE_PATH;
 test.use({ ...(state ? { storageState: state } : {}) });
 test.describe("TASK030 business context read-only smoke", () => {
   test.skip(!state, "Authorized ephemeral session not supplied");
-  test("business settings and branch forms", async ({ page }) => {
+  test("business settings and on-demand branch editor", async ({ page }) => {
     await page.goto("/settings/business");
     await expect(
-      page.getByRole("button", { name: "Guardar negocio y ticket" }),
+      page.getByRole("button", { name: "Guardar datos generales" }),
     ).toBeVisible();
+    await page.getByRole("tab", { name: "Sucursales", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Sucursales", exact: true }),
     ).toBeVisible();
+    await expect(page.locator('form[aria-label^="Configurar"]')).toHaveCount(0);
     await page.waitForLoadState("networkidle");
     await assertUsableViewport(page);
     await assertAccessibility(page);

@@ -1,6 +1,8 @@
 "use client";
 import { LoadingLabel } from "../../components/ui";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import SettingsSections from "../../components/settings-sections";
+import styles from "../../components/settings-ux.module.css";
 import type {
   BusinessProfileDto,
   BranchSettingsInputDto,
@@ -41,11 +43,15 @@ function ProfileEditor({
   profile,
   onStarted,
   onSaved,
+  section,
+  onBusy,
 }: {
   tenant: string;
   profile: BusinessProfileDto;
   onStarted: () => void;
   onSaved: () => void;
+  section: string;
+  onBusy: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -54,6 +60,7 @@ function ProfileEditor({
     if (busy) return;
     const f = new FormData(e.currentTarget);
     setBusy(true);
+    onBusy(true);
     setError("");
     onStarted();
     try {
@@ -77,91 +84,103 @@ function ProfileEditor({
       setError(e instanceof Error ? e.message : "No pudimos guardar.");
     } finally {
       setBusy(false);
+      onBusy(false);
     }
   }
   return (
     <form className="panel stack" onSubmit={submit}>
-      <h2>Datos de empresa</h2>
+      <h2>{section === "ticket" ? "Ticket" : "Datos de empresa"}</h2>
       {error && (
         <p role="alert" className="error">
           {error}
         </p>
       )}
       <fieldset disabled={busy} className="stack">
-        <Field
-          name="businessName"
-          label="Nombre del negocio"
-          value={profile.businessName}
-        />
-        <Field
-          name="tradeName"
-          label="Nombre comercial (opcional)"
-          value={profile.tradeName}
-        />
-        <Field
-          name="phone"
-          label="Teléfono del negocio (opcional)"
-          value={profile.phone}
-          max={50}
-        />
-        <Field
-          name="email"
-          label="Email del negocio (opcional)"
-          value={profile.email}
-          max={254}
-        />
-        <Field
-          name="website"
-          label="Sitio web (opcional, http o https)"
-          value={profile.website}
-          max={500}
-        />
-        <details className="settings-group">
-          <summary>Preferencias</summary>
-          <div className="stack">
-            <label>
-              Zona horaria
-              <select name="timezone" defaultValue={profile.timezone}>
-                <option value="America/Mexico_City">Ciudad de México</option>
-                <option value="America/Tijuana">Tijuana</option>
-                <option value="America/Cancun">Cancun</option>
-                <option value="America/Hermosillo">Hermosillo</option>
-              </select>
-            </label>
-            <label>
-              Formato regional
-              <select name="locale" defaultValue={profile.locale}>
-                <option value="es-MX">Español (México)</option>
-                <option value="en-US">English (US)</option>
-              </select>
-            </label>
-            <p>Moneda: MXN. Los importes existentes conservan su moneda.</p>
-          </div>
-        </details>
-        <details className="settings-group">
-          <summary>Ticket</summary>
-          <div className="stack">
-            <Field
-              name="ticketFooter"
-              label="Pie del ticket (opcional)"
-              value={profile.ticketFooter}
-              max={500}
-            />
-            <p className="muted">
-              El nombre comercial aparece en el ticket; si está vacío se usa el
-              nombre del negocio. Los datos de identidad impresos usan la
-              configuración actual; importes e historial comercial no cambian.
-            </p>
-            <p className="muted">
-              Logo opcional: pendiente de almacenamiento seguro. No se suben
-              archivos en esta pantalla.
-            </p>
-          </div>
-        </details>
+        <div
+          id="business-panel-general"
+          role="tabpanel"
+          aria-labelledby="business-tab-general"
+          className="stack"
+          hidden={section !== "general"}
+        >
+          <Field
+            name="businessName"
+            label="Nombre del negocio"
+            value={profile.businessName}
+          />
+          <Field
+            name="tradeName"
+            label="Nombre comercial (opcional)"
+            value={profile.tradeName}
+          />
+          <Field
+            name="phone"
+            label="Teléfono del negocio (opcional)"
+            value={profile.phone}
+            max={50}
+          />
+          <Field
+            name="email"
+            label="Email del negocio (opcional)"
+            value={profile.email}
+            max={254}
+          />
+          <Field
+            name="website"
+            label="Sitio web (opcional, http o https)"
+            value={profile.website}
+            max={500}
+          />
+          <details className="settings-group">
+            <summary>Preferencias</summary>
+            <div className="stack">
+              <label>
+                Zona horaria
+                <select name="timezone" defaultValue={profile.timezone}>
+                  <option value="America/Mexico_City">Ciudad de México</option>
+                  <option value="America/Tijuana">Tijuana</option>
+                  <option value="America/Cancun">Cancun</option>
+                  <option value="America/Hermosillo">Hermosillo</option>
+                </select>
+              </label>
+              <label>
+                Formato regional
+                <select name="locale" defaultValue={profile.locale}>
+                  <option value="es-MX">Español (México)</option>
+                  <option value="en-US">English (US)</option>
+                </select>
+              </label>
+              <p>Moneda: MXN. Los importes existentes conservan su moneda.</p>
+            </div>
+          </details>
+        </div>
+        <div
+          id="business-panel-ticket"
+          role="tabpanel"
+          aria-labelledby="business-tab-ticket"
+          className="stack"
+          hidden={section !== "ticket"}
+        >
+          <Field
+            name="ticketFooter"
+            label="Pie del ticket (opcional)"
+            value={profile.ticketFooter}
+            max={500}
+          />
+          <p className="muted">
+            El nombre comercial aparece en el ticket; si está vacío se usa el
+            nombre del negocio. Los datos de identidad impresos usan la
+            configuración actual; importes e historial comercial no cambian.
+          </p>
+          <p className="muted">
+            Logo opcional: pendiente de almacenamiento seguro. No se suben
+            archivos en esta pantalla.
+          </p>
+        </div>
       </fieldset>
       <button disabled={busy}>
         <LoadingLabel busy={busy} label="Guardando...">
-          Guardar negocio y ticket
+          {section === "ticket" ? "Guardar ticket" : "Guardar datos generales"}
         </LoadingLabel>
       </button>
     </form>
@@ -172,43 +191,54 @@ function BranchEditor({
   branch,
   onStarted,
   onSaved,
+  onCancel,
 }: {
   tenant: string;
   branch: Branch;
   onStarted: () => void;
-  onSaved: () => void;
+  onSaved: (value: BranchSettingsInputDto) => void;
+  onCancel: () => void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const firstField = useRef<HTMLFormElement>(null),
+    sending = useRef(false);
+  useEffect(() => {
+    firstField.current?.querySelector<HTMLInputElement>("input")?.focus();
+  }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (sending.current) return;
+    sending.current = true;
     const f = new FormData(e.currentTarget);
     setBusy(true);
     setError("");
     onStarted();
     try {
+      const input: BranchSettingsInputDto = {
+        displayName: optional(f, "displayName"),
+        address: optional(f, "address"),
+        phone: optional(f, "phone"),
+        receiptHeader: optional(f, "receiptHeader"),
+        status: f.get("status") as BranchSettingsInputDto["status"],
+      };
       await purchasingApi("/api/v1/business/branches/" + branch.id, tenant, {
         method: "PATCH",
-        body: JSON.stringify({
-          displayName: optional(f, "displayName"),
-          address: optional(f, "address"),
-          phone: optional(f, "phone"),
-          receiptHeader: optional(f, "receiptHeader"),
-          status: f.get("status"),
-        }),
+        body: JSON.stringify(input),
       });
-      onSaved();
+      onSaved(input);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "No pudimos guardar la sucursal.",
       );
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
   return (
     <form
+      ref={firstField}
       className="panel stack"
       onSubmit={submit}
       aria-label={"Configurar " + branch.name}
@@ -257,15 +287,47 @@ function BranchEditor({
         Inactiva conserva su historial e impide nuevas ventas, apertura de caja
         y compras.
       </p>
-      <button disabled={busy}>
-        <LoadingLabel busy={busy} label="Guardando...">
-          Guardar sucursal
-        </LoadingLabel>
-      </button>
+      <div className={styles.actions}>
+        <button disabled={busy}>
+          <LoadingLabel busy={busy} label="Guardando...">
+            Guardar sucursal
+          </LoadingLabel>
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancelar
+        </button>
+      </div>
     </form>
   );
 }
-function CompanySettings({ tenant }: { tenant: string }) {
+function CompanySettings({
+  tenant,
+  onEditing,
+}: {
+  tenant: string;
+  onEditing: (value: boolean) => void;
+}) {
+  const [section, setSection] = useState("general"),
+    [editing, setEditing] = useState<string>(),
+    [search, setSearch] = useState(""),
+    [profileBusy, setProfileBusy] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const branchSearch = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    onEditing(editing !== undefined || profileBusy);
+  }, [editing, profileBusy, onEditing]);
+  const closeEditor = () => {
+    setEditing(undefined);
+    requestAnimationFrame(() => {
+      if (trigger.current?.isConnected) trigger.current.focus();
+      else branchSearch.current?.focus();
+    });
+  };
   const [loaded, setLoaded] = useState<{ revision: number; value: Settings }>(),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -307,49 +369,166 @@ function CompanySettings({ tenant }: { tenant: string }) {
       {notice && <p role="status">{notice}</p>}
       {data ? (
         <>
-          <ProfileEditor
-            key={revision}
-            tenant={tenant}
-            profile={data.profile}
-            onStarted={onStarted}
-            onSaved={onSaved}
+          <SettingsSections
+            id="business"
+            label="Secciones de configuración"
+            items={[
+              { id: "general", label: "General" },
+              { id: "branches", label: "Sucursales" },
+              { id: "ticket", label: "Ticket" },
+            ]}
+            value={section}
+            onChange={setSection}
+            disabled={editing !== undefined || profileBusy}
           />
-          <section className="stack">
+          <div hidden={section === "branches"}>
+            <ProfileEditor
+              key={revision}
+              tenant={tenant}
+              profile={data.profile}
+              onStarted={onStarted}
+              onSaved={onSaved}
+              section={section}
+              onBusy={setProfileBusy}
+            />
+          </div>
+          <section
+            id="business-panel-branches"
+            role="tabpanel"
+            aria-labelledby="business-tab-branches"
+            hidden={section !== "branches"}
+          >
             <h2>Sucursales</h2>
             <p>
               Se reutilizan las ubicaciones de inventario. Crea nuevas
               ubicaciones desde Inventario.
             </p>
-            {data.branches.map((branch) => (
-              <BranchEditor
-                key={branch.id + ":" + revision}
-                tenant={tenant}
-                branch={branch}
-                onStarted={onStarted}
-                onSaved={onSaved}
+            <label className={styles.branchSearch}>
+              Buscar sucursal
+              <input
+                ref={branchSearch}
+                type="search"
+                maxLength={100}
+                value={search}
+                disabled={editing !== undefined}
+                onChange={(e) => setSearch(e.target.value)}
               />
-            ))}
+            </label>
+            {!data.branches.length ? (
+              <p>
+                No hay sucursales. Crea una ubicación desde Inventario si tienes
+                permiso.
+              </p>
+            ) : (
+              <ul className={styles.branchList}>
+                {data.branches
+                  .filter((branch) =>
+                    (branch.displayName || branch.name)
+                      .toLocaleLowerCase("es-MX")
+                      .includes(search.trim().toLocaleLowerCase("es-MX")),
+                  )
+                  .map((branch) => (
+                    <li key={branch.id}>
+                      <div className={styles.branchRow}>
+                        <div>
+                          <strong>{branch.displayName || branch.name}</strong>
+                          <p>
+                            Ubicación de inventario: {branch.name} ·{" "}
+                            {branch.code}
+                          </p>
+                        </div>
+                        <div className={styles.branchActions}>
+                          <span
+                            className={`badge ${branch.status === "active" ? "active" : ""}`}
+                          >
+                            {branch.status === "active" ? "Activa" : "Inactiva"}
+                          </span>
+                          <button
+                            type="button"
+                            className="secondary"
+                            aria-label={`Editar sucursal ${branch.displayName || branch.name}`}
+                            disabled={editing !== undefined}
+                            onClick={(e) => {
+                              trigger.current = e.currentTarget;
+                              setEditing(branch.id);
+                              onEditing(true);
+                              setNotice("");
+                            }}
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+                      {editing === branch.id && (
+                        <BranchEditor
+                          key={branch.id + ":" + revision}
+                          tenant={tenant}
+                          branch={branch}
+                          onStarted={onStarted}
+                          onSaved={(value) => {
+                            setLoaded((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    value: {
+                                      ...current.value,
+                                      branches: current.value.branches.map(
+                                        (b) =>
+                                          b.id === branch.id
+                                            ? { ...b, ...value }
+                                            : b,
+                                      ),
+                                    },
+                                  }
+                                : current,
+                            );
+                            onSaved();
+                            closeEditor();
+                          }}
+                          onCancel={closeEditor}
+                        />
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {!!data.branches.length &&
+              !data.branches.some((b) =>
+                (b.displayName || b.name)
+                  .toLocaleLowerCase("es-MX")
+                  .includes(search.trim().toLocaleLowerCase("es-MX")),
+              ) && (
+                <p role="status">
+                  No hay coincidencias. Prueba otro nombre o borra la búsqueda.
+                </p>
+              )}
           </section>
         </>
-      ) : (
+      ) : !error ? (
         <p role="status">Cargando configuración...</p>
-      )}
+      ) : null}
     </>
   );
 }
 export default function BusinessPanel() {
+  const [editing, setEditing] = useState(false);
   const company = usePurchasingCompany("settings.manage");
   return (
     <>
       <header className="topbar">
         <strong>SmartRetail</strong>
         <AppNavigation
+          blocked={editing}
           tenantId={company.tenantId}
           current="/settings/business"
           permissions={company.permissions}
         />
       </header>
-      <main id="workspace-content" tabIndex={-1} className="workspace stack">
+      <main
+        id="workspace-content"
+        tabIndex={-1}
+        className={`workspace stack ${styles.workspace}`}
+      >
         <h1>Configuración del negocio</h1>
         <p>Identidad comercial, sucursales y datos del ticket.</p>
         {company.error && <p role="alert">{company.error}</p>}
@@ -360,6 +539,7 @@ export default function BusinessPanel() {
             <label hidden>
               Empresa
               <select
+                disabled={editing}
                 value={company.tenantId}
                 onChange={(e) => company.setTenantId(e.target.value)}
               >
@@ -371,7 +551,11 @@ export default function BusinessPanel() {
                 ))}
               </select>
             </label>
-            <CompanySettings key={company.tenantId} tenant={company.tenantId} />
+            <CompanySettings
+              key={company.tenantId}
+              tenant={company.tenantId}
+              onEditing={setEditing}
+            />
           </>
         ) : (
           <p>No tienes permiso para administrar la configuración.</p>

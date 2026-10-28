@@ -452,7 +452,19 @@ async function invitationChecks() {
       (c) => c.operation === "/api/v1/invitations" && c.init.method === "POST",
     );
   async function create(s, recipient = email) {
+    if (!(await s.page.getByLabel("Correo de la persona").isVisible()))
+      await s.page
+        .getByRole("button", { name: "Invitar empleado", exact: true })
+        .click();
     await s.page.getByLabel("Correo de la persona").fill(recipient);
+    const selector = s.page
+      .locator("details")
+      .filter({ has: s.page.getByLabel("Sucursal ficticia") });
+    if (
+      !(await selector.getAttribute("open")) &&
+      !(await s.page.getByLabel("Sucursal ficticia").isVisible())
+    )
+      await selector.locator("summary").click();
     await s.page.getByLabel("Sucursal ficticia").check();
     await s.page
       .getByRole("button", { name: "Crear invitación", exact: true })
@@ -497,6 +509,9 @@ async function invitationChecks() {
     await s.close();
   }
   let s = await session({ path: "/settings/users" });
+  await s.page
+    .getByRole("button", { name: "Invitar empleado", exact: true })
+    .click();
   await s.page.getByLabel("Correo de la persona").fill(email);
   s.hold();
   await s.page.locator("form").evaluate((form) => {
@@ -534,6 +549,9 @@ async function invitationChecks() {
     await s.page.getByLabel("Enlace privado · visible sólo ahora").count(),
     0,
   );
+  await s.page
+    .getByRole("button", { name: "Cancelar invitación", exact: true })
+    .click();
   await create(s);
   await s.page
     .getByRole("alert")

@@ -1,0 +1,169 @@
+.workspace {
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.heading h1,
+.heading h2 {
+  margin: 0 0 0.4rem;
+}
+.heading p {
+  margin: 0;
+}
+.sections {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin: 1rem 0;
+}
+.workspace .sections button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+}
+.workspace .sections button[aria-selected="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.workspace .sections button:disabled {
+  background: transparent;
+  opacity: 0.65;
+}
+.workspace [role="tabpanel"] {
+  min-width: 0;
+}
+.workspace [role="tabpanel"][hidden] {
+  display: none;
+}
+.workspace [hidden] {
+  display: none;
+}
+.selector {
+  min-width: 0;
+  max-width: 38rem;
+}
+.selector summary {
+  min-height: 44px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.selector > label {
+  margin-top: 0.8rem;
+}
+.selector input {
+  min-width: 0;
+  max-width: 100%;
+}
+.choices {
+  max-height: 15rem;
+  overflow: auto;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.choices label {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.choices input[type="checkbox"] {
+  width: 1.1rem;
+  min-height: 1.1rem;
+  flex-shrink: 0;
+}
+.workspace fieldset {
+  min-width: 0;
+}
+.branchSearch {
+  max-width: 28rem;
+}
+.branchList {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.branchList > li {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.branchList > li:last-child {
+  border-bottom: 0;
+}
+.branchRow {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.branchRow > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.branchRow p {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.branchActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.editor {
+  margin-block: 1rem;
+}
+.editor input,
+.editor select {
+  min-width: 0;
+  max-width: 100%;
+}
+.inviteForm {
+  max-width: 52rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+@media (max-width: 600px) {
+  .heading {
+    align-items: stretch;
+  }
+  .branchRow {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .branchActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .sections {
+    gap: 0;
+  }
+  .sections button {
+    flex: 1;
+  }
+  .branchList > li {
+    padding: 0.85rem;
+  }
+}

@@ -7,6 +7,8 @@ import {
   type InventoryLocationDto,
 } from "@smartretail/contracts";
 import { purchasingApi } from "../../components/purchasing-client";
+import LocationSelector from "../../components/location-selector";
+import styles from "../../components/settings-ux.module.css";
 type Invitation = {
   id: string;
   email: string;
@@ -25,11 +27,23 @@ export default function InvitationsPanel({
   tenantId,
   onBusy,
   disabled = false,
+  composing,
+  onComposeChange,
 }: {
   tenantId: string;
   onBusy: (value: boolean) => void;
   disabled?: boolean;
+  composing?: boolean;
+  onComposeChange?: (value: boolean) => void;
 }) {
+  const [localComposing, setLocalComposing] = useState(false);
+  const isComposing = composing ?? localComposing;
+  const trigger = useRef<HTMLButtonElement>(null),
+    emailInput = useRef<HTMLInputElement>(null);
+  function compose(value: boolean) {
+    setLocalComposing(value);
+    onComposeChange?.(value);
+  }
   const [invitations, setInvitations] = useState<Invitation[]>([]),
     [locations, setLocations] = useState<InventoryLocationDto[]>([]),
     [role, setRole] = useState("cashier"),
@@ -44,6 +58,21 @@ export default function InvitationsPanel({
     [revision, setRevision] = useState(0),
     [observedAt, setObservedAt] = useState(0);
   const sending = useRef(false);
+  useEffect(() => {
+    if (isComposing && !loading) emailInput.current?.focus();
+  }, [isComposing, loading]);
+  function cancel() {
+    if (busy || disabled) return;
+    setEmail("");
+    setRole("cashier");
+    setDays("7");
+    setIds([]);
+    setError("");
+    setNotice("");
+    // Keep the last creation nonce: cancelling cannot undo an uncertain request.
+    compose(false);
+    requestAnimationFrame(() => trigger.current?.focus());
+  }
   const creation = useRef<{ intent: string; nonce: string } | null>(null);
   const [linkInvitationId, setLinkInvitationId] = useState("");
   const [emailDelivery, setEmailDelivery] =
@@ -111,12 +140,26 @@ export default function InvitationsPanel({
       aria-labelledby="invitations-title"
       style={{ overflowWrap: "anywhere" }}
     >
-      <h2 id="invitations-title">Invitar a tu equipo</h2>
-      <p className="muted">
-        Al crear la invitación intentaremos enviar un correo. También puedes
-        compartir su enlace privado. La persona deberá verificar el mismo correo
-        antes de aceptar.
-      </p>
+      <div className={styles.heading}>
+        <h2 id="invitations-title">Invitaciones</h2>
+        {composing === undefined && !isComposing && (
+          <button
+            ref={trigger}
+            type="button"
+            disabled={disabled || busy || loading}
+            onClick={() => compose(true)}
+          >
+            Invitar empleado
+          </button>
+        )}
+      </div>
+      {isComposing && (
+        <p className="muted">
+          Al crear la invitación intentaremos enviar un correo. También puedes
+          compartir su enlace privado. La persona deberá verificar el mismo
+          correo antes de aceptar.
+        </p>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}{" "}
@@ -139,154 +182,154 @@ export default function InvitationsPanel({
         <p role="status">Cargando invitaciones…</p>
       ) : (
         <>
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                const intent = {
-                  email: email.trim().toLowerCase(),
-                  role,
-                  locationIds: role === "admin" ? [] : [...ids].sort(),
-                  expiresInDays: Number(days),
-                };
-                const fingerprint = JSON.stringify(intent);
-                if (creation.current?.intent !== fingerprint) {
-                  const bytes = crypto.getRandomValues(new Uint8Array(32));
-                  creation.current = {
-                    intent: fingerprint,
-                    nonce: Array.from(bytes, (v) =>
-                      v.toString(16).padStart(2, "0"),
-                    ).join(""),
+          {isComposing && (
+            <form
+              className={`stack ${styles.inviteForm}`}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  const intent = {
+                    email: email.trim().toLowerCase(),
+                    role,
+                    locationIds: role === "admin" ? [] : [...ids].sort(),
+                    expiresInDays: Number(days),
                   };
-                }
-                const result = await purchasingApi<{
-                  invitation: Invitation;
-                  token: string;
-                  emailDelivery?: { status: InvitationEmailStatus };
-                }>("/api/v1/invitations", tenantId, {
-                  method: "POST",
-                  body: JSON.stringify({
-                    ...intent,
-                    creationNonce: creation.current.nonce,
-                  }),
+                  const fingerprint = JSON.stringify(intent);
+                  if (creation.current?.intent !== fingerprint) {
+                    const bytes = crypto.getRandomValues(new Uint8Array(32));
+                    creation.current = {
+                      intent: fingerprint,
+                      nonce: Array.from(bytes, (v) =>
+                        v.toString(16).padStart(2, "0"),
+                      ).join(""),
+                    };
+                  }
+                  const result = await purchasingApi<{
+                    invitation: Invitation;
+                    token: string;
+                    emailDelivery?: { status: InvitationEmailStatus };
+                  }>("/api/v1/invitations", tenantId, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      ...intent,
+                      creationNonce: creation.current.nonce,
+                    }),
+                  });
+                  setInvitations((v) =>
+                    [
+                      result.invitation,
+                      ...v.filter((i) => i.id !== result.invitation.id),
+                    ].slice(0, 100),
+                  );
+                  setObservedAt(Date.now());
+                  setLinkInvitationId(result.invitation.id);
+                  setLink(
+                    window.location.origin + "/invite#token=" + result.token,
+                  );
+                  const delivery = InvitationEmailStatusSchema.safeParse(
+                    result.emailDelivery?.status,
+                  );
+                  setEmailDelivery(
+                    delivery.success ? delivery.data : "unknown",
+                  );
+                  setEmail("");
+                  creation.current = null;
+                  compose(false);
+                  requestAnimationFrame(() => trigger.current?.focus());
                 });
-                setInvitations((v) =>
-                  [
-                    result.invitation,
-                    ...v.filter((i) => i.id !== result.invitation.id),
-                  ].slice(0, 100),
-                );
-                setObservedAt(Date.now());
-                setLinkInvitationId(result.invitation.id);
-                setLink(
-                  window.location.origin + "/invite#token=" + result.token,
-                );
-                const delivery = InvitationEmailStatusSchema.safeParse(
-                  result.emailDelivery?.status,
-                );
-                setEmailDelivery(delivery.success ? delivery.data : "unknown");
-                setEmail("");
-                creation.current = null;
-              });
-            }}
-          >
-            <fieldset
-              disabled={busy || !!error || disabled}
-              style={{ minWidth: 0 }}
+              }}
             >
-              <legend>Nuevo acceso</legend>
-              <div className="form-grid">
-                <label>
-                  Correo de la persona
-                  <input
-                    type="email"
-                    required
-                    maxLength={254}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="off"
-                  />
-                </label>
-                <label>
-                  Rol
-                  <select
-                    aria-label="Rol de invitación"
-                    value={role}
-                    onChange={(e) => {
-                      setRole(e.target.value);
-                      setIds([]);
-                    }}
-                  >
-                    {Object.entries(roles).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <small>
-                    {role === "admin"
-                      ? "Administra el negocio y todas sus sucursales."
-                      : role === "cashier"
-                        ? "Vende y opera caja en las sucursales asignadas."
-                        : "Consulta y opera existencias en las sucursales asignadas."}
-                  </small>
-                </label>
-                <label>
-                  Vigencia en días
-                  <input
-                    type="number"
-                    min={1}
-                    max={14}
-                    required
-                    value={days}
-                    onChange={(e) => setDays(e.target.value)}
-                  />
-                  <small>Entre 1 y 14 días. Podrás revocar el enlace.</small>
-                </label>
-              </div>
-              <fieldset style={{ minWidth: 0 }}>
-                <legend>Sucursales permitidas</legend>
-                {role === "admin" ? (
-                  <p>El administrador tiene acceso a todas las sucursales.</p>
-                ) : (
-                  <>
-                    <p>Sin asignaciones no podrá operar caja ni inventario.</p>
-                    {locations.map((l) => (
-                      <label
-                        key={l.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: ".75rem",
-                          minHeight: 44,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          style={{ width: "auto" }}
-                          checked={ids.includes(l.id)}
-                          onChange={(e) =>
-                            setIds((v) =>
-                              e.target.checked
-                                ? [...v, l.id]
-                                : v.filter((x) => x !== l.id),
-                            )
-                          }
-                        />
-                        {l.name}
-                      </label>
-                    ))}
-                  </>
-                )}
+              <fieldset
+                disabled={busy || !!error || disabled}
+                style={{ minWidth: 0 }}
+              >
+                <legend>Nuevo acceso</legend>
+                <div className="form-grid">
+                  <label>
+                    Correo de la persona
+                    <input
+                      ref={emailInput}
+                      type="email"
+                      required
+                      maxLength={254}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Rol
+                    <select
+                      aria-label="Rol de invitación"
+                      value={role}
+                      onChange={(e) => {
+                        setRole(e.target.value);
+                        setIds([]);
+                      }}
+                    >
+                      {Object.entries(roles).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      {role === "admin"
+                        ? "Administra el negocio y todas sus sucursales."
+                        : role === "cashier"
+                          ? "Vende y opera caja en las sucursales asignadas."
+                          : "Consulta y opera existencias en las sucursales asignadas."}
+                    </small>
+                  </label>
+                  <label>
+                    Vigencia en días
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      required
+                      value={days}
+                      onChange={(e) => setDays(e.target.value)}
+                    />
+                    <small>Entre 1 y 14 días. Podrás revocar el enlace.</small>
+                  </label>
+                </div>
+                <fieldset style={{ minWidth: 0 }}>
+                  <legend>Sucursales permitidas</legend>
+                  {role === "admin" ? (
+                    <p>El administrador tiene acceso a todas las sucursales.</p>
+                  ) : (
+                    <>
+                      <p>
+                        Sin asignaciones no podrá operar caja ni inventario.
+                      </p>
+                      <LocationSelector
+                        locations={locations}
+                        selected={ids}
+                        onChange={setIds}
+                        disabled={busy || !!error || disabled}
+                      />
+                    </>
+                  )}
+                </fieldset>
+                <div className={styles.actions}>
+                  <button>
+                    <LoadingLabel busy={busy} label="Creando y enviando…">
+                      Crear invitación
+                    </LoadingLabel>
+                  </button>
+                </div>
               </fieldset>
-              <button>
-                <LoadingLabel busy={busy} label="Creando y enviando…">
-                  Crear invitación
-                </LoadingLabel>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || disabled}
+                onClick={cancel}
+              >
+                Cancelar invitación
               </button>
-            </fieldset>
-          </form>
+            </form>
+          )}
           {validLink && (
             <div className="stack">
               <p role={emailDelivery === "unknown" ? "alert" : "status"}>
