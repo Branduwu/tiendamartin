@@ -45,6 +45,16 @@
   white-space: normal;
   min-width: 0;
 }
+.accountStatus {
+  display: inline-block;
+  min-width: max-content;
+  white-space: nowrap;
+}
+@media (max-width: 1000px) {
+  .accountStatusCell {
+    grid-column: 1 / -1;
+  }
+}
 .balanceDetail summary {
   cursor: pointer;
   padding-block: 8px;

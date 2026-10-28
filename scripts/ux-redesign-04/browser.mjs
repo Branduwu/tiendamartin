@@ -17,6 +17,7 @@ const require = createRequire(import.meta.url),
   root = process.cwd();
 const phase = process.argv[2] ?? "after",
   before = phase === "before";
+const statusOnly = process.argv.includes("--receivables-status-only");
 const evidence = process.env.OPERATIONAL_UX_EVIDENCE_DIR;
 assert.ok(evidence && !path.resolve(evidence).startsWith(root));
 fs.mkdirSync(evidence, { recursive: true });
@@ -28,7 +29,9 @@ if (before) {
       cwd: baseline,
       encoding: "utf8",
     }).trim(),
-    "7803d2788f5e7f350a96dfc89749f9f6ace3d625",
+    statusOnly
+      ? "e75a0adc7320885176e140a361ef8c31c3965ecc"
+      : "7803d2788f5e7f350a96dfc89749f9f6ace3d625",
   );
 }
 const policy = await fixturePolicy();
@@ -135,7 +138,7 @@ assert.ok(
     /@supabase\/|\/next\/dist\//.test(x.replaceAll("\\", "/")),
   ),
 );
-const html = `<!doctype html><html lang="es" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartRetail - Operación sintética</title><style>${css}</style></head><body class="retail-ui"><div id="root"></div><script>${chunk.code.replaceAll("</script", "<\\/script")}</script></body></html>`;
+const html = `<!doctype html><html lang="es" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SmartRetail - Operación sintética</title><style>${css}</style></head><body class="retail-ui">${statusOnly ? '<aside class="app-sidebar" aria-label="Synthetic navigation">SmartRetail</aside>' : ""}<div id="root"></div><script>${chunk.code.replaceAll("</script", "<\\/script")}</script></body></html>`;
 const uid = (n) => `550e8400-e29b-41d4-a716-${String(n).padStart(12, "0")}`;
 const tenant = uid(1),
   actor = uid(2),
@@ -312,7 +315,26 @@ async function session(route, width, mode = "normal") {
       return ok({ sale: { ...body.draft, status: "completed" }, taxes: [] });
     }
     if (url === "/api/v1/receivables" || url.startsWith("/api/v1/receivables?"))
-      return ok({ receivables: [receivable], nextCursor: null });
+      return ok({
+        receivables: [
+          statusOnly
+            ? {
+                ...receivable,
+                customerName:
+                  "Cliente sintético con nombre extenso para comprobar la distribución de columnas",
+                status: mode,
+                paidAmount: money(
+                  mode === "paid" ? 8500 : mode === "open" ? 0 : 2500,
+                ),
+                returnedAmount: money(mode === "open" ? 0 : 1500),
+                outstandingAmount: money(
+                  mode === "paid" ? 0 : mode === "open" ? 10000 : 6000,
+                ),
+              }
+            : receivable,
+        ],
+        nextCursor: null,
+      });
     if (url === "/api/v1/support?page=1")
       return ok({ requests: [ticket], hasMore: false });
     if (url === `/api/v1/support/${ticket.id}`) {
@@ -376,7 +398,71 @@ async function accessible(page) {
 const mutations = (s) =>
   s.calls.filter((c) => c.method !== "GET" && c.url !== "/api/v1/sales/quote");
 try {
-  for (const width of [1366, 768, 390, 360]) {
+  if (statusOnly) {
+    for (const width of [1363, 1366, 390, 360])
+      for (const state of ["paid", "partially_paid", "open"]) {
+        const s = await session("/receivables", width, state),
+          p = s.page;
+        const label =
+          state === "paid"
+            ? "Liquidada"
+            : state === "open"
+              ? "Pendiente"
+              : "Parcialmente pagada";
+        const cell = p.locator('td[data-label="Estado"]');
+        await expect(cell).toHaveText(label);
+        const summary = p.getByText("Desglose del saldo", { exact: true });
+        await summary.focus();
+        await p.keyboard.press("Enter");
+        await expect(p.locator("details")).toHaveAttribute("open", "");
+        await expect(p.locator("details dd")).toHaveText([
+          "$100.00 MXN",
+          state === "paid"
+            ? "− $85.00 MXN"
+            : state === "open"
+              ? "− $0.00 MXN"
+              : "− $25.00 MXN",
+          state === "open" ? "− $0.00 MXN" : "− $15.00 MXN",
+          state === "paid"
+            ? "$0.00 MXN"
+            : state === "open"
+              ? "$100.00 MXN"
+              : "$60.00 MXN",
+        ]);
+        await expect(
+          p.getByText(/Crédito original menos abonos/),
+        ).toBeVisible();
+        const lines = await cell.evaluate((el) => {
+          const r = document.createRange();
+          r.selectNodeContents(el.firstElementChild ?? el);
+          return r.getClientRects().length;
+        });
+        if (!before) {
+          assert.equal(lines, 1, `${label} must fit on a single line`);
+          await accessible(p);
+          assert.ok(
+            await p
+              .locator(".table-shell")
+              .evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+            "Table must not require horizontal scrolling",
+          );
+        }
+        if (state === "paid") await capture(s, "status-expanded", width);
+        await p.keyboard.press("Enter");
+        await expect(p.locator("details")).not.toHaveAttribute("open");
+        await expect(summary).toBeFocused();
+        assert.equal(mutations(s).length, 0);
+        console.log(
+          JSON.stringify({ phase, width, state, statusLines: lines }),
+        );
+        if (!before)
+          pass(
+            `status-complete-balance-keyboard-no-overflow-${state}-${width}`,
+          );
+        await s.close();
+      }
+  }
+  for (const width of statusOnly ? [] : [1366, 768, 390, 360]) {
     {
       const s = await session("/pos", width),
         p = s.page;
@@ -539,7 +625,7 @@ try {
       await s.close();
     }
   }
-  if (!before) {
+  if (!before && !statusOnly) {
     {
       const s = await session("/sales/ticket", 390, "pending-return"),
         p = s.page;
@@ -668,7 +754,7 @@ try {
         checks,
         externalRequests: external,
         csp: policy?.header ?? "not tested",
-        viewports: [1366, 768, 390, 360],
+        viewports: statusOnly ? [1363, 1366, 390, 360] : [1366, 768, 390, 360],
       },
       null,
       2,

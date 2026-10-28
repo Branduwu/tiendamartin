@@ -150,7 +150,9 @@ function AccountList({
                   </p>
                 </details>
               </td>
-              <td data-label="Estado">{status(r.status)}</td>
+              <td data-label="Estado" className={styles.accountStatusCell}>
+                <span className={styles.accountStatus}>{status(r.status)}</span>
+              </td>
               <td data-label="Acciones">
                 <Link href={`/receivables/${r.id}?tenantId=${tenant}`}>
                   Ver cuenta y abonos
