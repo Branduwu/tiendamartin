@@ -88,7 +88,12 @@ const pass = (name) => {
 const password = "Ficticia local 123!",
   email = "synthetic@example.invalid",
   token = "a".repeat(64);
-async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
+async function session({
+  path = "/login",
+  mode = "ok",
+  width = 1024,
+  openEditors = true,
+} = {}) {
   const context = await browser.newContext({
       viewport: { width, height: 950 },
     }),
@@ -134,9 +139,9 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
       const image = await sharp({
         create: { width: 16, height: 16, channels: 3, background: "#166f69" },
       })
-        .png()
+        .jpeg()
         .toBuffer();
-      return route.fulfill({ contentType: "image/png", body: image });
+      return route.fulfill({ contentType: "image/jpeg", body: image });
     }
     if (u.origin === origin && u.pathname === "/onboarding")
       return route.fulfill({
@@ -274,10 +279,11 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
       return { status: 200, body: profile };
     }
     if (url === "/api/v1/profile/photo") {
+      if (hold) await hold;
       if (mode === "photo-rejected")
         return {
           status: 400,
-          body: { error: "Elige una imagen válida de hasta 3 MB." },
+          body: { error: "Elige una imagen JPEG válida de hasta 1.5 MiB." },
         };
       if (init.method === "PUT") {
         assert.ok(init.bodySize > 0);
@@ -421,10 +427,18 @@ async function session({ path = "/login", mode = "ok", width = 1024 } = {}) {
   await page
     .getByRole("heading", { name: "Acceso de prueba", exact: true })
     .waitFor();
-  if (path === "/settings/account" && mode !== "profile-load-error") {
+  if (
+    openEditors &&
+    path === "/settings/account" &&
+    mode !== "profile-load-error"
+  ) {
     await page
       .getByRole("button", { name: "Editar perfil", exact: true })
       .click();
+    if (profile.photoEnabled)
+      await page
+        .getByRole("button", { name: "Cambiar fotografía", exact: true })
+        .click();
   }
   return {
     page,
@@ -692,6 +706,14 @@ async function profileChecks() {
     }
     await p.reload();
     await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
+    if (
+      await p
+        .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+        .isEnabled()
+    )
+      await p
+        .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+        .click();
     await p.getByLabel("Nombre", { exact: false }).waitFor();
     assert.equal(
       await p.getByLabel("Nombre", { exact: false }).inputValue(),
@@ -779,6 +801,14 @@ async function profileChecks() {
     })
     .waitFor();
   await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
+  if (
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .isEnabled()
+  )
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .click();
   assert.equal(
     await p.getByLabel("Nombre", { exact: false }).inputValue(),
     "Ana",
@@ -790,6 +820,14 @@ async function profileChecks() {
   p = s.page;
   await p.getByRole("button", { name: "Volver a consultar perfil" }).click();
   await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
+  if (
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .isEnabled()
+  )
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .click();
   await p.getByLabel("Nombre", { exact: false }).waitFor();
   pass("profile-load-error-explicit-read-retry");
   await s.close();
@@ -805,13 +843,15 @@ async function profileChecks() {
   const image = await sharp({
     create: { width: 16, height: 16, channels: 3, background: "red" },
   })
-    .png()
+    .jpeg()
     .toBuffer();
   s = await session({ path: "/settings/account" });
   p = s.page;
-  await p
-    .getByLabel("Seleccionar fotografía", { exact: false })
-    .setInputFiles({ name: "draft.png", mimeType: "image/png", buffer: image });
+  await p.getByLabel("Seleccionar fotografía", { exact: false }).setInputFiles({
+    name: "draft.jpg",
+    mimeType: "image/jpeg",
+    buffer: image,
+  });
   await p.getByLabel("Nombre", { exact: false }).fill("Borrador");
   await p.getByRole("button", { name: "Guardar cambios", exact: true }).click();
   await p
@@ -845,24 +885,37 @@ async function profileChecks() {
     mimeType: "image/svg+xml",
     buffer: Buffer.from("<svg/>"),
   });
-  await p.getByRole("alert").filter({ hasText: "hasta 3 MB" }).waitFor();
+  await p.getByRole("alert").filter({ hasText: "hasta 1.5 MiB" }).waitFor();
   assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 0);
-  await p
-    .getByLabel("Seleccionar fotografía", { exact: false })
-    .setInputFiles({ name: "photo.png", mimeType: "image/png", buffer: image });
+  await p.getByLabel("Seleccionar fotografía", { exact: false }).setInputFiles({
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: image,
+  });
   await p
     .getByRole("button", { name: "Guardar fotografía", exact: true })
     .click();
   await p.getByText("Fotografía guardada.", { exact: true }).waitFor();
   await p.reload();
   await p.getByRole("button", { name: "Editar perfil", exact: true }).click();
+  if (
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .isEnabled()
+  )
+    await p
+      .getByRole("button", { name: "Cambiar fotograf\u00eda", exact: true })
+      .click();
   await p
     .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
     .waitFor();
-  await p.waitForFunction(() => {
-    const img = document.querySelector('img[alt="Tu fotografía de perfil"]');
-    return img?.complete && img.naturalWidth > 0;
-  });
+  await require("@playwright/test")
+    .expect.poll(() =>
+      p
+        .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
+        .evaluate((img) => img.complete && img.naturalWidth > 0),
+    )
+    .toBe(true);
   await p
     .getByRole("button", { name: "Quitar fotografía", exact: true })
     .click();
@@ -881,8 +934,8 @@ async function profileChecks() {
     await p
       .getByLabel("Seleccionar fotografía", { exact: false })
       .setInputFiles({
-        name: "photo.png",
-        mimeType: "image/png",
+        name: "photo.jpg",
+        mimeType: "image/jpeg",
         buffer: image,
       });
     await p
@@ -945,6 +998,9 @@ async function profileChecks() {
         await p
           .getByRole("button", { name: "Editar perfil", exact: true })
           .click();
+        await p
+          .getByRole("button", { name: "Cambiar fotografía", exact: true })
+          .click();
         assert.equal(
           await p
             .getByLabel("Seleccionar fotografía", { exact: false })
@@ -1005,6 +1061,190 @@ async function profileChecks() {
   pass("profile-existing-password-change-is-separate");
   await s.close();
   assert.equal(externalRequests, 0);
+}
+if (process.argv.includes("--profile-photo-only")) {
+  try {
+    const mutations = (s, url, method) =>
+      s.calls.filter((c) => c.operation === url && c.init?.method === method);
+    assert.equal(cspPolicy?.header, "content-security-policy");
+    const { expect } = require("@playwright/test");
+    const { default: AxeBuilder } = await import("@axe-core/playwright");
+    const sharp = require(
+      require.resolve("sharp", { paths: [root + "/apps/web"] }),
+    );
+    const image = await sharp({
+      create: { width: 80, height: 60, channels: 3, background: "#166f69" },
+    })
+      .jpeg()
+      .toBuffer();
+    const sample = {
+      name: "synthetic.jpg",
+      mimeType: "image/jpeg",
+      buffer: image,
+    };
+    const button = (p, name) => p.getByRole("button", { name, exact: true });
+    const file = (p) => p.locator('input[type="file"]');
+    const open = async (p) => {
+      await button(p, "Cambiar fotografía").click();
+      await expect(file(p)).toBeFocused();
+    };
+    fs.mkdirSync(process.argv[2], { recursive: true });
+    for (const width of [1366, 768, 390, 360]) {
+      const s = await session({
+        path: "/settings/account",
+        width,
+        openEditors: false,
+      });
+      const p = s.page;
+      await expect(button(p, "Cambiar fotografía")).toBeVisible();
+      assert.equal(await file(p).count(), 0);
+      await button(p, "Cambiar fotografía").focus();
+      await p.keyboard.press("Enter");
+      await expect(file(p)).toBeFocused();
+      await expect(file(p)).toHaveAttribute("accept", "image/jpeg");
+      await file(p).setInputFiles(sample);
+      await expect(
+        p.getByRole("img", { name: "Tu fotografía de perfil", exact: true }),
+      ).toHaveAttribute("src", /^blob:/);
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 0);
+      await button(p, "Cancelar fotografía").click();
+      await expect(button(p, "Cambiar fotografía")).toBeFocused();
+      assert.equal(await file(p).count(), 0);
+      pass(`photo-preview-keyboard-cancel-no-write-${width}`);
+      await open(p);
+      for (const invalid of [
+        { name: "not.jpeg", mimeType: "image/png", buffer: image },
+        {
+          name: "large.jpg",
+          mimeType: "image/jpeg",
+          buffer: Buffer.alloc(1572865),
+        },
+      ]) {
+        await file(p).setInputFiles(invalid);
+        await expect(p.getByRole("alert")).toContainText("1.5 MiB");
+        await expect(button(p, "Guardar fotografía")).toBeDisabled();
+      }
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 0);
+      pass(`photo-invalid-size-no-write-${width}`);
+      await file(p).setInputFiles(sample);
+      s.hold();
+      await button(p, "Guardar fotografía").click();
+      await expect(file(p)).toBeDisabled();
+      await expect(button(p, "Cancelar fotografía")).toBeDisabled();
+      s.release();
+      await p.getByText("Fotografía guardada.", { exact: true }).waitFor();
+      await expect(button(p, "Cambiar fotografía")).toBeFocused();
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+      await open(p);
+      await file(p).setInputFiles(sample);
+      await button(p, "Guardar fotografía").click();
+      await p.getByText("Fotografía guardada.", { exact: true }).waitFor();
+      await p.reload();
+      const avatar = p.getByRole("img", {
+        name: "Tu fotografía de perfil",
+        exact: true,
+      });
+      await expect
+        .poll(() =>
+          avatar.evaluate((img) => img.complete && img.naturalWidth > 0),
+        )
+        .toBe(true);
+      await open(p);
+      assert.ok(
+        await p.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      const a11y = await new AxeBuilder({ page: p })
+        .include("#account-profile")
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+        .analyze();
+      assert.deepEqual(
+        a11y.violations.map((v) => v.id),
+        [],
+      );
+      await p.screenshot({
+        path: path.join(process.argv[2], `photo-ready-${width}.png`),
+        fullPage: true,
+      });
+      await button(p, "Quitar fotografía").click();
+      await p.getByText("Fotografía eliminada.", { exact: true }).waitFor();
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 2);
+      assert.equal(mutations(s, "/api/v1/profile/photo", "DELETE").length, 1);
+      await p.reload();
+      await expect(button(p, "Cambiar fotografía")).toBeVisible();
+      assert.equal(
+        await p
+          .getByRole("img", { name: "Tu fotografía de perfil", exact: true })
+          .count(),
+        0,
+      );
+      await p
+        .getByRole("heading", { name: "Cambiar contraseña", exact: true })
+        .waitFor();
+      pass(`photo-upload-busy-replace-reload-delete-csp-responsive-${width}`);
+      await s.close();
+    }
+    for (const mode of [
+      "photo-rejected",
+      "photo-uncertain",
+      "photo-read-error",
+    ]) {
+      const s = await session({
+        path: "/settings/account",
+        mode,
+        openEditors: false,
+      });
+      const p = s.page;
+      await open(p);
+      await file(p).setInputFiles(sample);
+      await button(p, "Guardar fotografía").click();
+      await p.getByRole("alert").first().waitFor();
+      assert.equal(
+        await p.getByText("Fotografía guardada.", { exact: true }).count(),
+        0,
+      );
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+      if (mode === "photo-rejected") {
+        await expect(button(p, "Guardar fotografía")).toBeEnabled();
+        await button(p, "Cancelar fotografía").click();
+      } else {
+        await expect(file(p)).toBeDisabled();
+        await button(p, "Consultar perfil guardado").click();
+        if (mode === "photo-read-error") {
+          await expect(file(p)).toBeDisabled();
+          await p
+            .getByText("No significa que se haya eliminado.", { exact: false })
+            .waitFor();
+        } else await expect(button(p, "Cambiar fotografía")).toBeEnabled();
+      }
+      assert.equal(mutations(s, "/api/v1/profile/photo", "PUT").length, 1);
+      pass(`${mode}-no-false-success-or-automatic-retry`);
+      await s.close();
+    }
+    const s = await session({
+      path: "/settings/account",
+      mode: "photo-disabled",
+      openEditors: false,
+    });
+    assert.equal(await button(s.page, "Cambiar fotografía").count(), 0);
+    await button(s.page, "Editar perfil").click();
+    assert.equal(await file(s.page).count(), 0);
+    await s.close();
+    pass("photo-flag-off-no-controls");
+    assert.equal(externalRequests, 0);
+    console.log(
+      JSON.stringify({
+        checks,
+        externalRequests,
+        csp: "enforced",
+        transport: "synthetic",
+      }),
+    );
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
 }
 if (process.argv.includes("--csp-only")) {
   try {

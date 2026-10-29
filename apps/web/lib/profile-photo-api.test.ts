@@ -23,7 +23,8 @@ beforeEach(async () => {
   valid = await sharp({
     create: { width: 30, height: 20, channels: 3, background: "red" },
   })
-    .png()
+    .withExif({ IFD0: { Artist: "Synthetic photo" } })
+    .jpeg()
     .toBuffer();
   m.user.mockResolvedValue({ data: { user: { id } }, error: null });
   m.from.mockReturnValue({
@@ -46,7 +47,7 @@ afterEach(() => vi.unstubAllEnvs());
 function request(
   method = "GET",
   body?: Uint8Array,
-  mime = "image/png",
+  mime = "image/jpeg",
   query = "",
   headers = {},
 ) {
@@ -61,7 +62,8 @@ function request(
   });
 }
 it("normalizes actual image bytes to a small JPEG and strips input metadata", async () => {
-  const result = await normalizedProfilePhoto(valid, "image/png");
+  expect((await sharp(valid).metadata()).exif).toBeDefined();
+  const result = await normalizedProfilePhoto(valid, "image/jpeg");
   const meta = await sharp(result).metadata();
   expect(meta.format).toBe("jpeg");
   expect(meta.width).toBe(256);
@@ -108,7 +110,7 @@ it("rejects selecting another user's file by query or body", async () => {
 });
 it("ignores forged identity headers and derives the path from verified Auth", async () => {
   await handleProfilePhoto(
-    request("PUT", valid, "image/png", "", {
+    request("PUT", valid, "image/jpeg", "", {
       "x-user-id": "other",
       "x-tenant-id": "other",
     }),
@@ -121,7 +123,7 @@ it("requires authentication and same origin before touching storage", async () =
   expect(
     (
       await handleProfilePhoto(
-        request("PUT", valid, "image/png", "", {
+        request("PUT", valid, "image/jpeg", "", {
           origin: "https://evil.invalid",
         }),
       )
@@ -136,15 +138,64 @@ it("remains disabled until its separately authorized storage dependency is enabl
 });
 it("rejects wrong MIME, signatures, SVG, truncated and oversized streamed files", async () => {
   for (const [body, mime] of [
-    [valid, "image/jpeg"],
+    [valid, "image/png"],
     [Buffer.from('<svg onload="evil()"/>'), "image/svg+xml"],
     [Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), "image/png"],
-    [Buffer.alloc(3 * 1024 * 1024 + 1), "image/png"],
+    [Buffer.from([0xff, 0xd8, 0xff, 0xd9]), "image/jpeg"],
+    [Buffer.alloc(1572864 + 1), "image/jpeg"],
   ] as const)
     expect((await handleProfilePhoto(request("PUT", body, mime))).status).toBe(
       400,
     );
   expect(m.upload).not.toHaveBeenCalled();
+});
+it("rejects genuine PNG and WebP even with a forged JPEG MIME", async () => {
+  for (const format of ["png", "webp"] as const) {
+    const bytes = await sharp(valid).toFormat(format).toBuffer();
+    expect(
+      (await handleProfilePhoto(request("PUT", bytes, "image/jpeg"))).status,
+    ).toBe(400);
+    expect(
+      (await handleProfilePhoto(request("PUT", bytes, `image/${format}`)))
+        .status,
+    ).toBe(400);
+  }
+  expect(m.upload).not.toHaveBeenCalled();
+});
+it("accepts exactly 1.5 MiB and rejects the next byte independently of declared length", async () => {
+  const atLimit = Buffer.concat([valid, Buffer.alloc(1572864 - valid.length)]);
+  expect((await handleProfilePhoto(request("PUT", atLimit))).status).toBe(200);
+  m.upload.mockClear();
+  expect(
+    (
+      await handleProfilePhoto(
+        request(
+          "PUT",
+          Buffer.concat([atLimit, Buffer.from([0])]),
+          "image/jpeg",
+          "",
+          { "content-length": "1" },
+        ),
+      )
+    ).status,
+  ).toBe(400);
+  expect(m.upload).not.toHaveBeenCalled();
+});
+it("isolates synthetic identities for read, replace and remove without trusting tenant or user inputs", async () => {
+  const other = "550e8400-e29b-41d4-a716-446655440021";
+  for (const userId of [id, other]) {
+    m.user.mockResolvedValue({ data: { user: { id: userId } }, error: null });
+    await handleProfilePhoto(request("GET"));
+    await handleProfilePhoto(
+      request("PUT", valid, "image/jpeg", "", {
+        "x-user-id": userId === id ? other : id,
+      }),
+    );
+    await handleProfilePhoto(request("DELETE"));
+    expect(m.download.mock.calls.at(-1)?.[0]).toBe(`${userId}/avatar.jpg`);
+    expect(m.upload.mock.calls.at(-1)?.[0]).toBe(`${userId}/avatar.jpg`);
+    expect(m.remove.mock.calls.at(-1)?.[0]).toEqual([`${userId}/avatar.jpg`]);
+  }
 });
 it("removes only its own fixed avatar path, including a safe identical retry", async () => {
   expect((await handleProfilePhoto(request("DELETE"))).status).toBe(200);

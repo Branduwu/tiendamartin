@@ -88,6 +88,10 @@
   gap: 0.75rem;
   max-width: 36rem;
 }
+.identityActions {
+  display: grid;
+  gap: 0.5rem;
+}
 .photoEditor input {
   max-width: 100%;
 }
@@ -267,7 +271,7 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: 0.85rem;
   }
-  .photo > button {
+  .identityActions {
     grid-column: 1/-1;
     justify-self: start;
   }

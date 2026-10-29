@@ -6,15 +6,29 @@ import { serverAuth } from "./supabase/server";
 import { profilePhotosEnabled } from "./profile-api";
 import { normalizedProductImage } from "./product-image-processing";
 import { reply, requireSameOrigin, SameOriginError } from "./api";
+import {
+  PROFILE_PHOTO_MAX_BYTES,
+  PROFILE_PHOTO_MIME,
+  PROFILE_PHOTO_ERROR,
+} from "./profile-photo-policy";
 
 export async function normalizedProfilePhoto(bytes: Uint8Array, mime: string) {
+  if (
+    mime !== PROFILE_PHOTO_MIME ||
+    !bytes.length ||
+    bytes.length > PROFILE_PHOTO_MAX_BYTES
+  )
+    throw new TypeError("Invalid profile photo");
   const safe = await normalizedProductImage(bytes, mime);
   return sharp(safe)
     .resize(256, 256, { fit: "cover" })
     .jpeg({ quality: 82 })
     .toBuffer();
 }
-async function boundedBody(request: Request, maxBytes = 3 * 1024 * 1024) {
+async function boundedBody(
+  request: Request,
+  maxBytes = PROFILE_PHOTO_MAX_BYTES,
+) {
   const reader = request.body?.getReader();
   if (!reader) return Buffer.alloc(0);
   const chunks: Uint8Array[] = [];
@@ -126,10 +140,7 @@ export async function handleProfilePhoto(request: Request) {
     if (error instanceof SameOriginError)
       return reply({ error: "Solicitud no permitida." }, 403);
     if (error instanceof TypeError)
-      return reply(
-        { error: "Elige una imagen JPEG, PNG o WebP válida de hasta 3 MB." },
-        400,
-      );
+      return reply({ error: PROFILE_PHOTO_ERROR }, 400);
     return reply(
       {
         ...(mutationStarted ? { code: "profile_photo_unconfirmed" } : {}),

@@ -9,12 +9,20 @@ import {
 import { LoadingLabel } from "../../components/ui";
 import { roleLabel } from "../../../lib/navigation";
 import styles from "./profile-panel.module.css";
+import {
+  PROFILE_PHOTO_MAX_BYTES,
+  PROFILE_PHOTO_MIME,
+  PROFILE_PHOTO_HELP,
+  PROFILE_PHOTO_ERROR,
+} from "../../../lib/profile-photo-policy";
 
 const empty = { firstName: "", lastName: "", phone: "" };
 export default function ProfilePanel() {
   const [profile, setProfile] = useState<ProfileOverview>();
   const [draft, setDraft] = useState<PersonalProfileInput>(empty);
   const [editing, setEditing] = useState(false);
+  const [photoEditing, setPhotoEditing] = useState(false);
+  const photoButton = useRef<HTMLButtonElement>(null);
   const editButton = useRef<HTMLButtonElement>(null);
   const firstInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true),
@@ -32,6 +40,20 @@ export default function ProfilePanel() {
     previewRef = useRef("");
   const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    if (photoEditing) fileInput.current?.focus();
+  }, [photoEditing]);
+  function closePhotoEditor() {
+    setPhotoEditing(false);
+    requestAnimationFrame(() => photoButton.current?.focus());
+  }
+  function cancelPhoto() {
+    if (busy || uncertain) return;
+    clearSelection();
+    setError("");
+    setNotice("");
+    closePhotoEditor();
+  }
+  useEffect(() => {
     if (editing) firstInput.current?.focus();
   }, [editing]);
   function finishEditing() {
@@ -46,6 +68,7 @@ export default function ProfilePanel() {
       phone: profile.phone,
     });
     clearSelection();
+    setPhotoEditing(false);
     setError("");
     setNotice("");
     finishEditing();
@@ -162,6 +185,7 @@ export default function ProfilePanel() {
         if (resolved) setPhotoMissing(photo.status === 404);
       }
       if (!preserveDraft) clearSelection();
+      if (!preserveDraft) setPhotoEditing(false);
       setUncertain(false);
       setPhotoUncertain(false);
       setLoading(false);
@@ -196,6 +220,7 @@ export default function ProfilePanel() {
       setPhotoMissing(remove);
       setPhotoReadFailed(false);
       setNotice(remove ? "Fotografía eliminada." : "Fotografía guardada.");
+      closePhotoEditor();
       changed();
     }, "photo");
   }
@@ -287,40 +312,64 @@ export default function ProfilePanel() {
                   <small className="muted">Fotografía no habilitada</small>
                 )}
               </div>
-              <button
-                ref={editButton}
-                type="button"
-                className="secondary"
-                disabled={busy || uncertain || editing}
-                aria-expanded={editing}
-                aria-controls="profile-details"
-                onClick={() => {
-                  setDraft({
-                    firstName: profile.firstName,
-                    lastName: profile.lastName,
-                    phone: profile.phone,
-                  });
-                  setError("");
-                  setNotice("");
-                  setEditing(true);
-                }}
-              >
-                {editing ? "Editando perfil" : "Editar perfil"}
-              </button>
+              <div className={styles.identityActions}>
+                <button
+                  ref={editButton}
+                  type="button"
+                  className="secondary"
+                  disabled={busy || uncertain || editing}
+                  aria-expanded={editing}
+                  aria-controls="profile-details"
+                  onClick={() => {
+                    setDraft({
+                      firstName: profile.firstName,
+                      lastName: profile.lastName,
+                      phone: profile.phone,
+                    });
+                    setError("");
+                    setNotice("");
+                    setEditing(true);
+                  }}
+                >
+                  {editing ? "Editando perfil" : "Editar perfil"}
+                </button>
+                {profile.photoEnabled && (
+                  <button
+                    ref={photoButton}
+                    type="button"
+                    className="secondary"
+                    disabled={busy || uncertain || photoEditing}
+                    aria-expanded={photoEditing}
+                    aria-controls="profile-photo-editor"
+                    onClick={() => {
+                      setError("");
+                      setNotice("");
+                      setPhotoEditing(true);
+                    }}
+                  >
+                    Cambiar fotografía
+                  </button>
+                )}
+              </div>
               {photoReadFailed && (
                 <p role="alert" className="error">
                   No pudimos consultar tu fotografía. No significa que se haya
                   eliminado.
                 </p>
               )}
-              {profile.photoEnabled && editing && (
-                <div className={styles.photoEditor}>
+              {profile.photoEnabled && photoEditing && (
+                <section
+                  id="profile-photo-editor"
+                  className={styles.photoEditor}
+                  aria-label="Cambiar fotografía"
+                  aria-busy={busy}
+                >
                   <label>
                     Seleccionar fotografía
                     <input
                       ref={fileInput}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept={PROFILE_PHOTO_MIME}
                       disabled={busy || uncertain}
                       onChange={(e) => {
                         const selected = e.target.files?.[0];
@@ -329,15 +378,11 @@ export default function ProfilePanel() {
                         setNotice("");
                         if (!selected) return;
                         if (
-                          !["image/jpeg", "image/png", "image/webp"].includes(
-                            selected.type,
-                          ) ||
+                          selected.type !== PROFILE_PHOTO_MIME ||
                           !selected.size ||
-                          selected.size > 3 * 1024 * 1024
+                          selected.size > PROFILE_PHOTO_MAX_BYTES
                         ) {
-                          setError(
-                            "Elige una imagen JPEG, PNG o WebP de hasta 3 MB.",
-                          );
+                          setError(PROFILE_PHOTO_ERROR);
                           return;
                         }
                         const url = URL.createObjectURL(selected);
@@ -346,10 +391,7 @@ export default function ProfilePanel() {
                         setPreview(url);
                       }}
                     />
-                    <small>
-                      JPEG, PNG o WebP · máximo 3 MB. Sólo tú puedes consultar
-                      tu fotografía.
-                    </small>
+                    <small>{PROFILE_PHOTO_HELP}</small>
                   </label>
                   <button
                     type="button"
@@ -363,12 +405,20 @@ export default function ProfilePanel() {
                   <button
                     type="button"
                     className="secondary"
+                    disabled={busy || uncertain}
+                    onClick={cancelPhoto}
+                  >
+                    Cancelar fotografía
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
                     disabled={busy || uncertain || (!preview && photoMissing)}
                     onClick={() => void savePhoto(true)}
                   >
                     Quitar fotografía
                   </button>
-                </div>
+                </section>
               )}
             </section>
             <div id="profile-details">
