@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import PasswordField from "./password-field";
 import { Button } from "./ui";
 import { browserAuth } from "../../lib/supabase/client";
+import CredentialForm from "./credential-form";
 
 export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
   const [confirmationError, setConfirmationError] = useState(false),
@@ -237,7 +238,11 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
         </p>
       )}
       {ready && (
-        <form className="stack" onSubmit={submit}>
+        <CredentialForm
+          action={mode === "reset" ? "/reset-password" : "/settings/account"}
+          onSubmit={submit}
+          busy={busy}
+        >
           <fieldset disabled={busy} className="stack">
             {mode === "change" && (
               <PasswordField
@@ -284,7 +289,7 @@ export default function PasswordForm({ mode }: { mode: "reset" | "change" }) {
           <Button type="submit" busy={busy} busyLabel="Guardando…">
             Guardar contraseña
           </Button>
-        </form>
+        </CredentialForm>
       )}
       <Link href="/forgot-password">Solicitar un nuevo enlace</Link>
     </div>

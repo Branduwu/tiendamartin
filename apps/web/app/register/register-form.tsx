@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useRef, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { browserAuth } from "../../lib/supabase/client";
+import CredentialForm from "../components/credential-form";
 export default function RegisterForm({ configured }: { configured: boolean }) {
   const router = useRouter(),
     sending = useRef(false);
@@ -57,7 +58,7 @@ export default function RegisterForm({ configured }: { configured: boolean }) {
           </Link>
         </div>
       ) : (
-        <form className="stack" onSubmit={submit}>
+        <CredentialForm action="/register" onSubmit={submit} busy={busy}>
           <label>
             Correo electrónico
             <input
@@ -99,7 +100,7 @@ export default function RegisterForm({ configured }: { configured: boolean }) {
               Crear cuenta
             </LoadingLabel>
           </button>
-        </form>
+        </CredentialForm>
       )}
       <Link href="/login">Ya tengo cuenta · Iniciar sesión</Link>
     </div>

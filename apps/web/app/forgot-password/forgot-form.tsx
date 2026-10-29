@@ -2,6 +2,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { browserAuth } from "../../lib/supabase/client";
 import { Button } from "../components/ui";
+import CredentialForm from "../components/credential-form";
 export const RECOVERY_MESSAGE =
   "Si existe una cuenta con ese correo, recibirás instrucciones para restablecer tu contraseña.";
 export const CONFIRMATION_MESSAGE =
@@ -62,7 +63,7 @@ export default function ForgotForm({
       </button>
     </div>
   ) : (
-    <form className="stack" onSubmit={submit}>
+    <CredentialForm action="/forgot-password" onSubmit={submit} busy={busy}>
       {!configured && (
         <p role="status">
           El envío de enlaces aún no está disponible. Contacta al administrador.
@@ -86,6 +87,6 @@ export default function ForgotForm({
       >
         {mode === "confirmation" ? "Reenviar verificación" : "Enviar enlace"}
       </Button>
-    </form>
+    </CredentialForm>
   );
 }

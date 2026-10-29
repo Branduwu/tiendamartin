@@ -6,6 +6,7 @@ import Link from "next/link";
 import { readInvitationToken } from "../../lib/invitation-handoff";
 import { AUTH_MESSAGES } from "../../lib/supabase/resilience";
 import { loginAttempt } from "../../lib/supabase/login-attempt";
+import CredentialForm from "../components/credential-form";
 export default function LoginForm({
   configured,
   destination = "/onboarding",
@@ -85,11 +86,11 @@ export default function LoginForm({
     }
   }
   return (
-    <form
+    <CredentialForm
+      action="/login"
       onSubmit={submit}
-      className="stack"
-      aria-busy={busy}
-      aria-describedby={error ? "login-error" : undefined}
+      busy={busy}
+      describedBy={error ? "login-error" : undefined}
     >
       {!configured && (
         <p role="status" className="warning">
@@ -146,6 +147,6 @@ export default function LoginForm({
       </button>
       <Link href="/register">Crear una cuenta</Link>
       <Link href="/forgot-password">¿Olvidaste tu contraseña?</Link>
-    </form>
+    </CredentialForm>
   );
 }
